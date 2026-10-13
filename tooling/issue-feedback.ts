@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isRecord } from './errors.ts';
 import { createGitHubIssueRequest, IssueAutomationError, type IssueRequest } from './issue-github.ts';
-import { ISSUE_INVALID_LABEL, type IssueBodyResult, type IssueFormSources, validateIssueBody } from './issue-policy.ts';
+import { createIssuePolicy, ISSUE_INVALID_LABEL, type IssueBodyResult, type IssueFormSources } from './issue-policy.ts';
 
 const FEEDBACK_MARKER = '<!-- ai-commit-attribution:issue-form-feedback:v1 -->';
 // Public GitHub identity: https://api.github.com/users/github-actions%5Bbot%5D
@@ -211,18 +211,19 @@ export async function runIssueFeedback(
     const readLatest = async () => snapshot(await request('GET', issue), context);
     let expected = await readLatest();
     if (expected.state === 'closed') return { status: 'closed', feedback: 'unchanged' };
-    const result = validateIssueBody(expected.body, expected.labels, forms);
+    const policy = createIssuePolicy(forms);
+    for (const name of [...policy.classificationLabels, ISSUE_INVALID_LABEL]) {
+        const label = await request('GET', `${base}/labels/${encodeURIComponent(name)}`);
+        if (!isRecord(label) || label.name !== name)
+            fail('A provisioned current Issue form label is missing or malformed.');
+    }
+    const result = policy.validate(expected.body, expected.labels);
     const comment = await findOwnedComment(request, context);
     const invalid = result.status === 'invalid';
     const hasLabel = expected.labels.includes(ISSUE_INVALID_LABEL);
     const changeLabel = invalid !== hasLabel;
     const body = feedbackBody(result, context);
     const changeComment = invalid ? !comment || comment.body !== body : comment !== null && comment.body !== body;
-    if (invalid) {
-        const label = await request('GET', `${base}/labels/${encodeURIComponent(ISSUE_INVALID_LABEL)}`);
-        if (!isRecord(label) || label.name !== ISSUE_INVALID_LABEL)
-            fail('The provisioned Issue diagnostic label is missing or malformed.');
-    }
     // Compare the fetched source, labels and update identity before any effect.
     if (!sameSnapshot(expected, await readLatest())) return { status: 'stale', feedback: 'unchanged' };
     if (!changeLabel && !changeComment) return { status: result.status, feedback: 'unchanged' };

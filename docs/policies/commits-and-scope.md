@@ -180,6 +180,9 @@ Classification changes use `labeled` and `unlabeled` events. Changes to the
 diagnostic `template: invalid` label are ignored to prevent feedback recursion.
 Maintainers must provision both current form labels and `template: invalid`
 before deployment; missing labels or malformed forms are automation failures.
+Every non-ignored open Issue run verifies both current classification names and
+the diagnostic label remotely before classification or diagnosis effects.
+Missing, mismatched or malformed configuration fails with zero writes.
 
 A structurally invalid typed Issue receives only the diagnostic label and one
 owned GitHub Actions bot comment with field-specific repair guidance, then its

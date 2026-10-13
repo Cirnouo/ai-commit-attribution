@@ -18,8 +18,11 @@ globalThis.fetch = async (input, init) => {
     writeFileSync(transcript, JSON.stringify(calls), 'utf8');
     if (method === 'GET' && url.pathname.endsWith('/issues/7')) return Response.json(current);
     if (method === 'GET' && url.pathname.endsWith('/comments')) return Response.json([]);
-    if (method === 'GET' && url.pathname.endsWith('/labels/template%3A%20invalid'))
-        return Response.json({ name: 'template: invalid' });
+    if (method === 'GET' && url.pathname.includes('/labels/')) {
+        const name = decodeURIComponent(url.pathname.split('/labels/')[1] ?? '');
+        assert.ok(['template: bug-report', 'template: feature-request', 'template: invalid'].includes(name));
+        return Response.json({ name });
+    }
     if (method === 'POST' && url.pathname.endsWith('/labels')) {
         assert.ok(Array.isArray(current.labels));
         current.labels.push({ name: 'template: invalid' });

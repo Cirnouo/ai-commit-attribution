@@ -196,11 +196,7 @@ function hasResponse(text: string, literal = false): boolean {
     });
 }
 
-export function validateIssueBody(
-    body: string | null,
-    labels: readonly string[],
-    forms: IssueFormSources,
-): IssueBodyResult {
+export function createIssuePolicy(forms: IssueFormSources) {
     // Configuration failures belong to automation, including runs for ordinary Issues.
     const parsed = [
         parseIssueForm(forms.bugReport, 'bug-report', 'bugReport Issue form'),
@@ -208,6 +204,21 @@ export function validateIssueBody(
     ];
     if (parsed[0]?.label === parsed[1]?.label)
         configurationError('Issue form labels', 'classification labels must be distinct across forms.');
+    return {
+        classificationLabels: Object.freeze(parsed.map((form) => form.label)),
+        validate: (body: string | null, labels: readonly string[]) => validateParsedIssueBody(body, labels, parsed),
+    };
+}
+
+export function validateIssueBody(
+    body: string | null,
+    labels: readonly string[],
+    forms: IssueFormSources,
+): IssueBodyResult {
+    return createIssuePolicy(forms).validate(body, labels);
+}
+
+function validateParsedIssueBody(body: string | null, labels: readonly string[], parsed: IssueForm[]): IssueBodyResult {
     const matching = parsed.filter((form) => labels.includes(form.label));
     if (matching.length === 0) return { status: 'skipped', template: null, diagnostics: [] };
     if (matching.length > 1) {

@@ -76,6 +76,7 @@ interface Call {
     headers: Headers;
 }
 class FakeGitHub {
+    provisionedLabels = new Set(['template: bug-report', 'template: feature-request', 'template: invalid']);
     current = issue();
     comments: Record<string, unknown>[] = [];
     calls: Call[] = [];
@@ -100,8 +101,9 @@ class FakeGitHub {
             this.changeAtRead?.(this.reads, this.current);
             return Response.json(this.current);
         }
-        if (call.method === 'GET' && url.pathname === `${base}/labels/template%3A%20invalid`) {
-            return Response.json({ name: 'template: invalid' });
+        if (call.method === 'GET' && url.pathname.startsWith(`${base}/labels/`)) {
+            const name = decodeURIComponent(url.pathname.slice(`${base}/labels/`.length));
+            return this.provisionedLabels.has(name) ? Response.json({ name }) : new Response('', { status: 404 });
         }
         if (call.method === 'GET' && url.pathname === `${issuePath}/comments`) {
             assert.equal(url.searchParams.get('per_page'), '100');
@@ -551,5 +553,82 @@ test('feedback preserves original title/body and an idempotent recovery creates 
     assert.equal(fake.current.body, original.body);
     assert.ok(
         fake.writes().every((call) => call.path === `${issuePath}/labels` || call.path === `${issuePath}/comments`),
+    );
+});
+
+for (const label of ['template: bug-report', 'template: feature-request']) {
+    test(
+        'round1 rejects absent, renamed and malformed current classification label ' +
+            label +
+            ' without clearing diagnosis',
+        async () => {
+            for (const response of [
+                () => new Response('', { status: 404 }),
+                () => Response.json({ name: 'renamed' }),
+                () => Response.json({}),
+                () => Response.json(null),
+            ]) {
+                const fake = new FakeGitHub();
+                fake.current.labels = [{ name: 'template: invalid' }, { name: 'triage' }];
+                fake.comments = [comment(20)];
+                const before = structuredClone({ issue: fake.current, comments: fake.comments });
+                fake.responseOverride = (call) =>
+                    call.path === `${base}/labels/${encodeURIComponent(label)}` ? response() : undefined;
+                await assert.rejects(run(fake));
+                assert.deepEqual(fake.writes(), []);
+                assert.deepEqual({ issue: fake.current, comments: fake.comments }, before);
+            }
+        },
+    );
+}
+
+test('round1 current changed classification label must be remotely provisioned before ordinary or invalid success', async () => {
+    const changed = { ...forms, bugReport: forms.bugReport.replace('template: bug-report', 'template: defect') };
+    for (const labels of [[{ name: 'template: bug-report' }], [{ name: 'template: defect' }]]) {
+        const fake = new FakeGitHub();
+        fake.current.labels = labels;
+        fake.current.body = 'ordinary or invalid private content';
+        fake.responseOverride = (call) =>
+            call.path === `${base}/labels/${encodeURIComponent('template: defect')}`
+                ? new Response('', { status: 404 })
+                : undefined;
+        await assert.rejects(run(fake, event, changed));
+        assert.deepEqual(fake.writes(), []);
+    }
+});
+
+test('round1 missing diagnostic configuration fails closed even for fresh valid and ordinary Issues', async () => {
+    for (const ordinary of [false, true]) {
+        const fake = new FakeGitHub();
+        if (ordinary) {
+            fake.current.labels = [{ name: 'bug' }];
+            fake.current.body = null;
+        }
+        fake.responseOverride = (call) =>
+            call.path === `${base}/labels/${encodeURIComponent('template: invalid')}`
+                ? new Response('', { status: 404 })
+                : undefined;
+        await assert.rejects(run(fake));
+        assert.deepEqual(fake.writes(), []);
+        assert.deepEqual(fake.comments, []);
+    }
+});
+
+test('round1 a provisioned current form label uses the same configuration for API checks and body classification', async () => {
+    const changed = {
+        ...forms,
+        featureRequest: forms.featureRequest.replace('template: feature-request', 'template: proposal'),
+    };
+    const fake = new FakeGitHub();
+    fake.provisionedLabels.delete('template: feature-request');
+    fake.provisionedLabels.add('template: proposal');
+    fake.current.labels = [{ name: 'template: proposal' }];
+    assert.equal((await run(fake, event, changed)).status, 'valid');
+    assert.deepEqual(fake.writes(), []);
+    assert.deepEqual(
+        fake.calls
+            .filter((call) => call.path.startsWith(`${base}/labels/`))
+            .map((call) => decodeURIComponent(call.path.slice(`${base}/labels/`.length))),
+        ['template: bug-report', 'template: proposal', 'template: invalid'],
     );
 });
