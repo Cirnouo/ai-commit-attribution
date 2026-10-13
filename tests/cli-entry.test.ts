@@ -38,6 +38,13 @@ const entries = [
     { file: 'release.ts', args: [], status: 1, output: /requires.*event.*token/ },
     { file: 'issue-feedback.ts', args: [], status: 1, output: /requires.*event.*token/ },
     { file: 'repository-audit.ts', args: [], status: 1, output: /Required.*missing|Ignore policy missing/ },
+    {
+        file: 'build-skill.ts',
+        args: ['--check'],
+        status: 0,
+        output: /Skill build and independent physical inventory verified/,
+    },
+    { file: 'check-distribution.ts', args: [], status: 0, output: /Installed metadata, links, licenses/ },
 ] as const;
 
 for (const entry of entries) {

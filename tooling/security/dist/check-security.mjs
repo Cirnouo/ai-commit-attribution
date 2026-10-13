@@ -8556,6 +8556,18 @@ async function scanRepository({ root, phase = "complete", execute = executePnpm 
   return auditTree(root, inventory, execute, process.env);
 }
 
+// tooling/skill-inventory.ts
+var SKILL_FILES = [
+  "LICENSE",
+  "SKILL.md",
+  "THIRD-PARTY-NOTICES.txt",
+  "references/agent-registry.json",
+  "references/records.md",
+  "scripts/attribution.mjs"
+];
+var PACKAGING_FILES = ["README.md", "SKILL.md", "agent-registry.json", "records.md"];
+var SKILL_ROOT = "skills/ai-commit-attribution";
+
 // tooling/check-security.ts
 async function checkSecurity(root, options = {}) {
   const phase = options.phase ?? "complete";
@@ -8572,9 +8584,11 @@ async function checkSecurity(root, options = {}) {
   const exceptionPath = path5.join(root, "docs/policies/security-exceptions.json");
   const exceptionBytes = await readRegularFile(exceptionPath);
   const exceptions = validateExceptions(JSON.parse(exceptionBytes.toString("utf8")), options.now);
-  const code = paths.filter((file) => /^(?:src|tooling)\/.*\.(?:ts|mts|cts|mjs|cjs|ps1)$/.test(file));
+  const code = paths.filter(
+    (file) => /^(?:src|tooling)\/.*\.(?:ts|mts|cts|mjs|cjs|ps1)$/.test(file) || file === `${SKILL_ROOT}/scripts/attribution.mjs`
+  );
   const configuration = paths.filter(
-    (file) => /^\.github\/.*\.yaml$/.test(file) || file === ".github/ISSUE_TEMPLATE/config.yml" || /^\.husky\/[^/]+$/.test(file) || [
+    (file) => PACKAGING_FILES.some((name) => name !== "README.md" && file === `packaging/${name}`) || SKILL_FILES.some((name) => !name.endsWith(".mjs") && file === `${SKILL_ROOT}/${name}`) || /^\.github\/.*\.yaml$/.test(file) || file === ".github/ISSUE_TEMPLATE/config.yml" || /^\.husky\/[^/]+$/.test(file) || [
       "package.json",
       "pnpm-workspace.yaml",
       "pnpm-lock.yaml",

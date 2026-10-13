@@ -7,8 +7,12 @@ prove history and worktree behavior without modifying the contributor checkout.
 
 Report targeted red/green evidence and measured coverage separately from live
 GitHub/platform acceptance. Mock network tests establish state handling, not live
-publication. Future Skill behavior, distribution and host acceptance are added
-with their corresponding features; there are no empty placeholder checks.
+publication. identity-records.test.ts covers declared event evidence, participant
+gaps, same-event enrichment, scope consistency and stable tuples. agent-registry.test.ts
+checks production host distinctions. skill-build.test.ts audits nested physical
+payloads and unchanged peers on failure; distribution.test.ts executes installed
+summary business paths from outside dependencies with Git-state preservation.
+Later policy, message and real host acceptance are added with those features.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.
@@ -19,7 +23,7 @@ with their corresponding features; there are no empty placeholder checks.
 - installer-evidence.test.ts covers the independent official package evidence.
 - security-build.test.ts checks exact generated audit output and notices.
 - typescript-gates.test.ts checks actual type/syntax/erasable-language failures.
-- cli-entry.test.ts invokes all eight guarded CLI entries through real filesystem
+- cli-entry.test.ts invokes ten guarded maintainer CLI entries through real filesystem
   aliases, checks side-effect-free imports, and proves the standalone security
   checker audits before installation and rejects unavailable native entry capability.
 

@@ -111,6 +111,12 @@ jobs:
                 run: pnpm test:coverage
             -   name: Verify committed standalone audit build
                 run: pnpm check:security:build
+            -   name: Verify complete Skill build without repair
+                run: pnpm check:build
+            -   name: Audit installed physical distribution
+                run: pnpm check:distribution
+            -   name: Execute installed business paths outside dependencies
+                run: pnpm test:distribution
 
     node-compatibility:
         name: Node compatibility (24.x)
@@ -138,6 +144,9 @@ jobs:
             -   name: Verify standalone security checker matches its source
                 run: pnpm check:security:build
 
+            -   name: Execute installed business paths outside dependencies
+                run: pnpm test:distribution
+
     windows-tests:
         name: Windows tests
         needs: [quality, commit-messages]
@@ -162,6 +171,8 @@ jobs:
                 run: pnpm test
             -   name: Parse maintained TypeScript and generated JavaScript
                 run: pnpm check:scripts
+            -   name: Execute installed business paths outside dependencies
+                run: pnpm test:distribution
 
     portable-tests:
         name: Portable tests (${{ matrix.os }})
@@ -190,3 +201,5 @@ jobs:
                 run: pnpm typecheck
             -   name: Run repository policy and supply-chain tests
                 run: pnpm test
+            -   name: Execute installed business paths outside dependencies
+                run: pnpm test:distribution

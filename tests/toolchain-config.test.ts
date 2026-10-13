@@ -48,6 +48,8 @@ test('CI runs real gates in the trusted-install order and pins every action to a
     for (const name of ['windows-tests', 'portable-tests', 'node-compatibility']) {
         assert.ok(isRecord(jobs[name]));
         assert.deepEqual(jobs[name].needs, ['quality', 'commit-messages']);
+        assert.ok(Array.isArray(jobs[name].steps));
+        assert.ok(jobs[name].steps.some((step: unknown) => isRecord(step) && step.run === 'pnpm test:distribution'));
     }
     assert.ok(
         isRecord(jobs['portable-tests']) &&
@@ -55,6 +57,9 @@ test('CI runs real gates in the trusted-install order and pins every action to a
             isRecord(jobs['portable-tests'].strategy.matrix),
     );
     assert.deepEqual(jobs['portable-tests'].strategy.matrix.os, ['ubuntu-latest', 'macos-latest']);
+    assert.ok(isRecord(jobs.quality) && Array.isArray(jobs.quality.steps));
+    for (const command of ['pnpm check:build', 'pnpm check:distribution', 'pnpm test:distribution'])
+        assert.ok(jobs.quality.steps.some((step: unknown) => isRecord(step) && step.run === command));
 });
 test('CodeQL analyzes maintained JavaScript/TypeScript and Actions with security-extended queries', async () => {
     const workflow: unknown = parse(await readFile(path.join(root, '.github/workflows/codeql.yaml'), 'utf8'));
@@ -99,7 +104,7 @@ test('root toolchain pins and native TypeScript syntax plan cover maintained fil
         windowsHide: true,
     });
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.match(result.stdout, /TypeScript sources, 1 generated JavaScript/);
+    assert.match(result.stdout, /TypeScript sources, 2 generated JavaScript/);
 });
 test('repository audit rejects duplicate keys, multiple owned YAML documents and invalid UTF8', async () => {
     const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'attribution-repository-')));

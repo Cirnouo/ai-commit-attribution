@@ -6,7 +6,13 @@
         "useIgnoreFile": true
     },
     "files": {
-        "includes": ["**", "!**/.husky/_", "!**/.superpowers", "!tooling/security/dist"]
+        "includes": [
+            "**",
+            "!**/.husky/_",
+            "!**/.superpowers",
+            "!tooling/security/dist",
+            "!skills/ai-commit-attribution"
+        ]
     },
     "formatter": {
         "enabled": true,
