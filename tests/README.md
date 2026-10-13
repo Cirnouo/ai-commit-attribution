@@ -14,7 +14,12 @@ effective mapping conflicts, explicit missing-model markers and unique issue joi
 agent-registry.test.ts checks production host distinctions. skill-build.test.ts audits nested physical
 payloads and unchanged peers on failure; distribution.test.ts executes installed
 summary business paths from outside dependencies with Git-state preservation.
-Later policy, message and real host acceptance are added with those features.
+policy-routing.test.ts, policy-safety.test.ts and policy-operations.test.ts cover
+live scope/freshness, semantic routing, bounded evidence/config redaction and
+real operation/worktree/promisor/executable sentinels. policy-distribution.test.ts
+executes installed scan and route paths outside dependencies, corrupts the
+registry to prove bypass and uses a real import sentinel for default summary.
+Later message and real host acceptance are added with those features.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.

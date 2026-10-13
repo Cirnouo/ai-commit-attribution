@@ -5,12 +5,14 @@ export const SKILL_FILES = [
     'THIRD-PARTY-NOTICES.txt',
     'references/agent-registry.json',
     'references/records.md',
+    'references/policy.md',
     'scripts/attribution.mjs',
 ] as const;
-export const PACKAGING_FILES = ['README.md', 'SKILL.md', 'agent-registry.json', 'records.md'] as const;
+export const PACKAGING_FILES = ['README.md', 'SKILL.md', 'agent-registry.json', 'records.md', 'policy.md'] as const;
 export const PACKAGING_RESOURCES = new Map([
     ['agent-registry.json', 'references/agent-registry.json'],
     ['records.md', 'references/records.md'],
+    ['policy.md', 'references/policy.md'],
 ]);
 export const SKILL_DIRECTORIES = ['references', 'scripts'] as const;
 export const SKILL_ROOT = 'skills/ai-commit-attribution';

@@ -17,7 +17,7 @@ physical worktree, may be equal, and must be existing physical absolute
 directories. commonGitDir is the required physical absolute shared Git metadata
 directory, including linked-worktree and separate-Git-directory layouts. Do not
 infer a primary checkout from .git ancestry. kind is commit, amend, rebase,
-cherry-pick or squash. paths is an explicit list of repository-relative paths
+cherry-pick, squash or merge. paths is an explicit list of repository-relative paths
 using forward slashes; targets is a list of unique roles and resolved lowercase
 40- or 64-digit hexadecimal objectIds. Empty paths/targets remain explicit.
 Paths, target order and duplicate paths are canonicalized before complete scope

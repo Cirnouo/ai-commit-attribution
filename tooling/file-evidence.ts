@@ -4,7 +4,7 @@ import path from 'node:path';
 
 interface EvidenceHandle {
     stat(): Promise<BigIntStats>;
-    readFile(): Promise<Buffer>;
+    readFile(maximumBytes?: number): Promise<Buffer>;
     close(): Promise<void>;
 }
 
@@ -27,6 +27,7 @@ export async function readRegularFile(
     io: {
         singleLink?: boolean;
         physicalPath?: boolean;
+        maximumBytes?: number;
         lstat?: (file: string) => Promise<BigIntStats>;
         open?: (file: string, flags: number) => Promise<EvidenceHandle>;
     } = {},
@@ -38,7 +39,19 @@ export async function readRegularFile(
             const handle = await open(name, flags);
             return {
                 stat: () => handle.stat({ bigint: true }),
-                readFile: () => handle.readFile(),
+                readFile: async (maximumBytes?: number) => {
+                    if (maximumBytes === undefined) return handle.readFile();
+                    const chunks: Buffer[] = [];
+                    let length = 0;
+                    for (;;) {
+                        const chunk = Buffer.alloc(Math.min(64 * 1024, maximumBytes - length + 1));
+                        const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+                        if (!bytesRead) return Buffer.concat(chunks, length);
+                        length += bytesRead;
+                        if (length > maximumBytes) throw new Error('Evidence byte budget exceeded.');
+                        chunks.push(chunk.subarray(0, bytesRead));
+                    }
+                },
                 close: () => handle.close(),
             };
         });
@@ -48,11 +61,16 @@ export async function readRegularFile(
     try {
         const before = await handle.stat();
         if (!before.isFile()) throw new Error('Evidence must be a regular file without links.');
+        if (
+            io.maximumBytes !== undefined &&
+            (!Number.isSafeInteger(io.maximumBytes) || io.maximumBytes < 0 || before.size > BigInt(io.maximumBytes))
+        )
+            throw new Error('Evidence byte budget exceeded.');
         if (io.singleLink && before.nlink !== 1n) throw new Error('Output evidence must have a single link.');
         if (!unchanged(before, await inspect(file))) throw new Error('Evidence file identity or metadata changed.');
         if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== '')
             throw new Error('Evidence path must be physical and contain no links.');
-        const bytes = await handle.readFile();
+        const bytes = await handle.readFile(io.maximumBytes);
         if (
             !unchanged(before, await handle.stat()) ||
             !unchanged(before, await inspect(file)) ||
