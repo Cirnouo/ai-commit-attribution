@@ -1,8 +1,7 @@
 {
-    "observedAt": "2026-10-13T10:45:06.7561988Z",
     "repository": "Cirnouo/ai-commit-attribution",
     "referenceSourceCommit": "7e5e9ba2248cc67d51e877198a6e3e0b0eb546eb",
-    "note": "Live platform observations are separate from historical source policy. Required check contexts are promoted only after successful execution.",
+    "note": "Live platform observations are separate from historical source policy. Required context names were observed in successful runs before promotion.",
     "repositorySettings": {
         "default_branch": "main",
         "visibility": "public",
@@ -98,11 +97,64 @@
                     "require_extra_approval_for_unattributed_changes": false,
                     "allowed_merge_methods": ["squash"]
                 }
+            },
+            {
+                "type": "required_status_checks",
+                "parameters": {
+                    "strict_required_status_checks_policy": true,
+                    "do_not_enforce_on_create": false,
+                    "required_status_checks": [
+                        {
+                            "context": "Supply chain security",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Commit messages",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Quality",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Windows tests",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Portable tests (ubuntu-latest)",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Portable tests (macos-latest)",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "CodeQL (javascript-typescript)",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "CodeQL (actions)",
+                            "integration_id": 15368
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "code_scanning",
+                "parameters": {
+                    "code_scanning_tools": [
+                        {
+                            "tool": "CodeQL",
+                            "security_alerts_threshold": "high_or_higher",
+                            "alerts_threshold": "none"
+                        }
+                    ]
+                }
             }
         ],
         "node_id": "RRS_lACqUmVwb3NpdG9yec5Uc3nkzgF9UWE",
         "created_at": "2026-10-13T18:45:33.871+08:00",
-        "updated_at": "2026-10-13T18:46:42.612+08:00",
+        "updated_at": "2026-10-13T20:47:22.637+08:00",
         "bypass_actors": [],
         "current_user_can_bypass": "never",
         "_links": {
@@ -114,8 +166,82 @@
             }
         }
     },
+    "codeqlDefaultSetup": {
+        "state": "not-configured",
+        "languages": [],
+        "query_suite": "default",
+        "threat_model": "remote",
+        "updated_at": null,
+        "schedule": null,
+        "runner_type": "standard",
+        "runner_label": null
+    },
     "dependabotAlerts": {
-        "readBack": "GET vulnerability-alerts returned204 on2026-10-13",
-        "enabled": true
+        "enabled": true,
+        "readBack": "GET vulnerability-alerts returned HTTP 204"
+    },
+    "observedAt": "2026-10-13T12:49:00.001Z",
+    "requiredCheckObservations": {
+        "observedAt": "2026-10-13T12:46:36.681Z",
+        "head": "ba34d6976e6e44f8956accf6903540026f799412",
+        "merge": "712cf767168fc9ab721981a884cdca0566243b63",
+        "observed": [
+            {
+                "context": "Supply chain security",
+                "integration_id": 15368,
+                "check_run_id": 115302682724
+            },
+            {
+                "context": "Commit messages",
+                "integration_id": 15368,
+                "check_run_id": 115302834754
+            },
+            {
+                "context": "Quality",
+                "integration_id": 15368,
+                "check_run_id": 115302834640
+            },
+            {
+                "context": "Windows tests",
+                "integration_id": 15368,
+                "check_run_id": 115303162393
+            },
+            {
+                "context": "Portable tests (ubuntu-latest)",
+                "integration_id": 15368,
+                "check_run_id": 115303161571
+            },
+            {
+                "context": "Portable tests (macos-latest)",
+                "integration_id": 15368,
+                "check_run_id": 115303161600
+            },
+            {
+                "context": "CodeQL (javascript-typescript)",
+                "integration_id": 15368,
+                "check_run_id": 115302684287
+            },
+            {
+                "context": "CodeQL (actions)",
+                "integration_id": 15368,
+                "check_run_id": 115302683300
+            },
+            {
+                "context": "Node compatibility (24.x)",
+                "integration_id": 15368,
+                "check_run_id": 115303161789
+            },
+            {
+                "context": "CodeQL",
+                "integration_id": 57789,
+                "check_run_id": 115302948072
+            }
+        ],
+        "schemaSource": "https://docs.github.com/en/rest/repos/rules?apiVersion=2026-03-10"
+    },
+    "codeqlMode": {
+        "type": "advanced workflow",
+        "workflow": ".github/workflows/codeql.yaml",
+        "successfulRun": "https://github.com/Cirnouo/ai-commit-attribution/actions/runs/38399358424"
     }
 }
