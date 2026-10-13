@@ -2,8 +2,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 import { parse } from '@babel/parser';
+import { isMainModule } from './cli-entry.ts';
 
 const powershellParser = [
     '$tokens = $null',
@@ -93,7 +93,6 @@ function run() {
     }
 }
 
-const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
-if (fileURLToPath(import.meta.url) === invokedPath) {
+if (isMainModule(import.meta)) {
     run();
 }

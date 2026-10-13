@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Metafile } from 'esbuild';
 import { build } from 'esbuild';
+import { isMainModule } from './cli-entry.ts';
 import { errorCode, isRecord } from './errors.ts';
 import { readRegularFile } from './file-evidence.ts';
 
@@ -204,7 +205,7 @@ export async function writeSecurityFiles(directory: string, files: Map<string, B
     await verifySecurityFiles(target, files);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta)) {
     const files = await generateSecurityFiles();
     if (process.argv.includes('--check')) {
         await verifySecurityFiles(output, files);

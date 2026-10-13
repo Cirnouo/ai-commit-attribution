@@ -1,8 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { isMainModule } from './cli-entry.ts';
 import { isRecord } from './errors.ts';
 import { validateBranchName, validateCommitMessage } from './governance.ts';
 import { validatePullRequestBody } from './pull-request-policy.ts';
@@ -256,7 +255,6 @@ function run() {
     console.log('Commit and branch audit passed.');
 }
 
-const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
-if (fileURLToPath(import.meta.url) === invokedPath) {
+if (isMainModule(import.meta)) {
     run();
 }

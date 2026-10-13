@@ -2,7 +2,7 @@ import configConventional from '@commitlint/config-conventional';
 import type { UserConfig } from '@commitlint/types';
 
 import { footerLeadingBlank, validateRawMessage } from './tooling/commit-footer-rule.ts';
-import { COMMIT_SCOPES, COMMIT_TYPES } from './tooling/governance.ts';
+import { COMMIT_SCOPES, COMMIT_TYPES } from './tooling/commit-vocabulary.ts';
 
 export default {
     defaultIgnores: false,

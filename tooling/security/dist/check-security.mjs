@@ -7858,7 +7858,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { lstat as lstat4, readFile as readFile3 } from "node:fs/promises";
 import path5 from "node:path";
-import { fileURLToPath } from "node:url";
+
+// tooling/cli-entry.ts
+function isMainModule(metadata) {
+  if (typeof metadata.main !== "boolean")
+    throw new Error("CLI entry detection requires the supported Node 24 runtime with import.meta.main.");
+  return metadata.main;
+}
 
 // tooling/errors.ts
 function isRecord(value) {
@@ -8608,7 +8614,7 @@ async function checkSecurity(root, options = {}) {
     throw new Error("Review exceptions changed during scan; retry with stable inputs.");
   return { ok: Object.values(results).every((result) => result.blocked.length === 0), scopes: results };
 }
-if (process.argv[1] && path5.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta)) {
   try {
     const args = process.argv.slice(2);
     let root;

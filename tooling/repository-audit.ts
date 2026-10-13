@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMainModule } from './cli-entry.ts';
 import { errorMessage, isRecord } from './errors.ts';
 import { readRegularFile } from './file-evidence.ts';
 import { parseOwnedYaml } from './owned-yaml.ts';
@@ -85,6 +85,12 @@ export async function auditRepository(root: string): Promise<string[]> {
         '.github/PULL_REQUEST_TEMPLATE.md',
         '.github/workflows/ci.yaml',
         '.github/workflows/codeql.yaml',
+        '.github/workflows/release.yaml',
+        'tooling/release.ts',
+        'tests/release.test.ts',
+        'tests/release-transport.test.ts',
+        'tests/release-workflow.test.ts',
+        'tests/version-policy.test.ts',
         'docs/policies/commits-and-scope.md',
         'docs/policies/documentation.md',
         'docs/policies/quality.md',
@@ -131,7 +137,7 @@ export async function auditRepository(root: string): Promise<string[]> {
     return errors;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta)) {
     try {
         const errors = await auditRepository(process.cwd());
         if (errors.length) throw new Error(errors.join('\n'));

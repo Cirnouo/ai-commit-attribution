@@ -631,6 +631,24 @@ test('Issue chooser is fingerprinted only at its exact approved YAML exception p
             changed.scopes.repository.fingerprints.configuration,
             wrong.scopes.repository.fingerprints.configuration,
         );
+        await mkdir(path.join(root, '.github/workflows'), { recursive: true });
+        const release = path.join(root, '.github/workflows/release.yaml');
+        await writeFile(release, 'name: Release\npermissions:\n  contents: read\n');
+        const releaseBefore = await checkSecurity(root, { phase: 'lockfile', now, execute });
+        await writeFile(release, 'name: Release\npermissions:\n  contents: write\n');
+        const releaseAfter = await checkSecurity(root, { phase: 'lockfile', now, execute });
+        assert.notEqual(
+            releaseBefore.scopes.repository.fingerprints.configuration,
+            releaseAfter.scopes.repository.fingerprints.configuration,
+        );
+        assert.equal(
+            releaseBefore.scopes.repository.fingerprints.code,
+            releaseAfter.scopes.repository.fingerprints.code,
+        );
+        assert.equal(
+            releaseBefore.scopes.repository.fingerprints.dependencies,
+            releaseAfter.scopes.repository.fingerprints.dependencies,
+        );
     } finally {
         await rm(root, { recursive: true, force: true });
     }
