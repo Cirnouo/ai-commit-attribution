@@ -1,0 +1,21 @@
+# Governance tooling
+
+Maintained TypeScript tools check repository structure, text, YAML, script syntax,
+commit/PR policy and dependency trust. They execute natively on the supported
+Node runtime. Shared validators have dedicated tests; command entry points do
+not change policy inputs during validation.
+
+The security directory owns audit policy, evidence and standalone generated
+auditor output. Generated auditor bytes and notices are compared against their
+build and independent allowed inventory. Runtime Skill tooling is introduced
+only when the real business distribution is added.
+
+- governance.ts, commit-footer-rule.ts and version-policy.ts own shared grammars.
+- check-commits.ts and check-commit-message.ts validate history and hook input.
+- submission-markdown.ts and pull-request-policy.ts derive current PR structure.
+- repository-audit.ts and check-text-style.ts audit repository and staged text.
+- check-scripts.ts checks maintained TS and generated JavaScript syntax.
+- check-security.ts and build-security.ts execute and bundle the audit gate.
+- file-evidence.ts provides stable descriptor-based reads.
+- constants.ts and errors.ts provide small shared data/error helpers.
+- security/ owns the dependency graph, registry, evidence and installer modules.
