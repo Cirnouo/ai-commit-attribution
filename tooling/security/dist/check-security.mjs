@@ -8568,7 +8568,7 @@ async function checkSecurity(root, options = {}) {
   const exceptions = validateExceptions(JSON.parse(exceptionBytes.toString("utf8")), options.now);
   const code = paths.filter((file) => /^(?:src|tooling)\/.*\.(?:ts|mts|cts|mjs|cjs|ps1)$/.test(file));
   const configuration = paths.filter(
-    (file) => /^\.github\/.*\.yaml$/.test(file) || /^\.husky\/[^/]+$/.test(file) || [
+    (file) => /^\.github\/.*\.yaml$/.test(file) || file === ".github/ISSUE_TEMPLATE/config.yml" || /^\.husky\/[^/]+$/.test(file) || [
       "package.json",
       "pnpm-workspace.yaml",
       "pnpm-lock.yaml",

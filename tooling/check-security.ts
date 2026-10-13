@@ -35,6 +35,7 @@ export async function checkSecurity(root: string, options: SecurityOptions = {})
     const configuration = paths.filter(
         (file) =>
             /^\.github\/.*\.yaml$/.test(file) ||
+            file === '.github/ISSUE_TEMPLATE/config.yml' ||
             /^\.husky\/[^/]+$/.test(file) ||
             [
                 'package.json',

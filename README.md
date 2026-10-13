@@ -22,5 +22,8 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for trusted setup and verification,
 [the policy migration record](docs/policies/migration.md) for the reference
 repository's adopted obligations and project-specific exclusions.
 
-Use Issues for ordinary questions and proposals. Report suspected vulnerabilities
+Use Issues for ordinary questions and proposals. Before submitting a typed bug
+or feature report, read the [current forms](.github/ISSUE_TEMPLATE/README.md) and
+[Issue submission policy](docs/policies/commits-and-scope.md#typed-issue-submissions).
+Freeform Issues remain available. Report suspected vulnerabilities
 through [SECURITY.md](SECURITY.md). The project is licensed under [MIT](LICENSE).

@@ -1,0 +1,83 @@
+name: Issue forms
+run-name: 'Issue form check #${{ github.event.issue.number }}'
+
+on:
+    issues:
+        types:
+            - opened
+            - edited
+            - reopened
+            - labeled
+            - unlabeled
+
+permissions:
+    contents: read
+
+concurrency:
+    group: issues-${{ github.repository }}-${{ github.event.issue.number }}
+    cancel-in-progress: false
+
+jobs:
+    supply-chain-security:
+        name: Issue supply chain security
+        if: >-
+            github.event.action != 'labeled' && github.event.action != 'unlabeled' || github.event.label.name != 'template: invalid'
+        runs-on: ubuntu-latest
+        env:
+            PNPM_CONFIG_IGNORE_PNPMFILE: "true"
+            PNPM_CONFIG_CONFIG_DEPENDENCIES: "{}"
+        steps:
+            -   name: Check out the trusted default-branch event commit
+                uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+                with:
+                    ref: ${{ github.sha }}
+                    persist-credentials: false
+            -   name: Set up pnpm
+                uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+                with:
+                    version: 12.4.2
+            -   name: Set up Node.js
+                uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+                with:
+                    node-version: 24.21.0
+                    cache: pnpm
+            -   name: Validate and audit lockfile before installation
+                run: node tooling/security/dist/check-security.mjs --phase lockfile --root .
+            -   name: Install without dependency lifecycle scripts
+                run: pnpm install --frozen-lockfile --ignore-scripts
+            -   name: Check full dependency trees and registry signatures
+                run: pnpm check:security
+            -   name: Verify standalone security checker matches its source
+                run: pnpm check:security:build
+
+    issue-feedback:
+        name: Issue form validation
+        needs: supply-chain-security
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            issues: write
+        env:
+            PNPM_CONFIG_IGNORE_PNPMFILE: "true"
+            PNPM_CONFIG_CONFIG_DEPENDENCIES: "{}"
+        steps:
+            -   name: Check out the same verified default-branch event commit
+                uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+                with:
+                    ref: ${{ github.sha }}
+                    persist-credentials: false
+            -   name: Set up pnpm
+                uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+                with:
+                    version: 12.4.2
+            -   name: Set up Node.js
+                uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+                with:
+                    node-version: 24.21.0
+                    cache: pnpm
+            -   name: Install audited dependencies without lifecycle scripts
+                run: pnpm install --frozen-lockfile --ignore-scripts
+            -   name: Validate latest Issue and publish recoverable feedback
+                run: node tooling/issue-feedback.ts
+                env:
+                    GH_TOKEN: ${{ github.token }}

@@ -599,3 +599,39 @@ test('round1 workspace rejects multiple documents before any pnpm invocation', a
         await rm(root, { recursive: true, force: true });
     }
 });
+
+test('Issue chooser is fingerprinted only at its exact approved YAML exception path', async () => {
+    const root = await lockProject();
+    const execute: import('../tooling/security/security-runner.ts').PnpmExecutor = async (args) => {
+        if (args[0] === 'config')
+            return {
+                exitCode: 0,
+                stdout: JSON.stringify({ ...INSTALL_POLICY, allowBuilds: { 'esbuild@0.28.2': true } }),
+            };
+        if (args[0] === 'install') return { exitCode: 0, stdout: '' };
+        if (args.includes('signatures'))
+            return { exitCode: 0, stdout: '{"audited":3,"verified":3,"invalid":[],"missing":[]}' };
+        return { exitCode: 1, stdout: JSON.stringify(audit('moderate')) };
+    };
+    try {
+        await mkdir(path.join(root, '.github/ISSUE_TEMPLATE'), { recursive: true });
+        const chooser = path.join(root, '.github/ISSUE_TEMPLATE/config.yml');
+        await writeFile(chooser, 'blank_issues_enabled: true\n');
+        const first = await checkSecurity(root, { phase: 'lockfile', now, execute });
+        await writeFile(chooser, 'blank_issues_enabled: false\n');
+        const changed = await checkSecurity(root, { phase: 'lockfile', now, execute });
+        assert.notEqual(
+            first.scopes.repository.fingerprints.configuration,
+            changed.scopes.repository.fingerprints.configuration,
+        );
+        assert.equal(first.scopes.repository.fingerprints.code, changed.scopes.repository.fingerprints.code);
+        await writeFile(path.join(root, '.github/config.yml'), 'unapproved: one\n');
+        const wrong = await checkSecurity(root, { phase: 'lockfile', now, execute });
+        assert.equal(
+            changed.scopes.repository.fingerprints.configuration,
+            wrong.scopes.repository.fingerprints.configuration,
+        );
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});

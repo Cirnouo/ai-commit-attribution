@@ -17,7 +17,7 @@ or trailer scheme is adopted as inherited governance.
 | quality | Native erasable TS, independent type check, per-worktree hooks, partial staging, longpaths/SSH evidence | quality/tooling |
 | supply-chain/checker | Full locked graph, trusted bootstrap order, signatures, cooling/trust, bounded exceptions | supply-chain/auditor |
 | releases/version/release tool | SemVer compatibility profile, stable baseline, cumulative snapshots, annotated tag/draft recovery | releases; publisher in PR3 |
-| Issue forms/policy/feedback | Free Issues, form-derived validation, verified bot ownership, races and recovery | PR2 |
+| Issue forms/policy/feedback | Free Issues, form-derived validation, verified bot ownership, races and recovery | commits-and-scope typed Issue section/forms/Issue tools |
 | SECURITY/CODE_OF_CONDUCT/LICENSE | Private reporting, best-effort response, community obligations and original MIT license | Root community files |
 
 ## Technical adaptations
@@ -63,3 +63,18 @@ are migration obligations. Implementation is staged in PR3 without creating a
 tag/Release during this task. Required target checks exclude source browser and
 C# contexts. Live source settings may evolve without changing the fixed policy
 baseline used here.
+
+## Issue governance adaptation
+
+The fixed source Issue policy, Markdown semantics, feedback state machine,
+REST boundary, queue/security workflow and their semantic tests are adopted in
+PR2. Bug fields now describe this attribution Skill, Agent host and Node/Git
+versions; CDP/application diagnostics are excluded. Other is a host choice, not
+a promise of verified loading. Forms/workflow use .yaml; only GitHub's chooser
+keeps config.yml and is explicitly included in configuration fingerprints. The
+form parser uses the target's shared YAML1.2/core profile.
+
+Current classification labels and the diagnostic label are separately
+provisioned platform state. Offline API fixtures do not prove a live Issue
+publication. REST's final compare-and-set gap and queued-event recovery remain
+explicit in the authoritative typed Issue policy.
