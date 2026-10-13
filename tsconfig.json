@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "strict": true,
+        "noEmit": true,
+        "allowImportingTsExtensions": true,
+        "verbatimModuleSyntax": true,
+        "erasableSyntaxOnly": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "allowJs": false,
+        "skipLibCheck": false,
+        "types": ["node"]
+    },
+    "include": ["src/**/*.ts", "tooling/**/*.ts", "tests/**/*.ts", "commitlint.config.ts"]
+}

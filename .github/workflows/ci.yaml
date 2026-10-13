@@ -1,0 +1,193 @@
+name: CI
+
+on:
+    push:
+        branches:
+            - '**'
+    pull_request:
+        branches:
+            - main
+        types:
+            - opened
+            - reopened
+            - synchronize
+            - edited
+    workflow_dispatch:
+    workflow_call:
+    schedule:
+        -   cron: '17 1 * * 1'
+
+permissions:
+    contents: read
+
+env:
+    PNPM_CONFIG_IGNORE_PNPMFILE: "true"
+    PNPM_CONFIG_CONFIG_DEPENDENCIES: "{}"
+
+concurrency:
+    group: ci-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    supply-chain-security:
+        name: Supply chain security
+        runs-on: ubuntu-latest
+        env:
+            PNPM_CONFIG_IGNORE_PNPMFILE: "true"
+            PNPM_CONFIG_CONFIG_DEPENDENCIES: "{}"
+        steps:
+            -   name: Check out repository
+                uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            -   name: Set up pnpm
+                uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+                with:
+                    version: 12.4.2
+            -   name: Set up Node.js
+                uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+                with:
+                    node-version: 24.21.0
+                    cache: pnpm
+            -   name: Validate and audit lockfile before installation
+                run: node tooling/security/dist/check-security.mjs --phase lockfile --root .
+            -   name: Install without dependency lifecycle scripts
+                run: pnpm install --frozen-lockfile --ignore-scripts
+            -   name: Check full dependency trees and registry signatures
+                run: pnpm check:security
+            -   name: Verify standalone security checker matches its source
+                run: pnpm check:security:build
+
+    commit-messages:
+        name: Commit messages
+        needs: supply-chain-security
+        runs-on: ubuntu-latest
+        steps:
+            -   name: Check out full history
+                uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+                with:
+                    fetch-depth: 0
+            -   name: Set up pnpm
+                uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+                with:
+                    version: 12.4.2
+            -   name: Set up Node.js
+                uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+                with:
+                    node-version: 24.21.0
+                    cache: pnpm
+            -   name: Install dependencies
+                run: pnpm install --frozen-lockfile
+            -   name: Validate commits, source branch and current PR submission
+                run: pnpm check:commits
+
+    quality:
+        name: Quality
+        needs: supply-chain-security
+        runs-on: ubuntu-latest
+        steps:
+            -   name: Check out repository
+                uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            -   name: Set up pnpm
+                uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+                with:
+                    version: 12.4.2
+            -   name: Set up Node.js
+                uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+                with:
+                    node-version: 24.21.0
+                    cache: pnpm
+            -   name: Install dependencies
+                run: pnpm install --frozen-lockfile
+            -   name: Audit repository
+                run: pnpm check:repo
+            -   name: Check formatting
+                run: pnpm format:check
+            -   name: Lint TypeScript and JSON
+                run: pnpm lint
+            -   name: Check TypeScript types
+                run: pnpm typecheck
+            -   name: Check script syntax
+                run: pnpm check:scripts
+            -   name: Test with measured coverage floors
+                run: pnpm test:coverage
+            -   name: Verify committed standalone audit build
+                run: pnpm check:security:build
+
+    node-compatibility:
+        name: Node compatibility (24.x)
+        needs: [quality, commit-messages]
+        runs-on: ubuntu-latest
+        steps:
+            -   name: Check out repository
+                uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            -   name: Set up pnpm
+                uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+                with:
+                    version: 12.4.2
+            -   name: Set up latest Node.js 24
+                uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+                with:
+                    node-version: '24.x'
+                    check-latest: true
+                    cache: pnpm
+            -   name: Install dependencies
+                run: pnpm install --frozen-lockfile
+            -   name: Check TypeScript types
+                run: pnpm typecheck
+            -   name: Run default Node test suite
+                run: pnpm test
+            -   name: Verify standalone security checker matches its source
+                run: pnpm check:security:build
+
+    windows-tests:
+        name: Windows tests
+        needs: [quality, commit-messages]
+        runs-on: windows-latest
+        steps:
+            -   name: Check out repository
+                uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            -   name: Set up pnpm
+                uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+                with:
+                    version: 12.4.2
+            -   name: Set up Node.js
+                uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+                with:
+                    node-version: 24.21.0
+                    cache: pnpm
+            -   name: Install dependencies
+                run: pnpm install --frozen-lockfile
+            -   name: Check TypeScript types
+                run: pnpm typecheck
+            -   name: Run default Node test suite
+                run: pnpm test
+            -   name: Parse maintained TypeScript and generated JavaScript
+                run: pnpm check:scripts
+
+    portable-tests:
+        name: Portable tests (${{ matrix.os }})
+        needs: [quality, commit-messages]
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                os:
+                    - ubuntu-latest
+                    - macos-latest
+        steps:
+            -   name: Check out repository
+                uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            -   name: Set up pnpm
+                uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+                with:
+                    version: 12.4.2
+            -   name: Set up Node.js
+                uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+                with:
+                    node-version: 24.21.0
+                    cache: pnpm
+            -   name: Install dependencies
+                run: pnpm install --frozen-lockfile
+            -   name: Check TypeScript types
+                run: pnpm typecheck
+            -   name: Run repository policy and supply-chain tests
+                run: pnpm test
+

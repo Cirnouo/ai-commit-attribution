@@ -1,0 +1,11 @@
+allowBuilds:
+    esbuild@0.28.2: true
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: true
+minimumReleaseAgeIgnoreMissingTime: false
+trustLockfile: false
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+strictDepBuilds: true
+overrides:
+    '@types/node': 24.19.0

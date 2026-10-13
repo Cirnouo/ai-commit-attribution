@@ -1,0 +1,115 @@
+{
+    "schemaVersion": 1,
+    "name": "skills",
+    "version": "1.7.2",
+    "registry": "https://registry.npmjs.org",
+    "tarball": "https://registry.npmjs.org/skills/-/skills-1.7.2.tgz",
+    "integrity": "sha512-j+GzyF/oNahsjjjup6y3lJpFkC1lQjIkf4kAMXICA1hboBqi0fAGXAGoE4x9FRZiP1br/YE9+L3/Tqq6PIAe0A==",
+    "gitHead": "671e8c320810d36fed80fac5f1a2c1bf7e82d812",
+    "repository": "https://github.com/vercel-labs/skills",
+    "noticeComponents": [
+        "@clack/prompts@1.7.0",
+        "picocolors@1.1.1",
+        "simple-git@3.36.0",
+        "xdg-basedir@5.1.0",
+        "yaml@2.9.0"
+    ],
+    "bundledLibraryAudit": "Original published bundle and notices are pinned by exact bytes. The repository npm graph audit does not independently resolve or vulnerability-audit embedded libraries. No upstream source lock or esbuild metafile is provided by this npm release.",
+    "files": [
+        {
+            "path": "bin/cli.mjs",
+            "bytes": 305,
+            "sha256": "cda9a4dd5cd209c6f1dc551feacbaef503cefb5d8986d3c4cab9a95e1bbc47e6"
+        },
+        {
+            "path": "dist/_chunks/libs/@clack/core.mjs",
+            "bytes": 24502,
+            "sha256": "d3bf9b1de0feee12bee587fd9ef9adf67799a185acf82940d9a7e55c9b9307dc"
+        },
+        {
+            "path": "dist/_chunks/libs/@clack/prompts.mjs",
+            "bytes": 17426,
+            "sha256": "3a8bdfaaff3752edc53f36f74511378e66dee052327068f44d15a9652c27fc8c"
+        },
+        {
+            "path": "dist/_chunks/libs/@kwsites/file-exists.mjs",
+            "bytes": 15781,
+            "sha256": "14a09d868a886b946d07a71dc005559c49b11dd5779fe6b71d514f00d86b76dc"
+        },
+        {
+            "path": "dist/_chunks/libs/@kwsites/promise-deferred.mjs",
+            "bytes": 831,
+            "sha256": "ca58bb3e2815051dcc2dde123833cad5df756024bd2c396a1b32e3771412bb0e"
+        },
+        {
+            "path": "dist/_chunks/libs/@simple-git/args-pathspec.mjs",
+            "bytes": 233,
+            "sha256": "1b104626fa59e39336ebc559009fa48ae5d3c0d919db26db39a78e28300213ad"
+        },
+        {
+            "path": "dist/_chunks/libs/@simple-git/argv-parser.mjs",
+            "bytes": 10457,
+            "sha256": "a1312a357434c5a64283fdf62801f9c673e0fbf6a13469e31b4cab90a96fe58a"
+        },
+        {
+            "path": "dist/_chunks/libs/@vercel/detect-agent.mjs",
+            "bytes": 3857,
+            "sha256": "fc403e3eeb4572db162f5f6ab2b3a5a267a9efd63961360536e9836e79382f73"
+        },
+        {
+            "path": "dist/_chunks/libs/picocolors.mjs",
+            "bytes": 2911,
+            "sha256": "56602755499ea39a12614a2ed23797c71f2723b409f91f1a3adb38f9df2af118"
+        },
+        {
+            "path": "dist/_chunks/libs/simple-git.mjs",
+            "bytes": 114493,
+            "sha256": "8df59a347b566a12d3ae2f7a640f561a91e81a5fc12bf9197b96be2f32e19066"
+        },
+        {
+            "path": "dist/_chunks/libs/xdg-basedir.mjs",
+            "bytes": 800,
+            "sha256": "e934c017b98700f3627c13315ed6daf5b4c31d8888439d7245f6cfb5e8c47720"
+        },
+        {
+            "path": "dist/_chunks/rolldown-runtime.mjs",
+            "bytes": 1217,
+            "sha256": "b3f4627e7b27535706f4e5d50a09da5aaa526bd2354265eb7995c2af1079cc02"
+        },
+        {
+            "path": "dist/cli.d.mts",
+            "bytes": 11,
+            "sha256": "4f1bad288ada6326583a3e6a0a54d7627a03eac3b668adeea9dded12ac5656b8"
+        },
+        {
+            "path": "dist/cli.mjs",
+            "bytes": 340627,
+            "sha256": "72f1805ea4f6c62b0532cb77a9f021e7930bb7ca962f87a3fbf985d1ada5d56d"
+        },
+        {
+            "path": "dist/THIRD-PARTY-LICENSES.md",
+            "bytes": 25253,
+            "sha256": "6777fee0a85c5721f4c66dd9f84b28507a7f8e2c83f1bb107e640edb65caadc8"
+        },
+        {
+            "path": "LICENSE",
+            "bytes": 1069,
+            "sha256": "661142e53c313d2bb5e1b055f5c0a39001450ff1b5e27b89dc4bc7de9a6352ca"
+        },
+        {
+            "path": "package.json",
+            "bytes": 3161,
+            "sha256": "2e1ea55ac67ecb4fd85cdd64479a74c6d79fd9b5ce33780092629c7f829b57f8"
+        },
+        {
+            "path": "README.md",
+            "bytes": 27330,
+            "sha256": "0af3648e2a60f36dd03a70c83c778905fe9bb77254cd7841c94e17881a3cfd78"
+        },
+        {
+            "path": "ThirdPartyNoticeText.txt",
+            "bytes": 6646,
+            "sha256": "ad017718e485f2d634341e32e91c4e48feee89db01f04b17e4db6c4c912339a6"
+        }
+    ]
+}

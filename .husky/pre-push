@@ -1,0 +1,6 @@
+# Verification creates independent Git fixtures; discard the hook's repository routing.
+repository_variables=$(git rev-parse --local-env-vars)
+for variable in $repository_variables; do
+    unset "$variable"
+done
+pnpm verify:push
