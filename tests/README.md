@@ -25,3 +25,9 @@ with their corresponding features; there are no empty placeholder checks.
   recovery, plus a subprocess entry using fixtures/issue-feedback-http.ts.
 - issue-workflow.test.ts checks trusted SHA, queue, gate and token boundaries.
 - fixtures/ contains isolated subprocess inputs; its README owns that boundary.
+- version-policy.test.ts covers strict SemVer profiles and raw root/Skill agreement.
+- release.test.ts covers final-layout metadata, notes and persistent simulated
+  Release recovery, plus real isolated Git tag identity and ancestry.
+- release-transport.test.ts covers fixed REST origin, status and sanitized failures.
+- release-workflow.test.ts parses the owned YAML and checks tag queue, same-commit
+  reusable CI, minimal permissions and the final-step built-in token boundary.

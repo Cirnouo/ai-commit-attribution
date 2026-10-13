@@ -11,6 +11,8 @@ ISSUE_TEMPLATE/ owns the Bug/Feature forms and freeform/private-report chooser.
 workflows/issues.yaml runs the trusted Issue feedback state machine. Before
 creating or editing a typed Issue, read the current forms and
 [typed Issue policy](../docs/policies/commits-and-scope.md#typed-issue-submissions).
-The Release publisher is introduced in its separate governance PR. General platform configuration and migration provenance are in
+workflows/release.yaml requires same-commit CI before the queued tag publisher.
+Before tagging or publishing, read the [release policy](../docs/policies/releases.md).
+General platform configuration and migration provenance are in
 [the policy record](../docs/policies/migration.md). Read-only token defaults and
 complete action SHA pins apply to every workflow.

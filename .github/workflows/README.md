@@ -15,3 +15,11 @@ Read-only supply-chain checks precede the feedback job; only feedback receives
 issues:write and only its publisher step binds GH_TOKEN. Diagnostic-label events
 are ignored. See the [typed Issue policy](../../docs/policies/commits-and-scope.md#typed-issue-submissions)
 for provisioning, ownership, stale reads and partial failure recovery.
+
+release.yaml accepts candidate version tag pushes and queues each tag without
+cancelling prior runs. It requires successful reusable ci.yaml from the same
+commit before the Ubuntu publisher job receives contents:write. Only the final
+publisher step binds GH_TOKEN to github.token; checkout uses the event SHA, full
+history and no persisted credentials. Before tagging or publishing, read the
+[release policy](../../docs/policies/releases.md), including separate authorization,
+final payload acceptance and the unverified annotated-push payload mapping.

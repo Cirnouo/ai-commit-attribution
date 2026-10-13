@@ -16,7 +16,7 @@ or trailer scheme is adopted as inherited governance.
 | documentation | Manual directory navigation, .github INDEX, semantic whole README review, conditional single ownership | documentation |
 | quality | Native erasable TS, independent type check, per-worktree hooks, partial staging, longpaths/SSH evidence | quality/tooling |
 | supply-chain/checker | Full locked graph, trusted bootstrap order, signatures, cooling/trust, bounded exceptions | supply-chain/auditor |
-| releases/version/release tool | SemVer compatibility profile, stable baseline, cumulative snapshots, annotated tag/draft recovery | releases; publisher in PR3 |
+| releases/version/release tool | SemVer compatibility profile, stable baseline, cumulative snapshots, annotated tag/draft recovery | releases; tooling/release.ts/version-policy.ts and release.yaml |
 | Issue forms/policy/feedback | Free Issues, form-derived validation, verified bot ownership, races and recovery | commits-and-scope typed Issue section/forms/Issue tools |
 | SECURITY/CODE_OF_CONDUCT/LICENSE | Private reporting, best-effort response, community obligations and original MIT license | Root community files |
 
@@ -78,3 +78,28 @@ Current classification labels and the diagnostic label are separately
 provisioned platform state. Offline API fixtures do not prove a live Issue
 publication. REST's final compare-and-set gap and queued-event recovery remain
 explicit in the authoritative typed Issue policy.
+
+## Release governance adaptation
+
+The fixed source tooling/release.ts, tooling/version-policy.ts,
+.github/workflows/release.yml and their release/version/workflow tests provide
+the PR3 state-machine baseline. The target uses release.yaml/ci.yaml, shared
+errors.ts and owned-yaml.ts, and compares only root/tag/final generated Skill
+versions. Dual-host Plugin paths, CDP payload/license logic and packaging owners
+are excluded. The production final Skill is required but is not created by this
+governance PR. Real final-layout fixtures exercise publication and persisted-draft
+recovery; real Git fixtures separately prove annotation and ancestry behavior.
+
+The target additionally rejects noncanonical snapshot headings and conflicting
+matching Releases across all discovery pages. Release REST preserves HTTP status
+for explicit HTTP 404 handling without changing the Issue adapter. The actual workflow
+extends the existing .github/**/*.yaml configuration fingerprint boundary.
+GitHub latest stable/legacy selection and the original annotated push-object gate
+are retained. Their live evidence limits and prepublication obligations are owned
+by the [release policy](releases.md), not inferred from local test success.
+
+Commit types/scopes have one dependency-free owner, tooling/commit-vocabulary.ts.
+The current commitlint configuration reads that data directly instead of loading
+Git and release validators through governance.ts; governance preserves its public
+constant exports. Real config isolation and the existing vocabulary/footer tests
+cover this dependency-boundary adaptation.
