@@ -277,7 +277,7 @@ test('real Git commit and local push invoke generated Husky hooks and protect pa
         check(git(['push', '--quiet', path.join(directory, 'remote.git'), 'HEAD:refs/heads/main']));
         assert.equal(await readFile(path.join(directory, 'hook-log.txt'), 'utf8'), 'pre-push invoked\n');
     } finally {
-        assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));
+        assert.equal(path.dirname(path.resolve(directory)), path.resolve(await realpath(os.tmpdir())));
         await rm(directory, { recursive: true, force: true });
     }
 });

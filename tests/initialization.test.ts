@@ -54,7 +54,7 @@ test('standalone build rejects extra files and directories in its physical outpu
         await mkdir(join(root, 'empty'));
         await assert.rejects(verifySecurityFiles(root, files), /inventory|directory|unexpected/i);
     } finally {
-        assert.equal(dirname(resolve(root)), resolve(tmpdir()));
+        assert.equal(dirname(resolve(root)), resolve(await realpath(tmpdir())));
         await rm(root, { recursive: true, force: true });
     }
 });

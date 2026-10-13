@@ -115,7 +115,7 @@ test('repository audit rejects duplicate keys, multiple owned YAML documents and
         await writeFile(path.join(directory, '.github/bad.yaml'), Buffer.from([0xff, 10]));
         assert.ok((await auditRepository(directory)).some((error) => /bad.yaml.*UTF.?8/i.test(error)));
     } finally {
-        assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));
+        assert.equal(path.dirname(path.resolve(directory)), path.resolve(await realpath(os.tmpdir())));
         await rm(directory, { recursive: true, force: true });
     }
 });
