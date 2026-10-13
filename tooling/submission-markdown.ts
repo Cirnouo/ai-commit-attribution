@@ -89,7 +89,10 @@ export function scanSubmissionMarkdown(source: string, { sectionLevel = 2 } = {}
             }
             continue;
         }
-        const line = visibleLine(original);
+        // Literal code must not enter or leave prose HTML-comment state. Keep
+        // active checklist continuation masking and an enclosing prose comment.
+        const indentedLiteral = !inComment && !checklist && /^(?: {4}|\t)/u.test(original);
+        const line = indentedLiteral ? original : visibleLine(original);
         if (!line.trim()) {
             flushParagraph();
             checklist = undefined;

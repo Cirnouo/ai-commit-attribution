@@ -506,3 +506,28 @@ test('supported dropdown default and static profile options are validated as con
         );
     }
 });
+
+test('round1 closed and unclosed indented HTML output answers required text without hiding later form headings', () => {
+    for (const answer of [
+        '    <!-- actual emitted diagnostic E1234 -->',
+        '    <!-- actual emitted diagnostic E1234',
+        '    <!--\n    actual emitted diagnostic E1234\n    -->',
+        '    <!--\n    actual emitted diagnostic E1234',
+    ]) {
+        assert.equal(bug(bugBody.replace('Validation reports an attribution error.', answer)).status, 'valid', answer);
+    }
+});
+
+test('round1 enclosing prose comment state still hides indented output and apparent fields', () => {
+    for (const answer of [
+        '<!-- prose only -->',
+        '<!-- prose starts\n    actual emitted diagnostic E1234\n-->',
+        '<!-- prose starts\n    actual emitted diagnostic E1234\n### Fake field\n-->',
+    ]) {
+        assert.equal(
+            bug(bugBody.replace('Validation reports an attribution error.', answer)).status,
+            'invalid',
+            answer,
+        );
+    }
+});
