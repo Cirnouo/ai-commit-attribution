@@ -20,3 +20,7 @@ only when the real business distribution is added.
 - file-evidence.ts provides stable descriptor-based reads.
 - constants.ts and errors.ts provide small shared data/error helpers.
 - security/ owns the dependency graph, registry, evidence and installer modules.
+
+- issue-policy.ts derives typed Issue validation from the current forms.
+- issue-feedback.ts owns recoverable feedback for verified Issue events.
+- issue-github.ts owns fixed-origin, sanitized GitHub REST requests.

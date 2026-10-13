@@ -54,6 +54,9 @@ Current single-maintainer governance requires no extra approving reviewer, but
 PRs must satisfy the strict latest checks and independent task review.
 
 Ordinary freeform Issues remain available. Do not expose secrets or private
-paths in reports. Typed Issue governance is introduced separately from the
-initial repository toolchain. No actual tag or publication is authorized by
+paths in reports. Before creating or editing a typed Bug/Feature Issue, read the
+[current forms](.github/ISSUE_TEMPLATE/README.md) and
+[typed Issue policy](docs/policies/commits-and-scope.md#typed-issue-submissions).
+Preserve generated optional headings, answer required fields and select the
+corresponding form label when using another interface. No actual tag or publication is authorized by
 routine development or Skill installation.

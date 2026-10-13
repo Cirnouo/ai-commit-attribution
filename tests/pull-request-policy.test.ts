@@ -356,7 +356,7 @@ test('inline comments preserve actual indentation provenance for PR evidence', (
     const scanned = scanSubmissionMarkdown('## Verification\n\n<!-- hint -->checks passed\n');
     assert.deepEqual(scanned[1]?.paragraphs, [{ text: 'checks passed', literal: false }]);
     const indented = scanSubmissionMarkdown('## Verification\n\n    <!-- hint -->checks passed\n');
-    assert.deepEqual(indented[1]?.paragraphs, [{ text: 'checks passed', literal: true }]);
+    assert.deepEqual(indented[1]?.paragraphs, [{ text: '<!-- hint -->checks passed', literal: true }]);
     assert.equal(
         errors(
             compliantBody.replace(
@@ -366,4 +366,15 @@ test('inline comments preserve actual indentation provenance for PR evidence', (
         ),
         '',
     );
+});
+
+test('round1 PR evidence retains literal indented HTML comments without activating prose comment state', () => {
+    const evidence = 'Focused policy tests and pnpm verify:push passed; real browser checks were not run.';
+    for (const answer of ['    <!-- actual emitted check E1234 -->', '    <!-- actual emitted check E1234']) {
+        assert.equal(errors(compliantBody.replace(evidence, answer)), '', answer);
+        const scanned = scanSubmissionMarkdown(`## Verification\n\n${answer}\n\n## Documentation\n\nDone.\n`);
+        assert.equal(scanned[2]?.heading, 'Documentation');
+        assert.deepEqual(scanned[1]?.paragraphs, [{ text: answer.trim(), literal: true }]);
+    }
+    assert.notEqual(errors(compliantBody.replace(evidence, '<!-- prose starts\n    no actual evidence\n-->')), '');
 });

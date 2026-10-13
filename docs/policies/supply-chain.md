@@ -130,3 +130,7 @@ No continue-on-error, registry-error suppression or audit repair may bypass the
 gate. Dependabot alerts supplement the full weekly review; automatic dependency
 PRs remain disabled. SHA-pinned Actions and embedded installer libraries need
 their own upstream advisory review and do not acquire full graph audit coverage.
+
+The configuration digest includes the exact GitHub chooser exception
+.github/ISSUE_TEMPLATE/config.yml alongside owned .github/*.yaml inputs. A
+lookalike .yml path is neither a naming exception nor fingerprint eligibility.

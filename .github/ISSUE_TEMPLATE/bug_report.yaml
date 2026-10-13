@@ -1,0 +1,72 @@
+name: Bug report
+description: Report reproducible unexpected attribution Skill behavior.
+labels:
+    - 'template: bug-report'
+body:
+    -   type: markdown
+        attributes:
+            value: |
+                Report suspected vulnerabilities through the private channel in SECURITY.md.
+                Remove tokens, private commit content and personal paths from all examples.
+    -   type: input
+        id: operating-system
+        attributes:
+            label: Operating system and version
+            placeholder: Windows 11, Ubuntu 24.04, or macOS 15
+        validations:
+            required: true
+    -   type: dropdown
+        id: agent-host
+        attributes:
+            label: Agent host
+            options:
+                - Codex Desktop
+                - Codex CLI
+                - Claude Code
+                - Other
+        validations:
+            required: true
+    -   type: input
+        id: host-version
+        attributes:
+            label: Host version
+            description: Include the Desktop version or the output of codex --version or claude --version.
+        validations:
+            required: true
+    -   type: input
+        id: skill-version
+        attributes:
+            label: Skill version or repository commit
+        validations:
+            required: true
+    -   type: input
+        id: runtime-versions
+        attributes:
+            label: Node.js and Git versions
+            description: Include node --version and git --version.
+        validations:
+            required: true
+    -   type: textarea
+        id: reproduction
+        attributes:
+            label: Reproduction steps
+            description: Include a minimal example using an isolated Git repository and non-sensitive data.
+        validations:
+            required: true
+    -   type: textarea
+        id: expected-behavior
+        attributes:
+            label: Expected behavior
+        validations:
+            required: true
+    -   type: textarea
+        id: actual-behavior
+        attributes:
+            label: Actual behavior
+        validations:
+            required: true
+    -   type: textarea
+        id: diagnostics
+        attributes:
+            label: Redacted errors and additional context
+            description: Include relevant error codes and operation phases; remove sensitive data.

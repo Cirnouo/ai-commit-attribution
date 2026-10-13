@@ -8,6 +8,10 @@ This repository maintains YAML files with the `.yaml` extension. Before adding
 or editing YAML, read the authoritative [YAML policy](docs/policies/quality.md#yaml-files).
 Its only approved naming exception is `.github/ISSUE_TEMPLATE/config.yml`.
 
+Before creating or editing a typed Issue, read the current
+[Issue forms](.github/ISSUE_TEMPLATE/README.md) and
+[typed Issue policy](docs/policies/commits-and-scope.md#typed-issue-submissions).
+
 Before choosing a branch, committing, or submitting a PR, read
 [commits and scope](docs/policies/commits-and-scope.md) and the current
 [PR template](.github/PULL_REQUEST_TEMPLATE.md). Preserve the template structure

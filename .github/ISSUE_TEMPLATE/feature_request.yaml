@@ -1,0 +1,28 @@
+name: Feature request
+description: Describe a problem and the behavior that would solve it.
+labels:
+    - 'template: feature-request'
+body:
+    -   type: textarea
+        id: problem
+        attributes:
+            label: Problem or use case
+            description: Explain who encounters the problem and what they are trying to accomplish.
+        validations:
+            required: true
+    -   type: textarea
+        id: proposed-behavior
+        attributes:
+            label: Proposed behavior
+        validations:
+            required: true
+    -   type: textarea
+        id: alternatives
+        attributes:
+            label: Alternatives considered
+            description: Include existing workflows or workarounds.
+    -   type: textarea
+        id: context
+        attributes:
+            label: Additional context
+            description: Remove personal or repository data from examples.
