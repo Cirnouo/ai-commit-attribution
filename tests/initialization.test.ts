@@ -111,3 +111,75 @@ test('normal security build rejects a linked output root before changing externa
         await rm(parent, { recursive: true, force: true });
     }
 });
+
+for (const linkedName of ['check-security.mjs', 'THIRD-PARTY-NOTICES.txt']) {
+    test(`round1 builder and verifier reject hard-linked ${linkedName} without modifying any output or peer`, async () => {
+        const { writeSecurityFiles, verifySecurityFiles } = await import('../tooling/build-security.ts');
+        const { mkdtemp, mkdir, writeFile, readFile, link, realpath, rm } = await import('node:fs/promises');
+        const { tmpdir } = await import('node:os');
+        const { join, dirname, resolve } = await import('node:path');
+        const parent = await realpath(await mkdtemp(join(tmpdir(), 'attribution-hardlink-')));
+        const output = join(parent, 'output');
+        const original = new Map([
+            ['check-security.mjs', Buffer.from('old bundle\n')],
+            ['THIRD-PARTY-NOTICES.txt', Buffer.from('old notice\n')],
+        ]);
+        try {
+            await mkdir(output);
+            for (const [name, bytes] of original) if (name !== linkedName) await writeFile(join(output, name), bytes);
+            const peer = join(parent, 'external-peer');
+            const peerBytes = original.get(linkedName);
+            assert.ok(peerBytes);
+            await writeFile(peer, peerBytes);
+            await link(peer, join(output, linkedName));
+            await assert.rejects(verifySecurityFiles(output, original), /link/i);
+            const next = new Map([
+                ['check-security.mjs', Buffer.from('new bundle\n')],
+                ['THIRD-PARTY-NOTICES.txt', Buffer.from('new notice\n')],
+            ]);
+            await assert.rejects(writeSecurityFiles(output, next), /link/i);
+            assert.deepEqual(await readFile(peer), original.get(linkedName));
+            for (const [name, bytes] of original)
+                assert.deepEqual(await readFile(join(output, name)), bytes, `${name} remains unchanged`);
+        } finally {
+            assert.equal(dirname(resolve(parent)), resolve(await realpath(tmpdir())));
+            await rm(parent, { recursive: true, force: true });
+        }
+    });
+}
+
+test('round1 raw and shared message validators reject bare CR but accept CRLF', async () => {
+    const { validateRawMessage } = await import('../tooling/commit-footer-rule.ts');
+    const { validateCommitMessage } = await import('../tooling/governance.ts');
+    const valid = 'chore(governance): initialize\r\n\r\nExplain behavior.\r\n\r\nAssisted-by: Codex\r\n';
+    assert.deepEqual(validateRawMessage(valid), []);
+    assert.deepEqual(validateCommitMessage(valid), []);
+    for (const raw of [
+        'chore(governance): initialize\rInjected',
+        'chore(governance): initialize\n\nExplain\rInjected',
+        'chore(governance): initialize\n\nAssisted-by: Codex\rInjected-by: forged',
+    ]) {
+        assert.ok(validateRawMessage(raw).length > 0, JSON.stringify(raw));
+        assert.ok(validateCommitMessage(raw).length > 0, JSON.stringify(raw));
+    }
+});
+
+test('round1 immutable dependency evidence permits a hard link while output evidence rejects it', async () => {
+    const { readRegularFile } = await import('../tooling/file-evidence.ts');
+    const { mkdtemp, writeFile, readFile, link, realpath, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join, dirname, resolve } = await import('node:path');
+    const parent = await realpath(await mkdtemp(join(tmpdir(), 'attribution-immutable-link-')));
+    try {
+        const file = join(parent, 'package-evidence');
+        const bytes = Buffer.from('original immutable package bytes\n');
+        await writeFile(file, bytes);
+        await link(file, join(parent, 'store-peer'));
+        assert.deepEqual(await readRegularFile(file), bytes);
+        await assert.rejects(readRegularFile(file, { singleLink: true }), /link/i);
+        assert.deepEqual(await readFile(join(parent, 'store-peer')), bytes);
+    } finally {
+        assert.equal(dirname(resolve(parent)), resolve(await realpath(tmpdir())));
+        await rm(parent, { recursive: true, force: true });
+    }
+});

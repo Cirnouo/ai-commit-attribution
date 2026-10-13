@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseAllDocuments } from 'yaml';
 import { errorMessage, isRecord } from './errors.ts';
+import { parseOwnedYaml } from './owned-yaml.ts';
 import { scanSubmissionMarkdown } from './submission-markdown.ts';
 import { isSemVer } from './version-policy.ts';
 
@@ -30,28 +30,10 @@ export function validateTextStyle(file: string, source: string): string[] {
         });
     }
     if (/\.ya?ml$/.test(file)) {
-        const documents = parseAllDocuments(source, {
-            uniqueKeys: true,
-            stringKeys: true,
-            version: '1.2',
-            schema: 'core',
-        });
-        if (file !== 'pnpm-lock.yaml' && documents.length !== 1)
-            errors.push(`${file}: owned YAML must contain exactly one document.`);
-        for (const document of documents) {
-            for (const error of [...document.errors, ...document.warnings]) errors.push(`${file}: ${error.message}`);
-            if (
-                document.directives?.yaml.version !== '1.2' ||
-                Object.entries(document.directives?.tags ?? {}).some(
-                    ([handle, prefix]) => handle !== '!!' || prefix !== 'tag:yaml.org,2002:',
-                )
-            )
-                errors.push(`${file}: only core YAML 1.2 directives and tags are allowed.`);
-            try {
-                document.toJS({ maxAliasCount: 100 });
-            } catch (error) {
-                errors.push(`${file}: ${errorMessage(error)}`);
-            }
+        try {
+            parseOwnedYaml(source, { name: file, documents: file === 'pnpm-lock.yaml' ? 'all' : 'single' });
+        } catch (error) {
+            errors.push(errorMessage(error));
         }
     }
     return errors;

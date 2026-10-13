@@ -20,7 +20,7 @@ Choose the prefix for the task's overall purpose. Classify each commit
 independently using the commit types below; branch and commit types need not
 match. For example, `chore/branch-policy` may contain a
 `docs(governance): explain branch policy` commit, and `chore/quality-gates` may
-contain a `ci(tooling): add quality gates` commit.
+contain a `ci(ci): add quality gates` commit.
 
 Optional release preparation branches use `release/<semver>` with strict
 SemVer syntax; only release branches may use SemVer dots and prerelease/build
@@ -41,8 +41,13 @@ for a breaking change. Allowed types are `build`, `chore`, `ci`, `docs`, `feat`,
 
 Headers are at most 100 characters. Subjects are non-empty, begin in lowercase,
 and do not end with a period. A body or footer follows a blank line; a footer
-also follows a blank line after a body. Body and footer lines are at most 100
-characters. A breaking change may use `!`, a `BREAKING CHANGE:` footer, or both.
+also follows a blank line after a body. Plain body prose is at most 100 characters
+per line. Complete legitimate structured trailers at the end of the message
+are exempt from that line limit and must each remain intact on one line; never
+wrap a trailer to meet the prose limit. This includes `Assisted-by:`,
+`Reviewed-by:`, `Co-authored-by:`, reference trailers, and a complete single-line
+`BREAKING CHANGE:` trailer. A breaking change may use `!`, a
+`BREAKING CHANGE:` footer, or both.
 Only Git-topology-proven merge commits are ignored.
 
 Footer boundaries use the original message lines. `BREAKING CHANGE:` and
@@ -53,6 +58,8 @@ use the same boundary rule. Their first footer line requires a blank line after
 the header or body; subsequent trailers in that footer group can be adjacent.
 Existing Markdown bullet breaking notes such as `* BREAKING CHANGE:` require
 the same blank line, whether their description starts on that line or the next.
+Their prose and multiline continuations retain the plain-body line limit; the
+structured-trailer exemption applies only to a complete trailer on one line.
 
 An otherwise unknown bare-word label such as `observations: value` continues
 the body when no blank line precedes it. With a preceding blank line, it can
@@ -90,7 +97,9 @@ The 100-character header limit includes the generated suffix. For example,
 ` (#123)` uses seven characters, leaving at most 93 characters for the raw title.
 PR checks validate the raw title and the predicted header with its actual PR
 number plus the original PR description. Keep description lines within the same
-body/footer limit; editing a title or description reruns the existing gate.
+plain-body limit, retaining the same exemption for complete, final, single-line
+structured trailers in the description and predicted squash message. Editing a
+title or description reruns the existing gate.
 
 The current [.github/PULL_REQUEST_TEMPLATE.md](../../.github/PULL_REQUEST_TEMPLATE.md)
 is the sole source of required PR headings, checklist labels, placement, order,

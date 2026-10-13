@@ -1,7 +1,4 @@
 name: Maintained repository code
-paths:
-    - tooling
-    - .github
 paths-ignore:
     - skills/**
     - tooling/security/dist/**

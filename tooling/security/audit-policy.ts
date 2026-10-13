@@ -1,4 +1,4 @@
-import { parseAllDocuments } from 'yaml';
+import { parseOwnedYaml } from '../owned-yaml.ts';
 import { isSemVer } from '../version-policy.ts';
 
 export type Severity = 'info' | 'low' | 'moderate' | 'high' | 'critical';
@@ -104,9 +104,7 @@ export function validateConfigurationDependencies(value: unknown) {
 }
 
 export function readLockInventory(source: string): LockInventory {
-    const parsed = parseAllDocuments(source);
-    demand(parsed.length > 0 && parsed.every((doc) => doc.errors.length === 0), 'Malformed lockfile YAML.');
-    const values: unknown[] = parsed.map((doc) => doc.toJS() as unknown);
+    const values = parseOwnedYaml(source, { name: 'lockfile', documents: 'all' });
     const documents: LockDocument[] = [];
     const all = new Map<string, PackageIdentity>();
     for (const doc of values) {

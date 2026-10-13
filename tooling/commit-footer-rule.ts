@@ -40,6 +40,7 @@ export function validateRawMessage(raw: string): string[] {
     const errors: string[] = [];
     if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(raw))
         errors.push('Commit message contains prohibited control characters.');
+    if (/\r(?!\n)/.test(raw)) errors.push('Commit message contains a bare carriage return.');
     const lines = raw.split(/\r?\n/);
     let structuredStarted = false;
     let previousBlank = false;

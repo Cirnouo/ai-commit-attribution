@@ -508,3 +508,94 @@ test('review exceptions do not fingerprint their own record and remain bound to 
         await rm(root, { recursive: true, force: true });
     }
 });
+
+const round1YamlInputs = [
+    'reviewExtension: !unreviewed text\n',
+    '%TAG !e! tag:example.com,2026:\n---\nreviewExtension: !e!custom text\n',
+    '%YAML 1.1\n---\n',
+    'reviewExtension:\n    ? [complex, key]\n    : value\n',
+    'reviewExtension: *missing\n',
+    'reviewExtension:\n    true: value\n',
+    'a: &a [one, two, three, four, five, six, seven, eight, nine, ten]\nb: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a, *a]\nc: &c [*b, *b, *b, *b, *b, *b, *b, *b, *b, *b]\n',
+    'reviewExtension: one\nreviewExtension: two\n',
+];
+for (const location of ['pnpm-lock.yaml', 'pnpm-workspace.yaml']) {
+    test(`round1 preflight rejects unsafe ${location} YAML before any pnpm invocation`, async () => {
+        for (const extension of round1YamlInputs) {
+            const root = await lockProject();
+            let calls = 0;
+            try {
+                const file = path.join(root, location);
+                const original = await readFile(file, 'utf8');
+                const candidate =
+                    location === 'pnpm-lock.yaml' ? extension + original.replace(/^---\n/, '') : extension + original;
+                await writeFile(file, candidate);
+                await assert.rejects(
+                    checkSecurity(root, {
+                        phase: 'lockfile',
+                        now,
+                        execute: async () => {
+                            calls++;
+                            throw new Error('Unexpected pnpm invocation');
+                        },
+                    }),
+                );
+                assert.equal(calls, 0, `${location} ${extension}`);
+            } finally {
+                await rm(root, { recursive: true, force: true });
+            }
+        }
+    });
+}
+test('round1 preflight accepts all lock documents and YAML1.2 on key with safe aliases', async () => {
+    const root = await lockProject();
+    let calls = 0;
+    try {
+        const workspace = path.join(root, 'pnpm-workspace.yaml');
+        await writeFile(workspace, `on: &setting true\nreviewAlias: *setting\n${await readFile(workspace, 'utf8')}`);
+        const lockfile = path.join(root, 'pnpm-lock.yaml');
+        await writeFile(lockfile, lock.replace('---\n', '%YAML 1.2\n---\n'));
+        const result = await checkSecurity(root, {
+            phase: 'lockfile',
+            now,
+            execute: async (args) => {
+                calls++;
+                if (args[0] === 'config')
+                    return {
+                        exitCode: 0,
+                        stdout: JSON.stringify({ ...INSTALL_POLICY, allowBuilds: { 'esbuild@0.28.2': true } }),
+                    };
+                if (args[0] === 'install') return { exitCode: 0, stdout: '' };
+                if (args.includes('signatures'))
+                    return { exitCode: 0, stdout: '{"audited":3,"verified":3,"invalid":[],"missing":[]}' };
+                return { exitCode: 1, stdout: JSON.stringify(audit('moderate')) };
+            },
+        });
+        assert.equal(result.ok, true);
+        assert.equal(calls, 4);
+        assert.equal(readLockInventory(await readFile(lockfile, 'utf8')).documents.length, 2);
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+test('round1 workspace rejects multiple documents before any pnpm invocation', async () => {
+    const root = await lockProject();
+    let calls = 0;
+    try {
+        const file = path.join(root, 'pnpm-workspace.yaml');
+        await writeFile(file, `${await readFile(file, 'utf8')}---\non: true\n`);
+        await assert.rejects(
+            checkSecurity(root, {
+                phase: 'lockfile',
+                now,
+                execute: async () => {
+                    calls++;
+                    throw new Error('Unexpected pnpm invocation');
+                },
+            }),
+        );
+        assert.equal(calls, 0);
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});

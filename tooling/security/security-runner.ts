@@ -2,9 +2,9 @@ import { execFile } from 'node:child_process';
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { parse } from 'yaml';
 import { NPM_REGISTRY } from '../constants.ts';
 import { errorCode, errorMessage, isRecord } from '../errors.ts';
+import { parseOwnedYaml } from '../owned-yaml.ts';
 import type { AuditCommandResult, Finding, LockInventory } from './audit-policy.ts';
 
 export type SecurityPhase = 'complete' | 'lockfile';
@@ -67,7 +67,10 @@ export async function executePnpm(
 }
 
 async function verifyConfiguration(root: string, execute: PnpmExecutor, env: NodeJS.ProcessEnv) {
-    const workspace: unknown = parse(await readFile(path.join(root, 'pnpm-workspace.yaml'), 'utf8'));
+    const [workspace] = parseOwnedYaml(await readFile(path.join(root, 'pnpm-workspace.yaml'), 'utf8'), {
+        name: 'workspace',
+        documents: 'single',
+    });
     if (!isRecord(workspace)) throw new Error('Invalid workspace configuration.');
     validateConfigurationDependencies(workspace.configDependencies);
     const effective = await execute(['config', 'list', '--json', ...AUDIT_OPTIONS], { cwd: root, env });

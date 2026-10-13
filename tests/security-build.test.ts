@@ -86,7 +86,7 @@ test('security build comparison rejects drift without repairing it', async () =>
         const semverLicense = await readFile(path.join(root, 'node_modules/semver/LICENSE'), 'utf8');
         assert.equal(
             license,
-            `--- yaml@2.9.1 (ISC) ---\n\n${yamlLicense}\n--- semver@7.8.5 (ISC) ---\n\n${semverLicense}\n`,
+            `--- yaml@2.9.1 (ISC) ---\n\n${yamlLicense}\n--- semver@7.8.5 (ISC) ---\n\n${semverLicense}`,
         );
         await writeSecurityFiles(directory, files);
         await verifySecurityFiles(directory, files);
@@ -210,4 +210,19 @@ test('standalone lockfile preflight validates a real lock without release eviden
     } finally {
         await rm(directory, { recursive: true, force: true });
     }
+});
+
+test('round1 audit notices retain each original license byte without a final generated separator', async () => {
+    const yaml = await readFile(path.join(root, 'node_modules/yaml/LICENSE'));
+    const semver = await readFile(path.join(root, 'node_modules/semver/LICENSE'));
+    const notices = await readSecurityNotices(path.join(root, 'node_modules'), ['yaml', 'semver']);
+    assert.deepEqual(
+        notices,
+        Buffer.concat([
+            Buffer.from('--- yaml@2.9.1 (ISC) ---\n\n'),
+            yaml,
+            Buffer.from('\n--- semver@7.8.5 (ISC) ---\n\n'),
+            semver,
+        ]),
+    );
 });

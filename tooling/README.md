@@ -14,6 +14,7 @@ only when the real business distribution is added.
 - check-commits.ts and check-commit-message.ts validate history and hook input.
 - submission-markdown.ts and pull-request-policy.ts derive current PR structure.
 - repository-audit.ts and check-text-style.ts audit repository and staged text.
+- owned-yaml.ts owns the shared YAML profile for text and preinstallation inputs.
 - check-scripts.ts checks maintained TS and generated JavaScript syntax.
 - check-security.ts and build-security.ts execute and bundle the audit gate.
 - file-evidence.ts provides stable descriptor-based reads.

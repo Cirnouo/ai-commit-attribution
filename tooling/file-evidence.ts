@@ -24,6 +24,7 @@ function unchanged(expected: BigIntStats, actual: BigIntStats) {
 export async function readRegularFile(
     file: string,
     io: {
+        singleLink?: boolean;
         lstat?: (file: string) => Promise<BigIntStats>;
         open?: (file: string, flags: number) => Promise<EvidenceHandle>;
     } = {},
@@ -45,6 +46,7 @@ export async function readRegularFile(
     try {
         const before = await handle.stat();
         if (!before.isFile()) throw new Error('Evidence must be a regular file without links.');
+        if (io.singleLink && before.nlink !== 1n) throw new Error('Output evidence must have a single link.');
         if (!unchanged(before, await inspect(file))) throw new Error('Evidence file identity or metadata changed.');
         const bytes = await handle.readFile();
         if (

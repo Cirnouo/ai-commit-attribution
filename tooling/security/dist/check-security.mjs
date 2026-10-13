@@ -50,7 +50,7 @@ var require_identity = __commonJS({
     var isDocument = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === DOC;
     var isMap = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
     var isPair = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === PAIR;
-    var isScalar = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SCALAR;
+    var isScalar2 = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SCALAR;
     var isSeq = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SEQ;
     function isCollection(node) {
       if (node && typeof node === "object")
@@ -72,7 +72,7 @@ var require_identity = __commonJS({
         }
       return false;
     }
-    var hasAnchor = (node) => (isScalar(node) || isCollection(node)) && !!node.anchor;
+    var hasAnchor = (node) => (isScalar2(node) || isCollection(node)) && !!node.anchor;
     exports.ALIAS = ALIAS;
     exports.DOC = DOC;
     exports.MAP = MAP;
@@ -87,7 +87,7 @@ var require_identity = __commonJS({
     exports.isMap = isMap;
     exports.isNode = isNode;
     exports.isPair = isPair;
-    exports.isScalar = isScalar;
+    exports.isScalar = isScalar2;
     exports.isSeq = isSeq;
   }
 });
@@ -100,7 +100,7 @@ var require_visit = __commonJS({
     var BREAK = /* @__PURE__ */ Symbol("break visit");
     var SKIP = /* @__PURE__ */ Symbol("skip children");
     var REMOVE = /* @__PURE__ */ Symbol("remove node");
-    function visit(node, visitor) {
+    function visit2(node, visitor) {
       const visitor_ = initVisitor(visitor);
       if (identity2.isDocument(node)) {
         const cd = visit_(null, node.contents, visitor_, Object.freeze([node]));
@@ -109,9 +109,9 @@ var require_visit = __commonJS({
       } else
         visit_(null, node, visitor_, Object.freeze([]));
     }
-    visit.BREAK = BREAK;
-    visit.SKIP = SKIP;
-    visit.REMOVE = REMOVE;
+    visit2.BREAK = BREAK;
+    visit2.SKIP = SKIP;
+    visit2.REMOVE = REMOVE;
     function visit_(key, node, visitor, path5) {
       const ctrl = callVisitor(key, node, visitor, path5);
       if (identity2.isNode(ctrl) || identity2.isPair(ctrl)) {
@@ -245,7 +245,7 @@ var require_visit = __commonJS({
         throw new Error(`Cannot replace node with ${pt} parent`);
       }
     }
-    exports.visit = visit;
+    exports.visit = visit2;
     exports.visitAsync = visitAsync;
   }
 });
@@ -255,7 +255,7 @@ var require_directives = __commonJS({
   "node_modules/.pnpm/yaml@2.9.1/node_modules/yaml/dist/doc/directives.js"(exports) {
     "use strict";
     var identity2 = require_identity();
-    var visit = require_visit();
+    var visit2 = require_visit();
     var escapeChars = {
       "!": "%21",
       ",": "%2C",
@@ -399,7 +399,7 @@ var require_directives = __commonJS({
         let tagNames;
         if (doc && tagEntries.length > 0 && identity2.isNode(doc.contents)) {
           const tags = {};
-          visit.visit(doc.contents, (_key, node) => {
+          visit2.visit(doc.contents, (_key, node) => {
             if (identity2.isNode(node) && node.tag)
               tags[node.tag] = true;
           });
@@ -426,7 +426,7 @@ var require_anchors = __commonJS({
   "node_modules/.pnpm/yaml@2.9.1/node_modules/yaml/dist/doc/anchors.js"(exports) {
     "use strict";
     var identity2 = require_identity();
-    var visit = require_visit();
+    var visit2 = require_visit();
     function anchorIsValid(anchor) {
       if (/[\x00-\x19\s,[\]{}]/.test(anchor)) {
         const sa = JSON.stringify(anchor);
@@ -437,7 +437,7 @@ var require_anchors = __commonJS({
     }
     function anchorNames(root) {
       const anchors = /* @__PURE__ */ new Set();
-      visit.visit(root, {
+      visit2.visit(root, {
         Value(_key, node) {
           if (node.anchor)
             anchors.add(node.anchor);
@@ -617,7 +617,7 @@ var require_Alias = __commonJS({
   "node_modules/.pnpm/yaml@2.9.1/node_modules/yaml/dist/nodes/Alias.js"(exports) {
     "use strict";
     var anchors = require_anchors();
-    var visit = require_visit();
+    var visit2 = require_visit();
     var identity2 = require_identity();
     var Node = require_Node();
     var toJS = require_toJS();
@@ -643,7 +643,7 @@ var require_Alias = __commonJS({
           nodes = ctx.aliasResolveCache;
         } else {
           nodes = [];
-          visit.visit(doc, {
+          visit2.visit(doc, {
             Node: (_key, node) => {
               if (identity2.isAlias(node) || identity2.hasAnchor(node))
                 nodes.push(node);
@@ -5565,15 +5565,15 @@ var require_cst_visit = __commonJS({
     var BREAK = /* @__PURE__ */ Symbol("break visit");
     var SKIP = /* @__PURE__ */ Symbol("skip children");
     var REMOVE = /* @__PURE__ */ Symbol("remove item");
-    function visit(cst, visitor) {
+    function visit2(cst, visitor) {
       if ("type" in cst && cst.type === "document")
         cst = { start: cst.start, value: cst.value };
       _visit(Object.freeze([]), cst, visitor);
     }
-    visit.BREAK = BREAK;
-    visit.SKIP = SKIP;
-    visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path5) => {
+    visit2.BREAK = BREAK;
+    visit2.SKIP = SKIP;
+    visit2.REMOVE = REMOVE;
+    visit2.itemAtPath = (cst, path5) => {
       let item = cst;
       for (const [field, index] of path5) {
         const tok = item?.[field];
@@ -5584,8 +5584,8 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path5) => {
-      const parent = visit.itemAtPath(cst, path5.slice(0, -1));
+    visit2.parentCollection = (cst, path5) => {
+      const parent = visit2.itemAtPath(cst, path5.slice(0, -1));
       const field = path5[path5.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
@@ -5616,7 +5616,7 @@ var require_cst_visit = __commonJS({
       }
       return typeof ctrl === "function" ? ctrl(item, path5) : ctrl;
     }
-    exports.visit = visit;
+    exports.visit = visit2;
   }
 });
 
@@ -5632,7 +5632,7 @@ var require_cst = __commonJS({
     var FLOW_END = "";
     var SCALAR = "";
     var isCollection = (token) => !!token && "items" in token;
-    var isScalar = (token) => !!token && (token.type === "scalar" || token.type === "single-quoted-scalar" || token.type === "double-quoted-scalar" || token.type === "block-scalar");
+    var isScalar2 = (token) => !!token && (token.type === "scalar" || token.type === "single-quoted-scalar" || token.type === "double-quoted-scalar" || token.type === "block-scalar");
     function prettyToken(token) {
       switch (token) {
         case BOM:
@@ -5716,7 +5716,7 @@ var require_cst = __commonJS({
     exports.FLOW_END = FLOW_END;
     exports.SCALAR = SCALAR;
     exports.isCollection = isCollection;
-    exports.isScalar = isScalar;
+    exports.isScalar = isScalar2;
     exports.prettyToken = prettyToken;
     exports.tokenType = tokenType;
   }
@@ -7265,7 +7265,7 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse4(src, reviver, options) {
+    function parse3(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
@@ -7306,7 +7306,7 @@ var require_public_api = __commonJS({
         return value.toString(options);
       return new Document.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse4;
+    exports.parse = parse3;
     exports.parseAllDocuments = parseAllDocuments2;
     exports.parseDocument = parseDocument;
     exports.stringify = stringify;
@@ -7332,7 +7332,7 @@ var require_dist = __commonJS({
     var lineCounter = require_line_counter();
     var parser = require_parser();
     var publicApi = require_public_api();
-    var visit = require_visit();
+    var visit2 = require_visit();
     exports.Composer = composer.Composer;
     exports.Document = Document.Document;
     exports.Schema = Schema.Schema;
@@ -7360,8 +7360,8 @@ var require_dist = __commonJS({
     exports.parseAllDocuments = publicApi.parseAllDocuments;
     exports.parseDocument = publicApi.parseDocument;
     exports.stringify = publicApi.stringify;
-    exports.visit = visit.visit;
-    exports.visitAsync = visit.visitAsync;
+    exports.visit = visit2.visit;
+    exports.visitAsync = visit2.visitAsync;
   }
 });
 
@@ -7836,7 +7836,7 @@ var require_parse = __commonJS({
   "node_modules/.pnpm/semver@7.8.5/node_modules/semver/functions/parse.js"(exports, module) {
     "use strict";
     var SemVer = require_semver();
-    var parse4 = (version, options, throwErrors = false) => {
+    var parse3 = (version, options, throwErrors = false) => {
       if (version instanceof SemVer) {
         return version;
       }
@@ -7849,7 +7849,7 @@ var require_parse = __commonJS({
         throw er;
       }
     };
-    module.exports = parse4;
+    module.exports = parse3;
   }
 });
 
@@ -7894,6 +7894,7 @@ async function readRegularFile(file, io = {}) {
   try {
     const before = await handle.stat();
     if (!before.isFile()) throw new Error("Evidence must be a regular file without links.");
+    if (io.singleLink && before.nlink !== 1n) throw new Error("Output evidence must have a single link.");
     if (!unchanged(before, await inspect(file))) throw new Error("Evidence file identity or metadata changed.");
     const bytes = await handle.readFile();
     if (!unchanged(before, await handle.stat()) || !unchanged(before, await inspect(file)) || BigInt(bytes.length) !== before.size)
@@ -7904,8 +7905,44 @@ async function readRegularFile(file, io = {}) {
   }
 }
 
-// tooling/security/audit-policy.ts
+// tooling/owned-yaml.ts
 var import_yaml = __toESM(require_dist(), 1);
+function parseOwnedYaml(source, options) {
+  const documents = (0, import_yaml.parseAllDocuments)(source, {
+    uniqueKeys: true,
+    version: "1.2",
+    schema: "core",
+    logLevel: "silent"
+  });
+  const errors = [];
+  if (documents.length === 0 || options.documents === "single" && documents.length !== 1)
+    errors.push(
+      options.documents === "single" ? "owned YAML must contain exactly one document." : "at least one YAML document is required."
+    );
+  const values = [];
+  for (const document of documents) {
+    for (const error of [...document.errors, ...document.warnings]) errors.push(error.message);
+    if (document.directives?.yaml.version !== "1.2" || Object.entries(document.directives?.tags ?? {}).some(
+      ([handle, prefix]) => handle !== "!!" || prefix !== "tag:yaml.org,2002:"
+    ))
+      errors.push("only core YAML 1.2 directives and tags are allowed.");
+    (0, import_yaml.visit)(document, {
+      Pair(_key, pair) {
+        if (!(0, import_yaml.isScalar)(pair.key) || typeof pair.key.value !== "string")
+          errors.push("mapping keys must be strings.");
+      }
+    });
+    if (errors.length === 0) {
+      try {
+        values.push(document.toJS({ maxAliasCount: 100 }));
+      } catch (error) {
+        errors.push(errorMessage(error));
+      }
+    }
+  }
+  if (errors.length) throw new Error(`Malformed ${options.name} YAML: ${errors.join("\n")}`);
+  return values;
+}
 
 // tooling/version-policy.ts
 var import_parse = __toESM(require_parse(), 1);
@@ -7954,9 +7991,7 @@ function validateConfigurationDependencies(value) {
   );
 }
 function readLockInventory(source) {
-  const parsed = (0, import_yaml.parseAllDocuments)(source);
-  demand(parsed.length > 0 && parsed.every((doc) => doc.errors.length === 0), "Malformed lockfile YAML.");
-  const values = parsed.map((doc) => doc.toJS());
+  const values = parseOwnedYaml(source, { name: "lockfile", documents: "all" });
   const documents = [];
   const all = /* @__PURE__ */ new Map();
   for (const doc of values) {
@@ -8336,7 +8371,6 @@ async function fingerprintInputs(root, codeFiles, configurationFiles, inventory)
 }
 
 // tooling/security/security-runner.ts
-var import_yaml3 = __toESM(require_dist(), 1);
 import { execFile } from "node:child_process";
 import { lstat as lstat3, readFile as readFile2 } from "node:fs/promises";
 import path3 from "node:path";
@@ -8365,7 +8399,7 @@ async function verifyInstallerEvidence(directory, inventory, data) {
   if (!locked || locked.version !== IDENTITY.version || locked.integrity !== IDENTITY.integrity)
     throw new Error("Installer evidence differs from the locked package identity.");
   const actual = [];
-  async function visit(relative) {
+  async function visit2(relative) {
     const children = await readdir(path2.join(directory, relative));
     if (relative && children.length === 0)
       throw new Error("Installer physical inventory contains an empty directory.");
@@ -8374,12 +8408,12 @@ async function verifyInstallerEvidence(directory, inventory, data) {
       const file = relative ? `${relative}/${name}` : name;
       const stat = await lstat2(path2.join(directory, file));
       if (stat.isSymbolicLink()) throw new Error("Installer physical inventory contains a link.");
-      if (stat.isDirectory()) await visit(file);
+      if (stat.isDirectory()) await visit2(file);
       else if (stat.isFile()) actual.push(file);
       else throw new Error("Installer physical inventory contains a nonregular file.");
     }
   }
-  await visit("");
+  await visit2("");
   const expected = data.files.map((file) => file.path);
   if (new Set(expected).size !== 19 || JSON.stringify(actual.sort()) !== JSON.stringify([...expected].sort()))
     throw new Error("Installer physical file inventory changed.");
@@ -8426,7 +8460,10 @@ async function executePnpm(args, options) {
   }
 }
 async function verifyConfiguration(root, execute, env) {
-  const workspace = (0, import_yaml3.parse)(await readFile2(path3.join(root, "pnpm-workspace.yaml"), "utf8"));
+  const [workspace] = parseOwnedYaml(await readFile2(path3.join(root, "pnpm-workspace.yaml"), "utf8"), {
+    name: "workspace",
+    documents: "single"
+  });
   if (!isRecord(workspace)) throw new Error("Invalid workspace configuration.");
   validateConfigurationDependencies(workspace.configDependencies);
   const effective = await execute(["config", "list", "--json", ...AUDIT_OPTIONS], { cwd: root, env });

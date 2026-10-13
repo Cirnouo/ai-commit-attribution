@@ -58,11 +58,8 @@ export async function readSecurityNotices(dependencies: string, included: readon
             createHash('sha256').update(license).digest('hex') !== dependency.sha256
         )
             throw new Error(`The bundled ${dependency.name} dependency license changed.`);
-        notices.push(
-            Buffer.from(`--- ${dependency.name}@${dependency.version} (ISC) ---\n\n`),
-            license,
-            Buffer.from('\n'),
-        );
+        if (notices.length) notices.push(Buffer.from('\n'));
+        notices.push(Buffer.from(`--- ${dependency.name}@${dependency.version} (ISC) ---\n\n`), license);
     }
     return Buffer.concat(notices);
 }
@@ -110,7 +107,7 @@ export async function verifySecurityFiles(directory: string, files: Map<string, 
         throw new Error('Unexpected physical security inventory.');
     for (const name of SECURITY_OUTPUTS) {
         const expected = files.get(name);
-        const actualBytes = await readRegularFile(path.join(directory, name));
+        const actualBytes = await readRegularFile(path.join(directory, name), { singleLink: true });
         if (!expected?.equals(actualBytes)) throw new Error(`Stale security build: ${name}; run pnpm build:security.`);
     }
 }
@@ -145,6 +142,7 @@ export async function writeSecurityFiles(directory: string, files: Map<string, B
             const stat = await lstat(absolute);
             if (
                 !stat.isFile() ||
+                stat.nlink !== 1 ||
                 stat.isSymbolicLink() ||
                 path.relative(path.resolve(absolute), await realpath(absolute)) !== ''
             )
@@ -171,6 +169,8 @@ export async function writeSecurityFiles(directory: string, files: Map<string, B
             const current = await lstat(absolute);
             if (
                 !before.isFile() ||
+                before.nlink !== 1 ||
+                current.nlink !== 1 ||
                 !current.isFile() ||
                 current.isSymbolicLink() ||
                 before.dev !== current.dev ||

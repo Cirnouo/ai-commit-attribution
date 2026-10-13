@@ -139,3 +139,34 @@ test('owned YAML uses core YAML1.2 and bounded resolved aliases without custom t
         .join('\n');
     assert.ok(validateTextStyle('fixture.yaml', bomb).length > 0);
 });
+
+test('round1 CodeQL includes actual maintained root configs and test sources', async () => {
+    const config: unknown = parse(await readFile(path.join(root, '.github/codeql-config.yaml'), 'utf8'));
+    assert.ok(isRecord(config));
+    const include = config.paths;
+    assert.ok(include === undefined || (Array.isArray(include) && include.every((value) => typeof value === 'string')));
+    const maintained = execFileSync('git', ['ls-files', '--', '*.ts'], { cwd: root, encoding: 'utf8' })
+        .trim()
+        .split('\n');
+    assert.ok(maintained.includes('commitlint.config.ts'));
+    assert.ok(maintained.includes('tests/security-build.test.ts'));
+    for (const file of maintained)
+        assert.ok(
+            include === undefined || include.some((prefix: string) => file === prefix || file.startsWith(`${prefix}/`)),
+            `${file} must be eligible for CodeQL`,
+        );
+});
+
+test('round1 shared YAML profile retains the on key and bounded value alias with single and all documents', async () => {
+    const { parseOwnedYaml } = await import('../tooling/owned-yaml.ts');
+    const values = parseOwnedYaml('on: &safe true\ncopy: *safe\n', { name: 'fixture', documents: 'single' });
+    assert.deepEqual(values, [{ on: true, copy: true }]);
+    assert.deepEqual(parseOwnedYaml('on: true\n---\non: false\n', { name: 'fixture', documents: 'all' }), [
+        { on: true },
+        { on: false },
+    ]);
+    assert.throws(
+        () => parseOwnedYaml('on: true\n---\non: false\n', { name: 'fixture', documents: 'single' }),
+        /exactly one/,
+    );
+});
