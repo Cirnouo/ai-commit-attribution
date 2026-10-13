@@ -19,6 +19,9 @@ with their corresponding features; there are no empty placeholder checks.
 - installer-evidence.test.ts covers the independent official package evidence.
 - security-build.test.ts checks exact generated audit output and notices.
 - typescript-gates.test.ts checks actual type/syntax/erasable-language failures.
+- cli-entry.test.ts invokes all eight guarded CLI entries through real filesystem
+  aliases, checks side-effect-free imports, and proves the standalone security
+  checker audits before installation and rejects unavailable native entry capability.
 
 - issue-policy.test.ts covers current-form classification and Markdown semantics.
 - issue-feedback.test.ts covers simulated REST ownership, races, preservation and

@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMainModule } from './cli-entry.ts';
 import { isRecord } from './errors.ts';
 import { createGitHubIssueRequest, IssueAutomationError, type IssueRequest } from './issue-github.ts';
 import { createIssuePolicy, ISSUE_INVALID_LABEL, type IssueBodyResult, type IssueFormSources } from './issue-policy.ts';
@@ -276,7 +275,7 @@ async function main() {
     if (result.status === 'invalid') process.exitCode = 1;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta)) {
     main().catch((error: unknown) => {
         console.error(
             `Issue feedback automation failed: ${error instanceof IssueAutomationError ? error.message : 'Configuration or unexpected processing failure.'}`,

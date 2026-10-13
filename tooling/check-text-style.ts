@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMainModule } from './cli-entry.ts';
 import { errorMessage } from './errors.ts';
 import { decodeText, validateTextStyle } from './repository-audit.ts';
 export async function checkTextStyle(root: string, arguments_: readonly string[]) {
@@ -13,7 +13,7 @@ export async function checkTextStyle(root: string, arguments_: readonly string[]
     }
     return errors;
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta)) {
     try {
         const errors = await checkTextStyle(process.cwd(), process.argv.slice(2));
         if (errors.length) throw new Error(errors.join('\n'));

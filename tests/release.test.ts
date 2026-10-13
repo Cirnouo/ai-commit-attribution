@@ -875,7 +875,7 @@ test('Git identity uses an annotated tag and accepts historical main commits but
         git(['config', 'user.name', 'Release test']);
         git(['config', 'user.email', 'release@example.invalid']);
         await mkdir(path.join(directory, 'tooling'));
-        for (const file of ['release.ts', 'version-policy.ts', 'errors.ts', 'owned-yaml.ts'])
+        for (const file of ['release.ts', 'version-policy.ts', 'errors.ts', 'owned-yaml.ts', 'cli-entry.ts'])
             await writeFile(
                 path.join(directory, 'tooling', file),
                 await readFile(new URL(`../tooling/${file}`, import.meta.url)),

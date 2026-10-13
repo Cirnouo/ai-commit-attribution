@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainModule } from './cli-entry.ts';
 import { errorMessage, isRecord } from './errors.ts';
 import { parseOwnedYaml } from './owned-yaml.ts';
 import { isReleaseVersion, isStableVersion, validateVersionAgreement } from './version-policy.ts';
@@ -390,7 +391,7 @@ async function main() {
     console.log(`Release ${result.status}: ${result.url}`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta)) {
     main().catch((error: unknown) => {
         console.error(errorMessage(error));
         process.exitCode = 1;

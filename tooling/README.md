@@ -22,6 +22,9 @@ only when the real business distribution is added.
 - check-security.ts and build-security.ts execute and bundle the audit gate.
 - file-evidence.ts provides stable descriptor-based reads.
 - constants.ts and errors.ts provide small shared data/error helpers.
+- cli-entry.ts checks native import.meta.main capability for all guarded CLI
+  entries; aliased paths execute normally and unavailable capability fails closed.
+  The boolean entry identity is documented in the [Node 24.2 release notes](https://nodejs.org/id/blog/release/v24.2.0).
 - security/ owns the dependency graph, registry, evidence and installer modules.
 
 - issue-policy.ts derives typed Issue validation from the current forms.

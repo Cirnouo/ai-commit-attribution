@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMainModule } from './cli-entry.ts';
 import { errorMessage } from './errors.ts';
 import { readRegularFile } from './file-evidence.ts';
 import type { AuditScope, FindingDecision, Fingerprints } from './security/audit-policy.ts';
@@ -81,7 +81,7 @@ export async function checkSecurity(root: string, options: SecurityOptions = {})
     return { ok: Object.values(results).every((result) => result.blocked.length === 0), scopes: results };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta)) {
     try {
         const args = process.argv.slice(2);
         let root: string | undefined;
