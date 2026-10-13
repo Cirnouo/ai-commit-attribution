@@ -1,0 +1,50 @@
+{
+    "name": "ai-commit-attribution",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "license": "MIT",
+    "engines": {
+        "node": "^24.21.0"
+    },
+    "packageManager": "pnpm@12.4.2",
+    "scripts": {
+        "prepare": "husky",
+        "format": "pnpm format:write",
+        "format:write": "biome check --write --files-ignore-unknown=true .",
+        "format:check": "biome check --formatter-enabled=true --linter-enabled=false --assist-enabled=false --files-ignore-unknown=true .",
+        "lint": "biome check --formatter-enabled=false --files-ignore-unknown=true .",
+        "typecheck": "tsc --noEmit",
+        "check:scripts": "node tooling/check-scripts.ts",
+        "test": "node --test --test-concurrency=1 tests/*.test.ts",
+        "test:coverage": "node --experimental-test-coverage --test-coverage-lines=90 --test-coverage-branches=81 --test-coverage-functions=94 --test --test-concurrency=1 tests/*.test.ts",
+        "check:repo": "node tooling/repository-audit.ts",
+        "check:commits": "node tooling/check-commits.ts",
+        "check:security": "node tooling/check-security.ts --root .",
+        "build:security": "node tooling/build-security.ts",
+        "check:security:build": "node tooling/build-security.ts --check",
+        "verify:push": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm check:scripts && pnpm test:coverage && pnpm check:repo && pnpm check:security:build && pnpm check:commits"
+    },
+    "lint-staged": {
+        "*.{ts,mts,cts,json}": "biome check --write --no-errors-on-unmatched",
+        "*.{md,yaml,yml,ps1,psd1,psm1,toml,sh}": "node tooling/check-text-style.ts"
+    },
+    "devDependencies": {
+        "@babel/parser": "7.29.9",
+        "@babel/types": "7.29.8",
+        "@biomejs/biome": "2.5.14",
+        "@commitlint/cli": "21.2.2",
+        "@commitlint/config-conventional": "21.2.2",
+        "@commitlint/types": "21.2.3",
+        "@types/node": "24.19.0",
+        "@types/semver": "7.8.0",
+        "esbuild": "0.28.2",
+        "husky": "9.1.7",
+        "lint-staged": "17.5.1",
+        "semver": "7.8.5",
+        "typescript": "7.0.2",
+        "yaml": "2.9.1",
+        "skills": "1.7.2"
+    },
+    "author": "Cirnouo"
+}

@@ -1,0 +1,12 @@
+.idea/
+.superpowers/
+node_modules/
+coverage/
+test-results/
+.skills-install-test/
+*.log
+.env*
+!.env.example
+.DS_Store
+Thumbs.db
+Desktop.ini

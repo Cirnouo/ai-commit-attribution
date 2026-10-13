@@ -1,0 +1,247 @@
+{
+    "repository": "Cirnouo/ai-commit-attribution",
+    "referenceSourceCommit": "7e5e9ba2248cc67d51e877198a6e3e0b0eb546eb",
+    "note": "Live platform observations are separate from historical source policy. Required context names were observed in successful runs before promotion.",
+    "repositorySettings": {
+        "default_branch": "main",
+        "visibility": "public",
+        "has_issues": true,
+        "has_projects": false,
+        "has_wiki": false,
+        "has_pages": false,
+        "has_downloads": false,
+        "has_discussions": false,
+        "allow_forking": true,
+        "allow_squash_merge": true,
+        "allow_merge_commit": false,
+        "allow_rebase_merge": false,
+        "allow_auto_merge": false,
+        "allow_update_branch": false,
+        "delete_branch_on_merge": false,
+        "squash_merge_commit_title": "PR_TITLE",
+        "squash_merge_commit_message": "PR_BODY",
+        "web_commit_signoff_required": false,
+        "security_and_analysis": {
+            "secret_scanning": {
+                "status": "enabled"
+            },
+            "secret_scanning_push_protection": {
+                "status": "enabled"
+            },
+            "dependabot_security_updates": {
+                "status": "disabled"
+            },
+            "secret_scanning_non_provider_patterns": {
+                "status": "disabled"
+            },
+            "secret_scanning_validity_checks": {
+                "status": "disabled"
+            }
+        }
+    },
+    "actions": {
+        "enabled": true,
+        "allowed_actions": "all",
+        "sha_pinning_required": false
+    },
+    "workflowPermissions": {
+        "default_workflow_permissions": "read",
+        "can_approve_pull_request_reviews": false
+    },
+    "forkApproval": {
+        "approval_policy": "first_time_contributors"
+    },
+    "immutableReleases": {
+        "enabled": true,
+        "enforced_by_owner": false
+    },
+    "privateReporting": {
+        "enabled": true
+    },
+    "automatedSecurityFixes": {
+        "enabled": false,
+        "paused": false
+    },
+    "ruleset": {
+        "id": 24990049,
+        "name": "main governance",
+        "target": "branch",
+        "source_type": "Repository",
+        "source": "Cirnouo/ai-commit-attribution",
+        "enforcement": "active",
+        "conditions": {
+            "ref_name": {
+                "exclude": [],
+                "include": ["refs/heads/main"]
+            }
+        },
+        "rules": [
+            {
+                "type": "deletion"
+            },
+            {
+                "type": "required_linear_history"
+            },
+            {
+                "type": "non_fast_forward"
+            },
+            {
+                "type": "pull_request",
+                "parameters": {
+                    "required_approving_review_count": 0,
+                    "dismiss_stale_reviews_on_push": false,
+                    "required_reviewers": [],
+                    "require_code_owner_review": false,
+                    "require_last_push_approval": false,
+                    "required_review_thread_resolution": false,
+                    "require_extra_approval_for_unattributed_changes": false,
+                    "allowed_merge_methods": ["squash"]
+                }
+            },
+            {
+                "type": "required_status_checks",
+                "parameters": {
+                    "strict_required_status_checks_policy": true,
+                    "do_not_enforce_on_create": false,
+                    "required_status_checks": [
+                        {
+                            "context": "Supply chain security",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Commit messages",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Quality",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Windows tests",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Portable tests (ubuntu-latest)",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "Portable tests (macos-latest)",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "CodeQL (javascript-typescript)",
+                            "integration_id": 15368
+                        },
+                        {
+                            "context": "CodeQL (actions)",
+                            "integration_id": 15368
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "code_scanning",
+                "parameters": {
+                    "code_scanning_tools": [
+                        {
+                            "tool": "CodeQL",
+                            "security_alerts_threshold": "high_or_higher",
+                            "alerts_threshold": "none"
+                        }
+                    ]
+                }
+            }
+        ],
+        "node_id": "RRS_lACqUmVwb3NpdG9yec5Uc3nkzgF9UWE",
+        "created_at": "2026-10-13T18:45:33.871+08:00",
+        "updated_at": "2026-10-13T20:47:22.637+08:00",
+        "bypass_actors": [],
+        "current_user_can_bypass": "never",
+        "_links": {
+            "self": {
+                "href": "https://api.github.com/repos/Cirnouo/ai-commit-attribution/rulesets/24990049"
+            },
+            "html": {
+                "href": "https://github.com/Cirnouo/ai-commit-attribution/rules/24990049"
+            }
+        }
+    },
+    "codeqlDefaultSetup": {
+        "state": "not-configured",
+        "languages": [],
+        "query_suite": "default",
+        "threat_model": "remote",
+        "updated_at": null,
+        "schedule": null,
+        "runner_type": "standard",
+        "runner_label": null
+    },
+    "dependabotAlerts": {
+        "enabled": true,
+        "readBack": "GET vulnerability-alerts returned HTTP 204"
+    },
+    "observedAt": "2026-10-13T12:49:00.001Z",
+    "requiredCheckObservations": {
+        "observedAt": "2026-10-13T12:46:36.681Z",
+        "head": "ba34d6976e6e44f8956accf6903540026f799412",
+        "merge": "712cf767168fc9ab721981a884cdca0566243b63",
+        "observed": [
+            {
+                "context": "Supply chain security",
+                "integration_id": 15368,
+                "check_run_id": 115302682724
+            },
+            {
+                "context": "Commit messages",
+                "integration_id": 15368,
+                "check_run_id": 115302834754
+            },
+            {
+                "context": "Quality",
+                "integration_id": 15368,
+                "check_run_id": 115302834640
+            },
+            {
+                "context": "Windows tests",
+                "integration_id": 15368,
+                "check_run_id": 115303162393
+            },
+            {
+                "context": "Portable tests (ubuntu-latest)",
+                "integration_id": 15368,
+                "check_run_id": 115303161571
+            },
+            {
+                "context": "Portable tests (macos-latest)",
+                "integration_id": 15368,
+                "check_run_id": 115303161600
+            },
+            {
+                "context": "CodeQL (javascript-typescript)",
+                "integration_id": 15368,
+                "check_run_id": 115302684287
+            },
+            {
+                "context": "CodeQL (actions)",
+                "integration_id": 15368,
+                "check_run_id": 115302683300
+            },
+            {
+                "context": "Node compatibility (24.x)",
+                "integration_id": 15368,
+                "check_run_id": 115303161789
+            },
+            {
+                "context": "CodeQL",
+                "integration_id": 57789,
+                "check_run_id": 115302948072
+            }
+        ],
+        "schemaSource": "https://docs.github.com/en/rest/repos/rules?apiVersion=2026-03-10"
+    },
+    "codeqlMode": {
+        "type": "advanced workflow",
+        "workflow": ".github/workflows/codeql.yaml",
+        "successfulRun": "https://github.com/Cirnouo/ai-commit-attribution/actions/runs/38399358424"
+    }
+}
