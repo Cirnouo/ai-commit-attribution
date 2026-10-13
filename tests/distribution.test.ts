@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-test('installed summary runs business success and failures outside source with unchanged Git state and identity', async () => {
+test('installed summary runs business success and failures outside source with unchanged Git state and identity', async (t) => {
     const payload = new URL('../skills/ai-commit-attribution/', import.meta.url);
     assert.ok(existsSync(new URL('scripts/attribution.mjs', payload)), 'PR4 must ship its actual summary bundle');
     const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'skill-installed-')));
@@ -18,6 +18,8 @@ test('installed summary runs business success and failures outside source with u
         const git = (args: string[]) =>
             execFileSync('git', args, { cwd: business, encoding: 'utf8', windowsHide: true });
         git(['init', '--quiet']);
+        await writeFile(path.join(business, ' report.md'), 'whitespace filename\n');
+        await writeFile(path.join(business, 'report.md'), 'distinct filename\n');
         const commonGitDir = await realpath(path.join(business, '.git'));
         const operation = {
             schemaVersion: 1,
@@ -83,6 +85,96 @@ test('installed summary runs business success and failures outside source with u
         assert.equal(JSON.parse(success.stdout).tuples[0].agent, 'Codex App');
         assert.equal(success.stderr, '');
         assert.equal(existsSync(path.join(directory, 'node_modules')), false);
+        await t.test('review F1 installed selected whitespace filename stays exact and mismatch exits 2', async () => {
+            const selected = { ...operation, paths: [' report.md'] };
+            await writeFile(ledgerFile, JSON.stringify({ ...input, operation: selected }));
+            await writeFile(operationFile, JSON.stringify(selected));
+            const result = run(args);
+            assert.equal(result.status, 0, result.stderr);
+            assert.deepEqual(JSON.parse(result.stdout).operation.paths, [' report.md']);
+            await writeFile(operationFile, JSON.stringify({ ...operation, paths: ['report.md'] }));
+            assert.equal(run(args).status, 2);
+        });
+        await t.test('review F1 installed whitespace-distinct event IDs do not enrich each other', async () => {
+            const missing: Record<string, unknown> = { ...event, id: ' event' };
+            delete missing.model;
+            await writeFile(
+                ledgerFile,
+                JSON.stringify({
+                    ...input,
+                    events: [missing, event],
+                    knownParticipants: [{ id: 'actor', eventIds: [' event', 'event'] }],
+                }),
+            );
+            await writeFile(operationFile, JSON.stringify(operation));
+            const result = run(args);
+            assert.equal(result.status, 20, result.stderr);
+            assert.deepEqual(JSON.parse(result.stdout).tuples[0].eventIds, ['event']);
+        });
+        await t.test('review F2 installed contradictory effective mapping exits 20 with no tuple', async () => {
+            const evidence = ['gpt-6.1-sol', 'other-formal-model'].map((model) => ({
+                fields: ['model'],
+                kind: 'handoff',
+                observation: 'effective',
+                reference: `handoff:${model}`,
+                mapping: { route: 'gateway/selected', model },
+            }));
+            await writeFile(
+                ledgerFile,
+                JSON.stringify({
+                    ...input,
+                    events: [{ ...event, modelRoute: 'gateway/selected', evidence: [...event.evidence, ...evidence] }],
+                }),
+            );
+            const result = run(args);
+            assert.equal(result.status, 20, result.stderr);
+            assert.equal(JSON.parse(result.stdout).issues[0].code, 'conflicting-model');
+            assert.equal(JSON.parse(result.stdout).tuples.length, 0);
+        });
+        for (const model of ['unknown', 'N/A', 'null']) {
+            await t.test(`review F3 installed missing model ${model} exits 20`, async () => {
+                await writeFile(ledgerFile, JSON.stringify({ ...input, events: [{ ...event, model }] }));
+                assert.equal(run(args).status, 20);
+            });
+        }
+        await t.test('review F4 installed exception selects one opaque concrete issue', async () => {
+            const gaps = {
+                ...input,
+                events: [],
+                knownParticipants: [
+                    { id: 'a', eventIds: ['b:events'] },
+                    { id: 'a:event:b', eventIds: [] },
+                ],
+            };
+            await writeFile(ledgerFile, JSON.stringify(gaps));
+            const result = run(args);
+            assert.equal(result.status, 20);
+            const summary = JSON.parse(result.stdout);
+            assert.equal(new Set(summary.issues.map((issue: { id: string }) => issue.id)).size, 3);
+            const issueId = summary.issues.find((issue: { code: string }) => issue.code === 'missing-event').id;
+            await writeFile(
+                ledgerFile,
+                JSON.stringify({
+                    ...gaps,
+                    userExceptions: [
+                        {
+                            operationId: operation.id,
+                            issueIds: [issueId],
+                            decision: 'explicit current-operation exception',
+                            reference: 'user:message-7',
+                        },
+                    ],
+                }),
+            );
+            const recorded = run(args);
+            assert.equal(recorded.status, 20);
+            assert.equal(
+                JSON.parse(recorded.stdout).issues.filter((issue: { id: string }) => issue.id === issueId).length,
+                1,
+            );
+        });
+        await writeFile(ledgerFile, JSON.stringify(input));
+        await writeFile(operationFile, JSON.stringify(operation));
         for (const bad of [
             [],
             ['render'],

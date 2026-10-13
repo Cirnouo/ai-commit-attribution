@@ -80,6 +80,10 @@ function text(value) {
   if (typeof value !== "string" || !value.trim()) throw new InputError("Invalid input: expected a nonempty string.");
   return value.trim();
 }
+function opaque(value) {
+  text(value);
+  return value;
+}
 function list(value, parse) {
   if (!Array.isArray(value)) throw new InputError("Invalid input: expected an array.");
   return value.map(parse);
@@ -106,7 +110,7 @@ async function parseOperation(value) {
   ]);
   version(data.schemaVersion);
   async function physical(value2) {
-    const directory = text(value2);
+    const directory = opaque(value2);
     if (!path2.isAbsolute(directory))
       throw new InputError("Invalid input scope: paths must be physical absolute directories.");
     try {
@@ -120,7 +124,8 @@ async function parseOperation(value) {
   }
   const paths = unique(
     list(data.paths, (item) => {
-      const file = text(item);
+      if (typeof item !== "string" || item.length === 0) throw new InputError("Invalid input scope: empty path.");
+      const file = item;
       if (file.includes("\\") || path2.posix.isAbsolute(file) || /^[A-Za-z]:/.test(file) || file.split("/").some((part) => !part || part === "." || part === ".."))
         throw new InputError("Invalid input scope: paths must be repository-relative.");
       return file;
@@ -140,7 +145,7 @@ async function parseOperation(value) {
     throw new InputError("Invalid input scope: unsupported operation kind.");
   return {
     schemaVersion: 1,
-    id: text(data.id),
+    id: opaque(data.id),
     repository: await physical(data.repository),
     worktree: await physical(data.worktree),
     commonGitDir: await physical(data.commonGitDir),
@@ -188,8 +193,8 @@ function parseEvent(value) {
   if (reasoning.state === "unknown" && reasoning.value !== void 0)
     throw new InputError("Invalid input: unknown reasoning has no value.");
   const event = {
-    id: text(data.id),
-    participantId: text(data.participantId),
+    id: opaque(data.id),
+    participantId: opaque(data.participantId),
     task: text(data.task),
     reasoning: reasoning.state === "unknown" ? { state: "unknown" } : { state: "confirmed", value: identity(reasoning.value) },
     evidence: list(data.evidence, parseEvidence)
@@ -207,7 +212,7 @@ async function parseLedger(value) {
   const operation = await parseOperation(data.operation);
   const knownParticipants = list(data.knownParticipants, (item) => {
     const participant = record(item, ["id", "eventIds"]);
-    return { id: text(participant.id), eventIds: unique(list(participant.eventIds, text)) };
+    return { id: opaque(participant.id), eventIds: unique(list(participant.eventIds, opaque)) };
   });
   if (new Set(knownParticipants.map((item) => item.id)).size !== knownParticipants.length)
     throw new InputError("Invalid input: duplicate participant.");
@@ -226,8 +231,8 @@ async function parseLedger(value) {
   const userExceptions = list(data.userExceptions, (item) => {
     const exception = record(item, ["operationId", "issueIds", "decision", "reference"]);
     const result = {
-      operationId: text(exception.operationId),
-      issueIds: unique(list(exception.issueIds, text)),
+      operationId: opaque(exception.operationId),
+      issueIds: unique(list(exception.issueIds, opaque)),
       decision: text(exception.decision),
       reference: text(exception.reference)
     };
@@ -278,13 +283,24 @@ function resolveAgent(event, registry, hostNames) {
     return contextual.name;
   return;
 }
-function resolveModel(event) {
-  if (!event.model || ["auto", "latest"].includes(event.model.toLowerCase()) || !effective(event, "model")) return;
-  if (event.modelRoute && !event.evidence.some(
-    (item) => item.observation === "effective" && item.fields.includes("model") && item.mapping?.route === event.modelRoute && item.mapping?.model === event.model
-  ))
-    return;
-  return event.model;
+function formalCandidate(value) {
+  return value !== void 0 && !["auto", "latest", "unknown", "n/a", "null"].includes(value.toLowerCase());
+}
+function resolveModels(records) {
+  const observations = records.filter((event) => effective(event, "model"));
+  const candidates = unique(observations.map((event) => event.model).filter(formalCandidate));
+  const routes = unique(observations.map((event) => event.modelRoute).filter((route) => route !== void 0));
+  const mappings = observations.flatMap(
+    (event) => event.evidence.filter((item) => item.observation === "effective" && item.fields.includes("model")).flatMap((item) => item.mapping ? [{ event, mapping: item.mapping }] : [])
+  );
+  const values = unique([...candidates, ...mappings.map((item) => item.mapping.model).filter(formalCandidate)]);
+  const conflict = values.length > 1 || mappings.some(
+    ({ event, mapping }) => !formalCandidate(mapping.model) || formalCandidate(event.model) && event.model !== mapping.model || (event.modelRoute !== void 0 ? event.modelRoute !== mapping.route : !routes.includes(mapping.route))
+  );
+  const covered = routes.every(
+    (route) => mappings.some(({ mapping }) => mapping.route === route && mapping.model === candidates[0])
+  );
+  return { values: covered ? candidates : [], conflict };
 }
 function resolveReasoning(event) {
   if (event.reasoning.state !== "confirmed") return { conflict: false };
@@ -323,14 +339,14 @@ async function summarize(input, currentOperation, registryInput) {
     for (const eventId of participant.eventIds)
       if (!groups.has(eventId))
         issues.push({
-          id: `participant:${participant.id}:event:${eventId}`,
+          id: JSON.stringify(["participant", participant.id, "event", eventId]),
           code: "missing-event",
           participantId: participant.id,
           eventId
         });
     if (!ledger.events.some((event) => event.participantId === participant.id))
       issues.push({
-        id: `participant:${participant.id}:events`,
+        id: JSON.stringify(["participant", participant.id, "events"]),
         code: "missing-participant-event",
         participantId: participant.id
       });
@@ -353,7 +369,8 @@ async function summarize(input, currentOperation, registryInput) {
       )
     );
     const agents = invalidHost || candidateAgents.some((agent2) => agent2 === void 0) ? [] : unique(candidateAgents.filter((value) => value !== void 0));
-    const models = unique(records.map(resolveModel).filter((value) => value !== void 0));
+    const modelResolution = resolveModels(records);
+    const models = modelResolution.values;
     const reasoningObservations = records.map(resolveReasoning);
     const efforts = unique(
       reasoningObservations.map((item) => item.value).filter((value) => value !== void 0)
@@ -363,10 +380,10 @@ async function summarize(input, currentOperation, registryInput) {
       ["agent", agents],
       ["model", models]
     ]) {
-      if (values.length !== 1)
+      if (values.length !== 1 || field === "model" && modelResolution.conflict)
         issues.push({
-          id: `event:${eventId}:${field}`,
-          code: values.length ? `conflicting-${field}` : `unresolved-${field}`,
+          id: JSON.stringify(["event", eventId, field]),
+          code: values.length > 1 || field === "model" && modelResolution.conflict ? `conflicting-${field}` : `unresolved-${field}`,
           eventId,
           participantId: first.participantId
         });
@@ -374,13 +391,13 @@ async function summarize(input, currentOperation, registryInput) {
     const reasoning = !reasoningConflict && efforts.length === 1 ? efforts[0] : void 0;
     if (!reasoning)
       diagnostics.push({
-        id: `event:${eventId}:reasoning`,
+        id: JSON.stringify(["event", eventId, "reasoning"]),
         code: reasoningConflict ? "conflicting-reasoning" : "unknown-reasoning",
         eventId,
         participantId: first.participantId
       });
     const agent = agents.length === 1 ? agents[0] : void 0;
-    const model = models.length === 1 ? models[0] : void 0;
+    const model = !modelResolution.conflict && models.length === 1 ? models[0] : void 0;
     if (agent && model) {
       const key = JSON.stringify([agent, model, reasoning ?? null]);
       const tuple = tuples.get(key) ?? {

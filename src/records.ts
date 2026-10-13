@@ -72,6 +72,11 @@ export function text(value: unknown): string {
     if (typeof value !== 'string' || !value.trim()) throw new InputError('Invalid input: expected a nonempty string.');
     return value.trim();
 }
+/** Opaque keys are exact association data, never whitespace-normalized into another key. */
+function opaque(value: unknown): string {
+    text(value);
+    return value as string;
+}
 function list<T>(value: unknown, parse: (item: unknown) => T): T[] {
     if (!Array.isArray(value)) throw new InputError('Invalid input: expected an array.');
     return value.map(parse);
@@ -100,7 +105,7 @@ export async function parseOperation(value: unknown): Promise<Operation> {
     ]);
     version(data.schemaVersion);
     async function physical(value: unknown): Promise<string> {
-        const directory = text(value);
+        const directory = opaque(value);
         if (!path.isAbsolute(directory))
             throw new InputError('Invalid input scope: paths must be physical absolute directories.');
         try {
@@ -114,7 +119,8 @@ export async function parseOperation(value: unknown): Promise<Operation> {
     }
     const paths = unique(
         list(data.paths, (item) => {
-            const file = text(item);
+            if (typeof item !== 'string' || item.length === 0) throw new InputError('Invalid input scope: empty path.');
+            const file = item;
             if (
                 file.includes('\\') ||
                 path.posix.isAbsolute(file) ||
@@ -139,7 +145,7 @@ export async function parseOperation(value: unknown): Promise<Operation> {
         throw new InputError('Invalid input scope: unsupported operation kind.');
     return {
         schemaVersion: 1,
-        id: text(data.id),
+        id: opaque(data.id),
         repository: await physical(data.repository),
         worktree: await physical(data.worktree),
         commonGitDir: await physical(data.commonGitDir),
@@ -188,8 +194,8 @@ function parseEvent(value: unknown): Event {
     if (reasoning.state === 'unknown' && reasoning.value !== undefined)
         throw new InputError('Invalid input: unknown reasoning has no value.');
     const event: Event = {
-        id: text(data.id),
-        participantId: text(data.participantId),
+        id: opaque(data.id),
+        participantId: opaque(data.participantId),
         task: text(data.task),
         reasoning:
             reasoning.state === 'unknown'
@@ -211,7 +217,7 @@ export async function parseLedger(value: unknown): Promise<Ledger> {
     const operation = await parseOperation(data.operation);
     const knownParticipants = list(data.knownParticipants, (item) => {
         const participant = record(item, ['id', 'eventIds']);
-        return { id: text(participant.id), eventIds: unique(list(participant.eventIds, text)) };
+        return { id: opaque(participant.id), eventIds: unique(list(participant.eventIds, opaque)) };
     });
     if (new Set(knownParticipants.map((item) => item.id)).size !== knownParticipants.length)
         throw new InputError('Invalid input: duplicate participant.');
@@ -230,8 +236,8 @@ export async function parseLedger(value: unknown): Promise<Ledger> {
     const userExceptions = list(data.userExceptions, (item) => {
         const exception = record(item, ['operationId', 'issueIds', 'decision', 'reference']);
         const result = {
-            operationId: text(exception.operationId),
-            issueIds: unique(list(exception.issueIds, text)),
+            operationId: opaque(exception.operationId),
+            issueIds: unique(list(exception.issueIds, opaque)),
             decision: text(exception.decision),
             reference: text(exception.reference),
         };

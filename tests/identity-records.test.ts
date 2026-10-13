@@ -291,7 +291,7 @@ test('summary resolves only compatible same-event effective observations and ret
                 userExceptions: [
                     {
                         operationId: 'operation',
-                        issueIds: ['event:first:model'],
+                        issueIds: ['["event","first","model"]'],
                         decision: 'user explicitly accepts missing model for this operation',
                         reference: 'user:message-7',
                     },

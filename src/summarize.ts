@@ -21,20 +21,32 @@ function resolveAgent(event: Event, registry: Registry, hostNames: readonly stri
         return contextual.name;
     return;
 }
-function resolveModel(event: Event): string | undefined {
-    if (!event.model || ['auto', 'latest'].includes(event.model.toLowerCase()) || !effective(event, 'model')) return;
-    if (
-        event.modelRoute &&
-        !event.evidence.some(
-            (item) =>
-                item.observation === 'effective' &&
-                item.fields.includes('model') &&
-                item.mapping?.route === event.modelRoute &&
-                item.mapping?.model === event.model,
-        )
-    )
-        return;
-    return event.model;
+function formalCandidate(value: string | undefined): value is string {
+    return value !== undefined && !['auto', 'latest', 'unknown', 'n/a', 'null'].includes(value.toLowerCase());
+}
+/** Every effective declaration participates before same-event enrichment can select a model. */
+function resolveModels(records: readonly Event[]): { values: string[]; conflict: boolean } {
+    const observations = records.filter((event) => effective(event, 'model'));
+    const candidates = unique(observations.map((event) => event.model).filter(formalCandidate));
+    const routes = unique(observations.map((event) => event.modelRoute).filter((route) => route !== undefined));
+    const mappings = observations.flatMap((event) =>
+        event.evidence
+            .filter((item) => item.observation === 'effective' && item.fields.includes('model'))
+            .flatMap((item) => (item.mapping ? [{ event, mapping: item.mapping }] : [])),
+    );
+    const values = unique([...candidates, ...mappings.map((item) => item.mapping.model).filter(formalCandidate)]);
+    const conflict =
+        values.length > 1 ||
+        mappings.some(
+            ({ event, mapping }) =>
+                !formalCandidate(mapping.model) ||
+                (formalCandidate(event.model) && event.model !== mapping.model) ||
+                (event.modelRoute !== undefined ? event.modelRoute !== mapping.route : !routes.includes(mapping.route)),
+        );
+    const covered = routes.every((route) =>
+        mappings.some(({ mapping }) => mapping.route === route && mapping.model === candidates[0]),
+    );
+    return { values: covered ? candidates : [], conflict };
 }
 function resolveReasoning(event: Event): { value?: string; conflict: boolean } {
     if (event.reasoning.state !== 'confirmed') return { conflict: false };
@@ -77,14 +89,14 @@ export async function summarize(input: unknown, currentOperation: unknown, regis
         for (const eventId of participant.eventIds)
             if (!groups.has(eventId))
                 issues.push({
-                    id: `participant:${participant.id}:event:${eventId}`,
+                    id: JSON.stringify(['participant', participant.id, 'event', eventId]),
                     code: 'missing-event',
                     participantId: participant.id,
                     eventId,
                 });
         if (!ledger.events.some((event) => event.participantId === participant.id))
             issues.push({
-                id: `participant:${participant.id}:events`,
+                id: JSON.stringify(['participant', participant.id, 'events']),
                 code: 'missing-participant-event',
                 participantId: participant.id,
             });
@@ -122,7 +134,8 @@ export async function summarize(input: unknown, currentOperation: unknown, regis
                 invalidHost || candidateAgents.some((agent) => agent === undefined)
                     ? []
                     : unique(candidateAgents.filter((value) => value !== undefined));
-            const models = unique(records.map(resolveModel).filter((value) => value !== undefined));
+            const modelResolution = resolveModels(records);
+            const models = modelResolution.values;
             const reasoningObservations = records.map(resolveReasoning);
             const efforts = unique(
                 reasoningObservations.map((item) => item.value).filter((value) => value !== undefined),
@@ -132,10 +145,13 @@ export async function summarize(input: unknown, currentOperation: unknown, regis
                 ['agent', agents],
                 ['model', models],
             ] as const) {
-                if (values.length !== 1)
+                if (values.length !== 1 || (field === 'model' && modelResolution.conflict))
                     issues.push({
-                        id: `event:${eventId}:${field}`,
-                        code: values.length ? `conflicting-${field}` : `unresolved-${field}`,
+                        id: JSON.stringify(['event', eventId, field]),
+                        code:
+                            values.length > 1 || (field === 'model' && modelResolution.conflict)
+                                ? `conflicting-${field}`
+                                : `unresolved-${field}`,
                         eventId,
                         participantId: first.participantId,
                     });
@@ -143,13 +159,13 @@ export async function summarize(input: unknown, currentOperation: unknown, regis
             const reasoning = !reasoningConflict && efforts.length === 1 ? efforts[0] : undefined;
             if (!reasoning)
                 diagnostics.push({
-                    id: `event:${eventId}:reasoning`,
+                    id: JSON.stringify(['event', eventId, 'reasoning']),
                     code: reasoningConflict ? 'conflicting-reasoning' : 'unknown-reasoning',
                     eventId,
                     participantId: first.participantId,
                 });
             const agent = agents.length === 1 ? agents[0] : undefined;
-            const model = models.length === 1 ? models[0] : undefined;
+            const model = !modelResolution.conflict && models.length === 1 ? models[0] : undefined;
             if (agent && model) {
                 const key = JSON.stringify([agent, model, reasoning ?? null]);
                 const tuple = tuples.get(key) ?? {

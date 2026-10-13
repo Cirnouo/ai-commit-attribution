@@ -8,8 +8,10 @@ prove history and worktree behavior without modifying the contributor checkout.
 Report targeted red/green evidence and measured coverage separately from live
 GitHub/platform acceptance. Mock network tests establish state handling, not live
 publication. identity-records.test.ts covers declared event evidence, participant
-gaps, same-event enrichment, scope consistency and stable tuples. agent-registry.test.ts
-checks production host distinctions. skill-build.test.ts audits nested physical
+gaps, same-event enrichment, scope consistency and stable tuples.
+identity-records-review.test.ts covers exact filename/opaque-ID scope, complete
+effective mapping conflicts, explicit missing-model markers and unique issue joins.
+agent-registry.test.ts checks production host distinctions. skill-build.test.ts audits nested physical
 payloads and unchanged peers on failure; distribution.test.ts executes installed
 summary business paths from outside dependencies with Git-state preservation.
 Later policy, message and real host acceptance are added with those features.

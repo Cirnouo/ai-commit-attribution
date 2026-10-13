@@ -21,14 +21,20 @@ cherry-pick or squash. paths is an explicit list of repository-relative paths
 using forward slashes; targets is a list of unique roles and resolved lowercase
 40- or 64-digit hexadecimal objectIds. Empty paths/targets remain explicit.
 Paths, target order and duplicate paths are canonicalized before complete scope
-comparison. A materially changed operation requires a fresh id. Matching JSON
+comparison by ordering/deduplication only. Filename whitespace is preserved;
+for example, " report.md" and "report.md" select different paths. An empty
+path string is invalid; nonempty whitespace filenames remain representable.
+A materially changed operation requires a fresh id. Matching JSON
 does not establish live Git state or freshness.
 
 knownParticipants is a list of objects with id and eventIds. It is the
 integrator's explicit actual participant inventory. Every event present also
 enters summary accounting, even if omitted from that list. Missing named events
 and participants without an attributable event are concrete gaps. IDs are local
-association keys, not authenticated identities.
+association keys, not authenticated identities. Operation, participant and event
+IDs and their references preserve exact spelling, including surrounding
+whitespace; empty or whitespace-only IDs are invalid. Whitespace-distinct IDs
+never join or enrich each other.
 
 Each event has id, participantId, task, reasoning and evidence. Optional agent,
 host, model and modelRoute carry candidate identities. One effective identity
@@ -57,9 +63,19 @@ them; the integrator must establish trustworthy provenance externally.
 Reasoning evidence must declare nativeReasoning enabled or disabled to support
 the corresponding effective value. For routed models, modelRoute preserves the
 original route and an effective model evidence item must supply mapping with
-matching route and formal model values. Verify the supplier mapping externally;
+matching route and formal model values. All effective same-event model
+candidates and mappings participate in resolution. Their formal model values
+must agree, each mapping must agree with its record's supplied candidate/route,
+and every declared effective route needs matching same-event mapping evidence.
+A record without its own route can use the same event's declared route.
+Compatible repeated records may supply missing mapping evidence; incompatible
+effective declarations remain required conflicts (exit 20) with no resolved
+tuple. Requested, capability and display mappings do not establish or override
+effective dispatch. Verify the supplier mapping externally;
 public support tables establish capability only. Preserve formal supplier model
-punctuation/version/snapshot exactly. auto/latest remain unresolved. Provider,
+punctuation/version/snapshot exactly. The explicit missing-model markers auto,
+latest, unknown, N/A and null are matched case-insensitively and remain
+unresolved; this bounded marker check is not a supplier model catalogue. Provider,
 Agent product and gateway identities are different roles.
 
 Use exact registry names/aliases. familyAliases maps only registered family
@@ -78,7 +94,12 @@ trailer or erases conflicting source records.
 
 userExceptions remains separate from identity evidence. Each item has operationId,
 issueIds, decision and reference. It must reference this operation and actual
-summary issue IDs. It records a declared explicit user decision for those issues;
+summary issue IDs. Issue IDs are JSON-encoded component arrays: event issues use
+["event", eventId, field], missing-event issues use
+["participant", participantId, "event", eventId], and missing-participant-event
+issues use ["participant", participantId, "events"]. Use the returned ID string
+verbatim in issueIds; delimiter concatenation cannot identify opaque components.
+It records a declared explicit user decision for those issues;
 it neither erases a gap nor proves consent, and cannot become a permanent
 default. Later application requires checking the actual user decision, current
 scope and existing operation authorization. A request, timeout, failed question
