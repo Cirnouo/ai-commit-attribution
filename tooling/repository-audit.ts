@@ -5,6 +5,7 @@ import { isMainModule } from './cli-entry.ts';
 import { errorMessage, isRecord } from './errors.ts';
 import { readRegularFile } from './file-evidence.ts';
 import { parseOwnedYaml } from './owned-yaml.ts';
+import { SKILL_FILES, SKILL_ROOT } from './skill-inventory.ts';
 import { scanSubmissionMarkdown } from './submission-markdown.ts';
 import { isSemVer } from './version-policy.ts';
 
@@ -64,8 +65,11 @@ export async function auditRepository(root: string): Promise<string[]> {
             continue;
         }
         files.set(file, source);
-        if (file !== 'tooling/security/dist/check-security.mjs') errors.push(...validateTextStyle(file, source));
-        if (/\.(?:mjs|cjs|js)$/.test(file) && file !== 'tooling/security/dist/check-security.mjs')
+        const generated =
+            file === 'tooling/security/dist/check-security.mjs' ||
+            SKILL_FILES.some((name) => file === `${SKILL_ROOT}/${name}`);
+        if (!generated) errors.push(...validateTextStyle(file, source));
+        if (/\.(?:mjs|cjs|js)$/.test(file) && !generated)
             errors.push(`${file}: maintained Node code must be TypeScript.`);
         try {
             if (/\.json$/.test(file)) JSON.parse(source);
@@ -110,7 +114,13 @@ export async function auditRepository(root: string): Promise<string[]> {
         }),
     );
     for (const directory of directories) {
-        if (directory === 'tooling/security/dist') continue;
+        if (
+            directory === 'tooling/security/dist' ||
+            directory === SKILL_ROOT ||
+            directory === `${SKILL_ROOT}/references` ||
+            directory === `${SKILL_ROOT}/scripts`
+        )
+            continue;
         const index = directory === '.github' ? 'INDEX.md' : 'README.md';
         if (!files.has(`${directory}/${index}`))
             errors.push(`${directory}: add ${index} describing immediate contents.`);

@@ -7,8 +7,10 @@ not change policy inputs during validation.
 
 The security directory owns audit policy, evidence and standalone generated
 auditor output. Generated auditor bytes and notices are compared against their
-build and independent allowed inventory. Runtime Skill tooling is introduced
-only when the real business distribution is added.
+build and independent allowed inventory. build-skill.ts builds the actual summary
+payload, skill-inventory.ts owns the independent allowed packaging/output paths,
+and check-distribution.ts audits all installed metadata, links, bytes and physical
+entries. The business notices set is derived separately from its actual metafile.
 
 - governance.ts, commit-footer-rule.ts and version-policy.ts own shared grammars.
 - commit-vocabulary.ts owns dependency-free frozen types/scopes; commitlint imports

@@ -186,6 +186,48 @@ test('lockfile preflight audits all dependencies without an installed tree or up
     }
 });
 
+test('security review fingerprints bind installed business bytes and maintained/installed behavior resources', async () => {
+    const root = await lockProject();
+    const execute: import('../tooling/security/security-runner.ts').PnpmExecutor = async (args) => {
+        if (args[0] === 'config')
+            return {
+                exitCode: 0,
+                stdout: JSON.stringify({ ...INSTALL_POLICY, allowBuilds: { 'esbuild@0.28.2': true } }),
+            };
+        if (args[0] === 'install') return { exitCode: 0, stdout: '' };
+        if (args.includes('signatures'))
+            return { exitCode: 0, stdout: '{"audited":3,"verified":3,"invalid":[],"missing":[]}' };
+        return { exitCode: 1, stdout: JSON.stringify(audit('moderate')) };
+    };
+    try {
+        const files = [
+            'skills/ai-commit-attribution/scripts/attribution.mjs',
+            'packaging/agent-registry.json',
+            'packaging/SKILL.md',
+            'packaging/records.md',
+            'skills/ai-commit-attribution/references/agent-registry.json',
+            'skills/ai-commit-attribution/references/records.md',
+            'skills/ai-commit-attribution/SKILL.md',
+        ];
+        for (const file of files) {
+            await mkdir(path.dirname(path.join(root, file)), { recursive: true });
+            await writeFile(path.join(root, file), 'original\n');
+        }
+        for (const file of files) {
+            const before = (await checkSecurity(root, { phase: 'lockfile', now, execute })).scopes.repository
+                .fingerprints;
+            await writeFile(path.join(root, file), 'changed\n');
+            const after = (await checkSecurity(root, { phase: 'lockfile', now, execute })).scopes.repository
+                .fingerprints;
+            const set = file.endsWith('.mjs') ? 'code' : 'configuration';
+            assert.notEqual(before[set], after[set], `${file} must invalidate reviewed exceptions`);
+            await writeFile(path.join(root, file), 'original\n');
+        }
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
 test('preflight rejects manifest mismatches before executing pnpm', async () => {
     const root = await lockProject();
     let calls = 0;

@@ -1,0 +1,302 @@
+{
+    "schemaVersion": 1,
+    "verifiedAt": "2026-10-14",
+    "hosts": [
+        {
+            "name": "Codex CLI",
+            "officialProduct": "Codex",
+            "aliases": [],
+            "family": "Codex",
+            "host": "cli",
+            "sources": [
+                "https://learn.chatgpt.com/docs/cli/reference",
+                "https://learn.chatgpt.com/docs/customization/overview"
+            ],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Codex App",
+            "officialProduct": "Codex",
+            "aliases": [],
+            "family": "Codex",
+            "host": "desktop",
+            "sources": [
+                "https://learn.chatgpt.com/docs/customization/overview",
+                "https://learn.chatgpt.com/docs/build-skills"
+            ],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Codex IDE Extension",
+            "officialProduct": "Codex",
+            "aliases": [],
+            "family": "Codex",
+            "host": "ide-extension",
+            "sources": [
+                "https://learn.chatgpt.com/docs/customization/overview",
+                "https://learn.chatgpt.com/docs/build-skills"
+            ],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Claude Code CLI",
+            "officialProduct": "Claude Code",
+            "aliases": [],
+            "family": "Claude Code",
+            "host": "cli",
+            "sources": ["https://code.claude.com/docs/en/skills", "https://code.claude.com/docs/en/model-config"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Claude Code Desktop",
+            "officialProduct": "Claude Code",
+            "aliases": [],
+            "family": "Claude Code",
+            "host": "desktop",
+            "sources": ["https://code.claude.com/docs/en/desktop"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "OpenCode CLI",
+            "officialProduct": "OpenCode",
+            "aliases": [],
+            "family": "OpenCode",
+            "host": "cli",
+            "sources": ["https://opencode.ai/docs/", "https://opencode.ai/docs/skills/"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "OpenCode Desktop",
+            "officialProduct": "OpenCode",
+            "aliases": [],
+            "family": "OpenCode",
+            "host": "desktop",
+            "sources": ["https://opencode.ai/docs/", "https://docs.opencode.ai/docs/windows-wsl/"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "OpenCode Web",
+            "officialProduct": "OpenCode",
+            "aliases": [],
+            "family": "OpenCode",
+            "host": "web",
+            "sources": ["https://opencode.ai/docs/"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "DeepSeek Harness Desktop",
+            "officialProduct": "DeepSeek Harness",
+            "aliases": [],
+            "family": "DeepSeek Harness",
+            "host": "desktop",
+            "sources": ["https://www.deepseek.com/en/harness/", "https://github.com/deepseek-ai/deepseek-harness"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "DeepSeek Harness Web",
+            "officialProduct": "DeepSeek Harness",
+            "aliases": [],
+            "family": "DeepSeek Harness",
+            "host": "web",
+            "sources": ["https://www.deepseek.com/en/harness/", "https://github.com/deepseek-ai/deepseek-harness"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "GitHub Copilot CLI",
+            "officialProduct": "GitHub Copilot",
+            "aliases": [],
+            "family": "GitHub Copilot",
+            "host": "cli",
+            "sources": [
+                "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills",
+                "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference"
+            ],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "GitHub Copilot for VS Code",
+            "officialProduct": "GitHub Copilot",
+            "aliases": [],
+            "family": "GitHub Copilot",
+            "host": "vscode-extension",
+            "sources": [
+                "https://code.visualstudio.com/docs/agent-customization/agent-skills",
+                "https://code.visualstudio.com/docs/agent-customization/language-models"
+            ],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Cursor CLI",
+            "officialProduct": "Cursor",
+            "aliases": [],
+            "family": "Cursor",
+            "host": "cli",
+            "sources": ["https://docs.cursor.com/en/cli/overview", "https://cursor.com/docs/skills"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Cursor IDE",
+            "officialProduct": "Cursor",
+            "aliases": [],
+            "family": "Cursor",
+            "host": "ide",
+            "sources": ["https://cursor.com/docs/skills", "https://prod.cursor.com/docs/release-notes"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Cursor Cloud Agent",
+            "officialProduct": "Cursor",
+            "aliases": [],
+            "family": "Cursor",
+            "host": "cloud",
+            "sources": ["https://prod.cursor.com/help/ai-features/cloud-agents"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Gemini CLI",
+            "officialProduct": "Gemini CLI",
+            "aliases": [],
+            "family": "Gemini CLI",
+            "host": "cli",
+            "sources": [
+                "https://geminicli.com/docs/cli/using-agent-skills/",
+                "https://geminicli.com/docs/reference/configuration/"
+            ],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Cline for VS Code",
+            "officialProduct": "Cline",
+            "aliases": [],
+            "family": "Cline",
+            "host": "vscode-extension",
+            "sources": ["https://docs.cline.bot/customization/skills", "https://github.com/cline/cline"],
+            "verifiedAt": "2026-10-14"
+        },
+        {
+            "name": "Roo Code for VS Code",
+            "officialProduct": "Roo Code",
+            "aliases": [],
+            "family": "Roo Code",
+            "host": "vscode-extension",
+            "sources": ["https://roocodeinc.github.io/Roo-Code/features/skills/"],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "goose CLI",
+            "officialProduct": "goose",
+            "aliases": [],
+            "family": "goose",
+            "host": "cli",
+            "sources": [
+                "https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/context-engineering/using-skills.md"
+            ],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "goose Desktop",
+            "officialProduct": "goose",
+            "aliases": [],
+            "family": "goose",
+            "host": "desktop",
+            "sources": [
+                "https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/context-engineering/using-skills.md"
+            ],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "aider CLI",
+            "officialProduct": "aider",
+            "aliases": [],
+            "family": "aider",
+            "host": "cli",
+            "sources": [
+                "https://aider.chat/docs/usage/conventions.html",
+                "https://aider.chat/docs/usage/commands.html"
+            ],
+            "verifiedAt": "2026-10-13"
+        },
+        {
+            "name": "Pi CLI",
+            "officialProduct": "Pi",
+            "aliases": ["pi CLI"],
+            "family": "Pi",
+            "host": "cli",
+            "sources": [
+                "https://pi.dev/",
+                "https://pi.dev/docs/latest/cli",
+                "https://github.com/earendil-works/pi/blob/e6220e1316f86af818a0ccbfe1c09d7e918b41cf/packages/coding-agent/src/core/skills.ts"
+            ],
+            "verifiedAt": "2026-10-13",
+            "versionEvidence": [
+                "e6220e1316f86af818a0ccbfe1c09d7e918b41cf: Inspected Pi skill-discovery implementation; this is not a minimum supported runtime version. https://github.com/earendil-works/pi/blob/e6220e1316f86af818a0ccbfe1c09d7e918b41cf/packages/coding-agent/src/core/package-manager.ts"
+            ]
+        },
+        {
+            "name": "oh-my-pi CLI",
+            "officialProduct": "oh-my-pi",
+            "aliases": ["omp CLI", "OMP CLI"],
+            "family": "oh-my-pi",
+            "host": "cli",
+            "sources": [
+                "https://github.com/can1357/oh-my-pi",
+                "https://omp.sh/",
+                "https://github.com/can1357/oh-my-pi/blob/818dd42b73ab1caad17fa06d4edcc3a97086dc57/docs/cli-reference.md"
+            ],
+            "verifiedAt": "2026-10-13",
+            "versionEvidence": [
+                "818dd42b73ab1caad17fa06d4edcc3a97086dc57: Inspected independent fork's CLI and skill-discovery implementation; this is not a minimum supported runtime version. https://github.com/can1357/oh-my-pi/blob/818dd42b73ab1caad17fa06d4edcc3a97086dc57/docs/skills.md"
+            ]
+        }
+    ],
+    "ambiguousAliases": [
+        "Codex",
+        "codex",
+        "Claude Code",
+        "ClaudeCode",
+        "OpenCode",
+        "Opencode",
+        "opencode",
+        "DeepSeek Harness",
+        "Deepseek Harness",
+        "dsh",
+        "GitHub Copilot",
+        "Copilot",
+        "GitHub Copilot IDE",
+        "Cursor",
+        "Gemini",
+        "Cline",
+        "Roo Code",
+        "goose",
+        "aider",
+        "Pi",
+        "pi",
+        "oh-my-pi",
+        "omp",
+        "OMP"
+    ],
+    "familyAliases": {
+        "codex": "Codex",
+        "ClaudeCode": "Claude Code",
+        "Opencode": "OpenCode",
+        "opencode": "OpenCode",
+        "Deepseek Harness": "DeepSeek Harness",
+        "dsh": "DeepSeek Harness",
+        "Copilot": "GitHub Copilot",
+        "pi": "Pi",
+        "omp": "oh-my-pi",
+        "OMP": "oh-my-pi"
+    },
+    "limitations": [
+        "Dataset verifiedAt is the latest source-verification calendar date in Asia/Shanghai. Twenty-two hosts retain recovered research verified on 2026-10-13; only Cline for VS Code received the narrow 2026-10-14 source check. Other sources were not re-fetched.",
+        "Official documentation and source revisions establish product or host capability, not any event's actual host, model, reasoning, discovery, loading, installed state or commit-path execution.",
+        "Canonical host labels and explicit aliases are this Skill's naming policy; officialProduct preserves official product spelling. These labels are not a vendor-unified attribution standard.",
+        "The host inventory is intentionally incomplete. A family with one registered host still requires explicit trustworthy host evidence; its unqualified family name does not select that host.",
+        "The narrow Cline follow-up verified its VS Code extension identity from the official repository linked by Cline documentation. Other advertised Cline hosts did not receive equivalent independent discovery/loading/configuration research and are not registered here.",
+        "GitHub Copilot JetBrains and Visual Studio hosts, other remote/cloud variants, and arbitrary SDK/ACP embedded hosts remain outside the recovered per-host research.",
+        "Pi and oh-my-pi are independent products. Their TUI, print and JSON modes remain CLI modes; RPC/SDK/ACP interfaces, browser guests and desktop-control tools do not establish separate Desktop host products.",
+        "Pi and oh-my-pi pinned revisions identify inspected implementation evidence, not minimum supported runtime versions or a guarantee for other releases.",
+        "Native Agent Skills discovery for aider was not established by the recovered research; this is an evidence gap, not a claim that such discovery is unsupported.",
+        "Public model support tables, configured routes, Auto selections and requested effort are not proof of actual supplier dispatch or effective native reasoning."
+    ]
+}

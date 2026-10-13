@@ -23,7 +23,11 @@
         "check:security": "node tooling/check-security.ts --root .",
         "build:security": "node tooling/build-security.ts",
         "check:security:build": "node tooling/build-security.ts --check",
-        "verify:push": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm check:scripts && pnpm test:coverage && pnpm check:repo && pnpm check:security:build && pnpm check:commits"
+        "build:skill": "node tooling/build-skill.ts",
+        "check:build": "node tooling/build-skill.ts --check",
+        "check:distribution": "node tooling/check-distribution.ts",
+        "test:distribution": "node --test tests/distribution.test.ts",
+        "verify:push": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm check:scripts && pnpm test:coverage && pnpm check:build && pnpm check:distribution && pnpm test:distribution && pnpm check:repo && pnpm check:security:build && pnpm check:commits"
     },
     "lint-staged": {
         "*.{ts,mts,cts,json}": "biome check --write --no-errors-on-unmatched",

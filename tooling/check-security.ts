@@ -10,6 +10,7 @@ import { evaluateFindings, readLockInventory, validateExceptions } from './secur
 import { fingerprintInputs } from './security/security-evidence.ts';
 import type { PnpmExecutor, ScanResult } from './security/security-runner.ts';
 import { scanRepository } from './security/security-runner.ts';
+import { PACKAGING_FILES, SKILL_FILES, SKILL_ROOT } from './skill-inventory.ts';
 
 type SecurityOptions = { phase?: string; now?: Date; execute?: PnpmExecutor };
 type ScopeResult = FindingDecision & { signatures: ScanResult['signatures']; fingerprints: Fingerprints };
@@ -31,9 +32,15 @@ export async function checkSecurity(root: string, options: SecurityOptions = {})
     const exceptionPath = path.join(root, 'docs/policies/security-exceptions.json');
     const exceptionBytes = await readRegularFile(exceptionPath);
     const exceptions = validateExceptions(JSON.parse(exceptionBytes.toString('utf8')), options.now);
-    const code = paths.filter((file) => /^(?:src|tooling)\/.*\.(?:ts|mts|cts|mjs|cjs|ps1)$/.test(file));
+    const code = paths.filter(
+        (file) =>
+            /^(?:src|tooling)\/.*\.(?:ts|mts|cts|mjs|cjs|ps1)$/.test(file) ||
+            file === `${SKILL_ROOT}/scripts/attribution.mjs`,
+    );
     const configuration = paths.filter(
         (file) =>
+            PACKAGING_FILES.some((name) => name !== 'README.md' && file === `packaging/${name}`) ||
+            SKILL_FILES.some((name) => !name.endsWith('.mjs') && file === `${SKILL_ROOT}/${name}`) ||
             /^\.github\/.*\.yaml$/.test(file) ||
             file === '.github/ISSUE_TEMPLATE/config.yml' ||
             /^\.husky\/[^/]+$/.test(file) ||
