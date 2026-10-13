@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { errorMessage, isRecord } from './errors.ts';
+import { readRegularFile } from './file-evidence.ts';
 import { parseOwnedYaml } from './owned-yaml.ts';
 import { scanSubmissionMarkdown } from './submission-markdown.ts';
 import { isSemVer } from './version-policy.ts';
@@ -55,13 +56,9 @@ export async function auditRepository(root: string): Promise<string[]> {
     const files = new Map<string, string>();
     for (const file of paths) {
         const absolute = path.resolve(root, file);
-        if (!lstatSync(absolute).isFile() || path.relative(absolute, realpathSync(absolute)) !== '') {
-            errors.push(`${file}: repository evidence must be a regular file without links.`);
-            continue;
-        }
         let source: string;
         try {
-            source = decodeText(file, readFileSync(absolute));
+            source = decodeText(file, await readRegularFile(absolute, { physicalPath: true }));
         } catch (error) {
             errors.push(errorMessage(error));
             continue;

@@ -1,5 +1,6 @@
 import { type BigIntStats, constants } from 'node:fs';
-import { lstat, open } from 'node:fs/promises';
+import { lstat, open, realpath } from 'node:fs/promises';
+import path from 'node:path';
 
 interface EvidenceHandle {
     stat(): Promise<BigIntStats>;
@@ -25,6 +26,7 @@ export async function readRegularFile(
     file: string,
     io: {
         singleLink?: boolean;
+        physicalPath?: boolean;
         lstat?: (file: string) => Promise<BigIntStats>;
         open?: (file: string, flags: number) => Promise<EvidenceHandle>;
     } = {},
@@ -48,6 +50,8 @@ export async function readRegularFile(
         if (!before.isFile()) throw new Error('Evidence must be a regular file without links.');
         if (io.singleLink && before.nlink !== 1n) throw new Error('Output evidence must have a single link.');
         if (!unchanged(before, await inspect(file))) throw new Error('Evidence file identity or metadata changed.');
+        if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== '')
+            throw new Error('Evidence path must be physical and contain no links.');
         const bytes = await handle.readFile();
         if (
             !unchanged(before, await handle.stat()) ||
@@ -55,6 +59,8 @@ export async function readRegularFile(
             BigInt(bytes.length) !== before.size
         )
             throw new Error('Evidence file identity or metadata changed.');
+        if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== '')
+            throw new Error('Evidence path changed during descriptor read.');
         return bytes;
     } finally {
         await handle.close();

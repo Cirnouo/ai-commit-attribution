@@ -112,17 +112,17 @@ var require_visit = __commonJS({
     visit2.BREAK = BREAK;
     visit2.SKIP = SKIP;
     visit2.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path5) {
-      const ctrl = callVisitor(key, node, visitor, path5);
+    function visit_(key, node, visitor, path6) {
+      const ctrl = callVisitor(key, node, visitor, path6);
       if (identity2.isNode(ctrl) || identity2.isPair(ctrl)) {
-        replaceNode(key, path5, ctrl);
-        return visit_(key, ctrl, visitor, path5);
+        replaceNode(key, path6, ctrl);
+        return visit_(key, ctrl, visitor, path6);
       }
       if (typeof ctrl !== "symbol") {
         if (identity2.isCollection(node)) {
-          path5 = Object.freeze(path5.concat(node));
+          path6 = Object.freeze(path6.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path5);
+            const ci = visit_(i, node.items[i], visitor, path6);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -133,13 +133,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity2.isPair(node)) {
-          path5 = Object.freeze(path5.concat(node));
-          const ck = visit_("key", node.key, visitor, path5);
+          path6 = Object.freeze(path6.concat(node));
+          const ck = visit_("key", node.key, visitor, path6);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path5);
+          const cv = visit_("value", node.value, visitor, path6);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -160,17 +160,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path5) {
-      const ctrl = await callVisitor(key, node, visitor, path5);
+    async function visitAsync_(key, node, visitor, path6) {
+      const ctrl = await callVisitor(key, node, visitor, path6);
       if (identity2.isNode(ctrl) || identity2.isPair(ctrl)) {
-        replaceNode(key, path5, ctrl);
-        return visitAsync_(key, ctrl, visitor, path5);
+        replaceNode(key, path6, ctrl);
+        return visitAsync_(key, ctrl, visitor, path6);
       }
       if (typeof ctrl !== "symbol") {
         if (identity2.isCollection(node)) {
-          path5 = Object.freeze(path5.concat(node));
+          path6 = Object.freeze(path6.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path5);
+            const ci = await visitAsync_(i, node.items[i], visitor, path6);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -181,13 +181,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity2.isPair(node)) {
-          path5 = Object.freeze(path5.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path5);
+          path6 = Object.freeze(path6.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path6);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path5);
+          const cv = await visitAsync_("value", node.value, visitor, path6);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -214,23 +214,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path5) {
+    function callVisitor(key, node, visitor, path6) {
       if (typeof visitor === "function")
-        return visitor(key, node, path5);
+        return visitor(key, node, path6);
       if (identity2.isMap(node))
-        return visitor.Map?.(key, node, path5);
+        return visitor.Map?.(key, node, path6);
       if (identity2.isSeq(node))
-        return visitor.Seq?.(key, node, path5);
+        return visitor.Seq?.(key, node, path6);
       if (identity2.isPair(node))
-        return visitor.Pair?.(key, node, path5);
+        return visitor.Pair?.(key, node, path6);
       if (identity2.isScalar(node))
-        return visitor.Scalar?.(key, node, path5);
+        return visitor.Scalar?.(key, node, path6);
       if (identity2.isAlias(node))
-        return visitor.Alias?.(key, node, path5);
+        return visitor.Alias?.(key, node, path6);
       return void 0;
     }
-    function replaceNode(key, path5, node) {
-      const parent = path5[path5.length - 1];
+    function replaceNode(key, path6, node) {
+      const parent = path6[path6.length - 1];
       if (identity2.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity2.isPair(parent)) {
@@ -842,10 +842,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity2 = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path5, value) {
+    function collectionFromPath(schema, path6, value) {
       let v = value;
-      for (let i = path5.length - 1; i >= 0; --i) {
-        const k = path5[i];
+      for (let i = path6.length - 1; i >= 0; --i) {
+        const k = path6[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -864,7 +864,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path5) => path5 == null || typeof path5 === "object" && !!path5[Symbol.iterator]().next().done;
+    var isEmptyPath = (path6) => path6 == null || typeof path6 === "object" && !!path6[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -894,11 +894,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path5, value) {
-        if (isEmptyPath(path5))
+      addIn(path6, value) {
+        if (isEmptyPath(path6))
           this.add(value);
         else {
-          const [key, ...rest] = path5;
+          const [key, ...rest] = path6;
           const node = this.get(key, true);
           if (identity2.isCollection(node))
             node.addIn(rest, value);
@@ -912,8 +912,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path5) {
-        const [key, ...rest] = path5;
+      deleteIn(path6) {
+        const [key, ...rest] = path6;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -927,8 +927,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path5, keepScalar) {
-        const [key, ...rest] = path5;
+      getIn(path6, keepScalar) {
+        const [key, ...rest] = path6;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity2.isScalar(node) ? node.value : node;
@@ -946,8 +946,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path5) {
-        const [key, ...rest] = path5;
+      hasIn(path6) {
+        const [key, ...rest] = path6;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -957,8 +957,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path5, value) {
-        const [key, ...rest] = path5;
+      setIn(path6, value) {
+        const [key, ...rest] = path6;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3473,9 +3473,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path5, value) {
+      addIn(path6, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path5, value);
+          this.contents.addIn(path6, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3550,14 +3550,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path5) {
-        if (Collection.isEmptyPath(path5)) {
+      deleteIn(path6) {
+        if (Collection.isEmptyPath(path6)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path5) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path6) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3572,10 +3572,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path5, keepScalar) {
-        if (Collection.isEmptyPath(path5))
+      getIn(path6, keepScalar) {
+        if (Collection.isEmptyPath(path6))
           return !keepScalar && identity2.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity2.isCollection(this.contents) ? this.contents.getIn(path5, keepScalar) : void 0;
+        return identity2.isCollection(this.contents) ? this.contents.getIn(path6, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3586,10 +3586,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path5) {
-        if (Collection.isEmptyPath(path5))
+      hasIn(path6) {
+        if (Collection.isEmptyPath(path6))
           return this.contents !== void 0;
-        return identity2.isCollection(this.contents) ? this.contents.hasIn(path5) : false;
+        return identity2.isCollection(this.contents) ? this.contents.hasIn(path6) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3606,13 +3606,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path5, value) {
-        if (Collection.isEmptyPath(path5)) {
+      setIn(path6, value) {
+        if (Collection.isEmptyPath(path6)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path5), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path6), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path5, value);
+          this.contents.setIn(path6, value);
         }
       }
       /**
@@ -5573,9 +5573,9 @@ var require_cst_visit = __commonJS({
     visit2.BREAK = BREAK;
     visit2.SKIP = SKIP;
     visit2.REMOVE = REMOVE;
-    visit2.itemAtPath = (cst, path5) => {
+    visit2.itemAtPath = (cst, path6) => {
       let item = cst;
-      for (const [field, index] of path5) {
+      for (const [field, index] of path6) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5584,23 +5584,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit2.parentCollection = (cst, path5) => {
-      const parent = visit2.itemAtPath(cst, path5.slice(0, -1));
-      const field = path5[path5.length - 1][0];
+    visit2.parentCollection = (cst, path6) => {
+      const parent = visit2.itemAtPath(cst, path6.slice(0, -1));
+      const field = path6[path6.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path5, item, visitor) {
-      let ctrl = visitor(item, path5);
+    function _visit(path6, item, visitor) {
+      let ctrl = visitor(item, path6);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path5.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path6.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5611,10 +5611,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path5);
+            ctrl = ctrl(item, path6);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path5) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path6) : ctrl;
     }
     exports.visit = visit2;
   }
@@ -7857,7 +7857,7 @@ var require_parse = __commonJS({
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { lstat as lstat4, readFile as readFile3 } from "node:fs/promises";
-import path4 from "node:path";
+import path5 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // tooling/errors.ts
@@ -7873,7 +7873,8 @@ function errorCode(error) {
 
 // tooling/file-evidence.ts
 import { constants } from "node:fs";
-import { lstat, open } from "node:fs/promises";
+import { lstat, open, realpath } from "node:fs/promises";
+import path from "node:path";
 function sameFile(expected, actual) {
   return actual.isFile() && !actual.isSymbolicLink() && expected.dev === actual.dev && expected.ino === actual.ino;
 }
@@ -7896,9 +7897,13 @@ async function readRegularFile(file, io = {}) {
     if (!before.isFile()) throw new Error("Evidence must be a regular file without links.");
     if (io.singleLink && before.nlink !== 1n) throw new Error("Output evidence must have a single link.");
     if (!unchanged(before, await inspect(file))) throw new Error("Evidence file identity or metadata changed.");
+    if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== "")
+      throw new Error("Evidence path must be physical and contain no links.");
     const bytes = await handle.readFile();
     if (!unchanged(before, await handle.stat()) || !unchanged(before, await inspect(file)) || BigInt(bytes.length) !== before.size)
       throw new Error("Evidence file identity or metadata changed.");
+    if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== "")
+      throw new Error("Evidence path changed during descriptor read.");
     return bytes;
   } finally {
     await handle.close();
@@ -8261,7 +8266,7 @@ function evaluateFindings(findings, exceptions, contexts) {
 var import_yaml2 = __toESM(require_dist(), 1);
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
+import path2 from "node:path";
 
 // tooling/constants.ts
 var NPM_REGISTRY = "https://registry.npmjs.org";
@@ -8328,7 +8333,7 @@ async function verifyLockManifest(root, inventory) {
   const runtime = inventory.documents.filter((doc) => !doc.importers["."]?.packageManagerDependencies);
   const document = runtime[0];
   if (runtime.length !== 1 || !document) throw new Error("Lockfile must have exactly one runtime dependency graph.");
-  const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+  const manifest = JSON.parse(await readFile(path2.join(root, "package.json"), "utf8"));
   if (!isRecord(manifest)) throw new Error("Invalid dependency manifest.");
   for (const group of ["dependencies", "devDependencies", "optionalDependencies"]) {
     const expected = manifest[group] ?? {};
@@ -8341,12 +8346,12 @@ async function verifyLockManifest(root, inventory) {
 }
 async function verifyInstalledTree(root, inventory) {
   const runtime = await verifyLockManifest(root, inventory);
-  const modules = (0, import_yaml2.parse)(await readFile(path.join(root, "node_modules/.modules.yaml"), "utf8"));
+  const modules = (0, import_yaml2.parse)(await readFile(path2.join(root, "node_modules/.modules.yaml"), "utf8"));
   if (!isRecord(modules) || !isRecord(modules.included)) throw new Error("Invalid installation metadata.");
   for (const group of ["dependencies", "devDependencies", "optionalDependencies"]) {
     if (modules.included?.[group] !== true) throw new Error(`Installed tree excluded ${group}.`);
   }
-  const installed = readLockInventory(await readFile(path.join(root, "node_modules/.pnpm/lock.yaml"), "utf8"));
+  const installed = readLockInventory(await readFile(path2.join(root, "node_modules/.pnpm/lock.yaml"), "utf8"));
   const installedDocument = installed.documents[0];
   if (installed.documents.length !== 1 || !installedDocument || JSON.stringify(graph(runtime)) !== JSON.stringify(graph(installedDocument)))
     throw new Error("Installed dependency graph differs from lockfile.");
@@ -8355,8 +8360,8 @@ async function hashFiles(root, files) {
   if (!files.length) throw new Error("Empty evidence file set.");
   const hash = createHash("sha256");
   for (const file of [...files].sort()) {
-    const absolute = path.resolve(root, file);
-    if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`)) throw new Error(`Unsafe evidence path: ${file}`);
+    const absolute = path2.resolve(root, file);
+    if (!absolute.startsWith(`${path2.resolve(root)}${path2.sep}`)) throw new Error(`Unsafe evidence path: ${file}`);
     const bytes = await readRegularFile(absolute);
     hash.update(`${file}\0${bytes.length}\0`).update(bytes);
   }
@@ -8373,13 +8378,13 @@ async function fingerprintInputs(root, codeFiles, configurationFiles, inventory)
 // tooling/security/security-runner.ts
 import { execFile } from "node:child_process";
 import { lstat as lstat3, readFile as readFile2 } from "node:fs/promises";
-import path3 from "node:path";
+import path4 from "node:path";
 import { promisify } from "node:util";
 
 // tooling/security/installer-evidence.ts
 import { createHash as createHash2 } from "node:crypto";
 import { lstat as lstat2, readdir } from "node:fs/promises";
-import path2 from "node:path";
+import path3 from "node:path";
 var IDENTITY = Object.freeze({
   name: "skills",
   version: "1.7.2",
@@ -8400,13 +8405,13 @@ async function verifyInstallerEvidence(directory, inventory, data) {
     throw new Error("Installer evidence differs from the locked package identity.");
   const actual = [];
   async function visit2(relative) {
-    const children = await readdir(path2.join(directory, relative));
+    const children = await readdir(path3.join(directory, relative));
     if (relative && children.length === 0)
       throw new Error("Installer physical inventory contains an empty directory.");
     for (const name of children) {
       if (!relative && name === "node_modules") continue;
       const file = relative ? `${relative}/${name}` : name;
-      const stat = await lstat2(path2.join(directory, file));
+      const stat = await lstat2(path3.join(directory, file));
       if (stat.isSymbolicLink()) throw new Error("Installer physical inventory contains a link.");
       if (stat.isDirectory()) await visit2(file);
       else if (stat.isFile()) actual.push(file);
@@ -8418,16 +8423,16 @@ async function verifyInstallerEvidence(directory, inventory, data) {
   if (new Set(expected).size !== 19 || JSON.stringify(actual.sort()) !== JSON.stringify([...expected].sort()))
     throw new Error("Installer physical file inventory changed.");
   for (const file of data.files) {
-    const bytes = await readRegularFile(path2.join(directory, file.path));
+    const bytes = await readRegularFile(path3.join(directory, file.path));
     if (bytes.length !== file.bytes || createHash2("sha256").update(bytes).digest("hex") !== file.sha256)
       throw new Error(`Installer original bytes digest changed: ${file.path}`);
   }
   const metadata = JSON.parse(
-    (await readRegularFile(path2.join(directory, "package.json"))).toString("utf8")
+    (await readRegularFile(path3.join(directory, "package.json"))).toString("utf8")
   );
   if (!isRecord(metadata) || metadata.name !== IDENTITY.name || metadata.version !== IDENTITY.version || metadata.license !== "MIT")
     throw new Error("Installer package metadata changed.");
-  const notice = (await readRegularFile(path2.join(directory, "ThirdPartyNoticeText.txt"))).toString("utf8");
+  const notice = (await readRegularFile(path3.join(directory, "ThirdPartyNoticeText.txt"))).toString("utf8");
   const components = [...notice.matchAll(/^Package: (.+)$/gm)].map((match) => match[1]?.trim());
   if (components.length === 0 || JSON.stringify(components) !== JSON.stringify(data.noticeComponents))
     throw new Error("Installer original third-party notice component inventory changed.");
@@ -8460,7 +8465,7 @@ async function executePnpm(args, options) {
   }
 }
 async function verifyConfiguration(root, execute, env) {
-  const [workspace] = parseOwnedYaml(await readFile2(path3.join(root, "pnpm-workspace.yaml"), "utf8"), {
+  const [workspace] = parseOwnedYaml(await readFile2(path4.join(root, "pnpm-workspace.yaml"), "utf8"), {
     name: "workspace",
     documents: "single"
   });
@@ -8485,7 +8490,7 @@ async function auditTree(root, inventory, execute, env) {
 }
 async function hasInstallation(root) {
   try {
-    await lstat3(path3.join(root, "node_modules"));
+    await lstat3(path4.join(root, "node_modules"));
     return true;
   } catch (error) {
     if (errorCode(error) !== "ENOENT") throw error;
@@ -8494,7 +8499,7 @@ async function hasInstallation(root) {
 }
 async function lockedInputs(root) {
   return Promise.all(
-    ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"].map((file) => readFile2(path3.join(root, file)))
+    ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"].map((file) => readFile2(path4.join(root, file)))
   );
 }
 async function assertUnchangedInputs(root, before) {
@@ -8503,7 +8508,7 @@ async function assertUnchangedInputs(root, before) {
     throw new Error("Locked inputs changed during validation or installation.");
 }
 async function scanRepository({ root, phase = "complete", execute = executePnpm }) {
-  const inventory = readLockInventory(await readFile2(path3.join(root, "pnpm-lock.yaml"), "utf8"));
+  const inventory = readLockInventory(await readFile2(path4.join(root, "pnpm-lock.yaml"), "utf8"));
   await verifyLockManifest(root, inventory);
   await verifyConfiguration(root, execute, process.env);
   if (phase === "lockfile") {
@@ -8537,9 +8542,9 @@ async function scanRepository({ root, phase = "complete", execute = executePnpm 
     verifyInstallerRegistry(JSON.parse(metadata.stdout));
     if (phase === "complete")
       await verifyInstallerEvidence(
-        path3.join(root, "node_modules/skills"),
+        path4.join(root, "node_modules/skills"),
         inventory,
-        JSON.parse(await readFile2(path3.join(root, "tooling/security/installer-evidence.json"), "utf8"))
+        JSON.parse(await readFile2(path4.join(root, "tooling/security/installer-evidence.json"), "utf8"))
       );
   }
   return auditTree(root, inventory, execute, process.env);
@@ -8555,10 +8560,10 @@ async function checkSecurity(root, options = {}) {
         cwd: root,
         encoding: "utf8",
         windowsHide: true
-      }).split("\0").filter((file) => file && existsSync(path4.join(root, file)))
+      }).split("\0").filter((file) => file && existsSync(path5.join(root, file)))
     )
   ];
-  const exceptionPath = path4.join(root, "docs/policies/security-exceptions.json");
+  const exceptionPath = path5.join(root, "docs/policies/security-exceptions.json");
   const exceptionBytes = await readRegularFile(exceptionPath);
   const exceptions = validateExceptions(JSON.parse(exceptionBytes.toString("utf8")), options.now);
   const code = paths.filter((file) => /^(?:src|tooling)\/.*\.(?:ts|mts|cts|mjs|cjs|ps1)$/.test(file));
@@ -8577,11 +8582,11 @@ async function checkSecurity(root, options = {}) {
   );
   for (const exception of exceptions) {
     for (const file of exception.evidence) {
-      if (!code.includes(file) && !configuration.includes(file) || !(await lstat4(path4.join(root, file))).isFile())
+      if (!code.includes(file) && !configuration.includes(file) || !(await lstat4(path5.join(root, file))).isFile())
         throw new Error(`Unreviewable fingerprinted evidence: ${file}`);
     }
   }
-  const initialInventory = readLockInventory(await readFile3(path4.join(root, "pnpm-lock.yaml"), "utf8"));
+  const initialInventory = readLockInventory(await readFile3(path5.join(root, "pnpm-lock.yaml"), "utf8"));
   const initialEvidence = await fingerprintInputs(root, code, configuration, initialInventory);
   async function review(scope, result) {
     const fingerprints = await fingerprintInputs(root, code, configuration, result.inventory);
@@ -8603,7 +8608,7 @@ async function checkSecurity(root, options = {}) {
     throw new Error("Review exceptions changed during scan; retry with stable inputs.");
   return { ok: Object.values(results).every((result) => result.blocked.length === 0), scopes: results };
 }
-if (process.argv[1] && path4.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && path5.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     let root;
@@ -8616,7 +8621,7 @@ if (process.argv[1] && path4.resolve(process.argv[1]) === fileURLToPath(import.m
         throw new Error("Usage: check-security.mjs --root <repository> [--phase complete|lockfile]");
       seen.add(flag);
       if (flag === "--phase") phase = value;
-      else root = path4.resolve(value);
+      else root = path5.resolve(value);
     }
     if (!root) throw new Error("Usage: check-security.mjs --root <repository> [--phase complete|lockfile]");
     const result = await checkSecurity(root, { phase });

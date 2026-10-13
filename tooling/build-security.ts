@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { lstat, mkdir, open, readdir, readFile, realpath } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Metafile } from 'esbuild';
@@ -107,15 +106,13 @@ export async function verifySecurityFiles(directory: string, files: Map<string, 
         throw new Error('Unexpected physical security inventory.');
     for (const name of SECURITY_OUTPUTS) {
         const expected = files.get(name);
-        const actualBytes = await readRegularFile(path.join(directory, name), { singleLink: true });
+        const actualBytes = await readRegularFile(path.join(directory, name), { singleLink: true, physicalPath: true });
         if (!expected?.equals(actualBytes)) throw new Error(`Stale security build: ${name}; run pnpm build:security.`);
     }
 }
 
-/** Fail before writing if any existing output path can redirect or add bytes. */
-export async function writeSecurityFiles(directory: string, files: Map<string, Buffer>): Promise<void> {
-    if (JSON.stringify([...files.keys()].sort()) !== JSON.stringify(SECURITY_OUTPUTS))
-        throw new Error('Unexpected expected security inventory.');
+/** Validate every existing entry before preparing or publishing any output. */
+async function preflightSecurityDirectory(directory: string): Promise<void> {
     let ancestor = path.resolve(directory);
     for (;;) {
         try {
@@ -151,42 +148,60 @@ export async function writeSecurityFiles(directory: string, files: Map<string, B
     } catch (error) {
         if (errorCode(error) !== 'ENOENT') throw error;
     }
-    await mkdir(directory, { recursive: true });
-    for (const name of SECURITY_OUTPUTS) {
-        const absolute = path.join(directory, name);
-        let exists = true;
-        try {
-            await lstat(absolute);
-        } catch (error) {
-            if (errorCode(error) !== 'ENOENT') throw error;
-            exists = false;
-        }
-        const flags =
-            constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0) | (exists ? 0 : constants.O_CREAT | constants.O_EXCL);
-        const handle = await open(absolute, flags, 0o644);
-        try {
-            const before = await handle.stat();
-            const current = await lstat(absolute);
-            if (
-                !before.isFile() ||
-                before.nlink !== 1 ||
-                current.nlink !== 1 ||
-                !current.isFile() ||
-                current.isSymbolicLink() ||
-                before.dev !== current.dev ||
-                before.ino !== current.ino ||
-                path.relative(path.resolve(absolute), await realpath(absolute)) !== ''
-            )
-                throw new Error('Security output file identity changed before writing.');
+}
+
+async function removeSecurityStaging(staging: string, parent: string): Promise<void> {
+    if (path.dirname(staging) !== parent || !path.basename(staging).startsWith('.security-build-'))
+        throw new Error('Unsafe security staging cleanup path.');
+    await rm(staging, { recursive: true, force: true });
+}
+
+/** Prepare fresh exclusive inodes and atomically replace entries; never truncate old files. */
+export async function writeSecurityFiles(directory: string, files: Map<string, Buffer>): Promise<void> {
+    if (JSON.stringify([...files.keys()].sort()) !== JSON.stringify(SECURITY_OUTPUTS))
+        throw new Error('Unexpected expected security inventory.');
+    const target = path.resolve(directory);
+    await preflightSecurityDirectory(target);
+    await mkdir(target, { recursive: true });
+    const established = await lstat(target, { bigint: true });
+    const parent = path.dirname(target);
+    const staging = await mkdtemp(path.join(parent, '.security-build-'));
+    try {
+        if (path.relative(path.resolve(staging), await realpath(staging)) !== '')
+            throw new Error('Security staging directory must be physical.');
+        for (const name of SECURITY_OUTPUTS) {
             const bytes = files.get(name);
             if (!bytes) throw new Error('Missing expected security output.');
-            await handle.truncate(0);
-            await handle.writeFile(bytes);
-        } finally {
-            await handle.close();
+            const fresh = path.join(staging, name);
+            // wx creates a fresh inode atomically and rejects any preexisting entry, including links.
+            const handle = await open(fresh, 'wx', 0o644);
+            try {
+                await handle.writeFile(bytes);
+                await handle.sync();
+                const stat = await handle.stat();
+                if (!stat.isFile() || stat.nlink !== 1) throw new Error('Security staging file must have one link.');
+            } finally {
+                await handle.close();
+            }
+            if (!bytes.equals(await readRegularFile(fresh, { singleLink: true, physicalPath: true })))
+                throw new Error('Security staging bytes changed before publication.');
         }
+        // Recheck the entire destination before the first rename, preserving all-output preflight.
+        await preflightSecurityDirectory(target);
+        const current = await lstat(target, { bigint: true });
+        if (
+            !current.isDirectory() ||
+            current.isSymbolicLink() ||
+            established.dev !== current.dev ||
+            established.ino !== current.ino
+        )
+            throw new Error('Security output directory identity changed before publication.');
+        for (const name of SECURITY_OUTPUTS) await rename(path.join(staging, name), path.join(target, name));
+    } finally {
+        // This invocation's fresh sibling directory only, never output roots or user caches.
+        await removeSecurityStaging(staging, parent);
     }
-    await verifySecurityFiles(directory, files);
+    await verifySecurityFiles(target, files);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

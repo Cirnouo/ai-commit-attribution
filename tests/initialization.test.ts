@@ -183,3 +183,119 @@ test('round1 immutable dependency evidence permits a hard link while output evid
         await rm(parent, { recursive: true, force: true });
     }
 });
+
+for (const heldName of ['check-security.mjs', 'THIRD-PARTY-NOTICES.txt']) {
+    test(`codeql atomic output replacement preserves an open descriptor for old ${heldName}`, async () => {
+        const { writeSecurityFiles, verifySecurityFiles } = await import('../tooling/build-security.ts');
+        const { mkdtemp, realpath, mkdir, writeFile, readFile, readdir, open, stat, rm } = await import(
+            'node:fs/promises'
+        );
+        const { tmpdir } = await import('node:os');
+        const { join, dirname, resolve } = await import('node:path');
+        const parent = await realpath(await mkdtemp(join(tmpdir(), 'attribution-atomic-output-')));
+        const output = join(parent, 'output');
+        const oldFiles = new Map([
+            ['check-security.mjs', Buffer.from('original bundle\n')],
+            ['THIRD-PARTY-NOTICES.txt', Buffer.from('original notice\n')],
+        ]);
+        const next = new Map([
+            ['check-security.mjs', Buffer.from('new bundle\n')],
+            ['THIRD-PARTY-NOTICES.txt', Buffer.from('new notice\n')],
+        ]);
+        try {
+            await mkdir(output);
+            for (const [name, bytes] of oldFiles) await writeFile(join(output, name), bytes);
+            const held = await open(join(output, heldName), 'r');
+            const originalInode = (await held.stat({ bigint: true })).ino;
+            try {
+                let failure: unknown;
+                try {
+                    await writeSecurityFiles(output, next);
+                } catch (error) {
+                    failure = error;
+                }
+                if (failure) {
+                    assert.equal(process.platform, 'win32', 'only Windows busy-target rename may fail here');
+                    assert.ok(
+                        typeof failure === 'object' &&
+                            failure !== null &&
+                            'code' in failure &&
+                            failure.code === 'EPERM',
+                    );
+                }
+                assert.deepEqual(
+                    await held.readFile(),
+                    oldFiles.get(heldName),
+                    'publishing must replace the directory entry, preserving old inode bytes',
+                );
+            } finally {
+                await held.close();
+            }
+            // Windows may refuse replacement while a reader is open; after close it must publish fresh inodes.
+            await writeSecurityFiles(output, next);
+            assert.notEqual((await stat(join(output, heldName), { bigint: true })).ino, originalInode);
+            for (const [name, bytes] of next) assert.deepEqual(await readFile(join(output, name)), bytes);
+            await verifySecurityFiles(output, next);
+            assert.deepEqual(await readdir(parent), ['output'], 'staging directories must be cleaned');
+        } finally {
+            assert.equal(dirname(resolve(parent)), resolve(await realpath(tmpdir())));
+            await rm(parent, { recursive: true, force: true });
+        }
+    });
+}
+
+test('codeql descriptor evidence rejects linked ancestors and detects a real path swap during read', async () => {
+    const { readRegularFile } = await import('../tooling/file-evidence.ts');
+    const { mkdtemp, realpath, mkdir, writeFile, rename, readFile, symlink, lstat, open, rm } = await import(
+        'node:fs/promises'
+    );
+    const { tmpdir } = await import('node:os');
+    const { join, dirname, resolve } = await import('node:path');
+    const parent = await realpath(await mkdtemp(join(tmpdir(), 'attribution-evidence-race-')));
+    try {
+        const physical = join(parent, 'physical');
+        await mkdir(physical);
+        const file = join(physical, 'evidence');
+        await writeFile(file, 'original evidence\n');
+        const alias = join(parent, 'alias');
+        await symlink(physical, alias, process.platform === 'win32' ? 'junction' : 'dir');
+        await assert.rejects(readRegularFile(join(alias, 'evidence'), { physicalPath: true }), /physical|link|path/i);
+        let inspections = 0;
+        let closed = false;
+        let descriptorBytes: Buffer | undefined;
+        await assert.rejects(
+            readRegularFile(file, {
+                physicalPath: true,
+                lstat: async (name) => {
+                    const stat = await lstat(name, { bigint: true });
+                    if (inspections++ === 0) {
+                        await rename(file, join(physical, 'original-inode'));
+                        await writeFile(file, 'replacement evidence\n');
+                    }
+                    return stat;
+                },
+                open: async (name, flags) => {
+                    const handle = await open(name, flags);
+                    return {
+                        stat: () => handle.stat({ bigint: true }),
+                        readFile: async () => {
+                            descriptorBytes = await handle.readFile();
+                            return descriptorBytes;
+                        },
+                        close: async () => {
+                            closed = true;
+                            await handle.close();
+                        },
+                    };
+                },
+            }),
+            /identity|metadata|changed/i,
+        );
+        assert.equal(closed, true);
+        assert.deepEqual(descriptorBytes, Buffer.from('original evidence\n'));
+        assert.equal(await readFile(file, 'utf8'), 'replacement evidence\n');
+    } finally {
+        assert.equal(dirname(resolve(parent)), resolve(await realpath(tmpdir())));
+        await rm(parent, { recursive: true, force: true });
+    }
+});
