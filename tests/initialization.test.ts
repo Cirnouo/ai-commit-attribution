@@ -207,8 +207,8 @@ for (const heldName of ['check-security.mjs', 'THIRD-PARTY-NOTICES.txt']) {
             for (const [name, bytes] of oldFiles) await writeFile(join(output, name), bytes);
             const held = await open(join(output, heldName), 'r');
             const originalInode = (await held.stat({ bigint: true })).ino;
+            let failure: unknown;
             try {
-                let failure: unknown;
                 try {
                     await writeSecurityFiles(output, next);
                 } catch (error) {
@@ -222,6 +222,8 @@ for (const heldName of ['check-security.mjs', 'THIRD-PARTY-NOTICES.txt']) {
                             'code' in failure &&
                             failure.code === 'EPERM',
                     );
+                } else {
+                    assert.notEqual((await stat(join(output, heldName), { bigint: true })).ino, originalInode);
                 }
                 assert.deepEqual(
                     await held.readFile(),
@@ -231,9 +233,11 @@ for (const heldName of ['check-security.mjs', 'THIRD-PARTY-NOTICES.txt']) {
             } finally {
                 await held.close();
             }
-            // Windows may refuse replacement while a reader is open; after close it must publish fresh inodes.
-            await writeSecurityFiles(output, next);
-            assert.notEqual((await stat(join(output, heldName), { bigint: true })).ino, originalInode);
+            if (failure) {
+                // A failed Windows replacement retains the old entry until this fresh-inode retry.
+                await writeSecurityFiles(output, next);
+                assert.notEqual((await stat(join(output, heldName), { bigint: true })).ino, originalInode);
+            }
             for (const [name, bytes] of next) assert.deepEqual(await readFile(join(output, name)), bytes);
             await verifySecurityFiles(output, next);
             assert.deepEqual(await readdir(parent), ['output'], 'staging directories must be cleaned');
