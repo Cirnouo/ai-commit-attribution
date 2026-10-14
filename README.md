@@ -1,68 +1,64 @@
-# ai-commit-attribution
+<h1 align="center">ai-commit-attribution</h1>
 
-A reusable Agent Skill for recording AI assistance in Git commit messages with
-scoped Agent, model and reasoning-configuration evidence.
+<p align="center">Record AI assistance in Git commits, following your repository's policy.</p>
 
-Version 0.1.0 is Unreleased. The payload provides the complete disclosure workflow,
-read-only policy scanning, participation summaries and message render/validate
-commands. It includes researched host integration guidance; actual installation,
-discovery, loading and message-path verification remain separate evidence states.
+<p align="center">
+  <a href="CHANGELOG.md"><img alt="Status: 0.1.0 unreleased" src="https://img.shields.io/badge/status-0.1.0%20unreleased-gray?style=flat"></a>
+  <a href="#requirements"><img alt="Node: 24.x, at least 24.21.0" src="https://img.shields.io/badge/Node-24.x%20%E2%89%A5%2024.21.0-gray?style=flat"></a>
+  <a href="https://github.com/Cirnouo/ai-commit-attribution/actions/workflows/ci.yaml"><img alt="CI status on main" src="https://img.shields.io/github/actions/workflow/status/Cirnouo/ai-commit-attribution/ci.yaml?branch=main&amp;style=flat&amp;label=CI"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-gray?style=flat"></a>
+  <a href="https://skills.sh/Cirnouo/ai-commit-attribution"><img alt="skills.sh installs" src="https://skills.sh/b/Cirnouo/ai-commit-attribution"></a>
+</p>
 
-The workflow reads the actual repository's AI disclosure policy first. An
-applicable policy owns disclosure exclusively, including alternate formats,
-AI coauthors or no disclosure. When no applicable policy exists, the default
-uses Assisted-by records for all relevant participants. Confirmed disabled native
-reasoning is none; unknown effort is omitted. Concrete required identity/policy
-gaps stop automatic continuation.
+<p align="center"><a href="#why-use-it">Why use it</a> · <a href="#requirements">Requirements</a> · <a href="#quick-start">Quick start</a> · <a href="#start-a-task">Start a task</a> · <a href="#documentation">Documentation</a></p>
 
-The tracked [Skill payload](skills/ai-commit-attribution/SKILL.md) runs with stable
-Node >=24.21.0 <25 and trusted Git. Its single JavaScript executable needs no pnpm,
-TypeScript loader, source checkout or node_modules. The canonical user layout is
-~/.agents/skills/ai-commit-attribution in the executing host's home. Host discovery
-and minimal no-copy integration are described in the
-[host reference](skills/ai-commit-attribution/references/hosts.md).
+## Why use it
 
-For a first task from this checkout, read the
-[integrator guide](skills/ai-commit-attribution/references/integration.md), identify
-the actual worktree/operation and prepare its explicit operation/context JSON.
-Run from the checkout root:
+- Follow the repository's AI disclosure policy first.
+- Account for actual planning, implementation, review and test participants.
+- Preview and check disclosure while preserving the message body and unrelated trailers.
 
-```text
-node skills/ai-commit-attribution/scripts/attribution.mjs policy scan --operation operation.json --context context.json
-```
+## Requirements
 
-Read the returned candidates and prepare the bound semantic decision under the
-[policy contract](skills/ai-commit-attribution/references/policy.md). On the default
-branch, the human or Agent integrator supplies an event ledger from actual
-dispatch/handoff evidence, including planning, review and testing. The guide
-shows the required shape and links the full
-[record contract](skills/ai-commit-attribution/references/records.md). Preview a
-message with the same executable:
+- Stable Node >=24.21.0 <25.
+- Trusted Git.
+- The executing Agent can access the complete Skill.
+
+Runtime use needs no pnpm or development dependencies.
+
+## Quick start
+
+Install with the [skills.sh CLI](https://skills.sh/docs/cli) for Codex. Before updating or replacing a customized existing target, follow the [installation gate](docs/acceptance/README.md#fixed-source-installation-gate).
 
 ```text
-node skills/ai-commit-attribution/scripts/attribution.mjs render --message message.txt --operation operation.json --context context.json --decision decision.json --input ledger.json
+npx skills@1.7.2 add Cirnouo/ai-commit-attribution --skill ai-commit-attribution --agent codex --global --copy
 ```
 
-Render returns JSON; an explicit --output creates a separate new file. Validate
-checks a candidate without writing. On repository-policy, omit default ledger
-inputs and check the repository rule separately: exit 10 is an unverified handoff.
-See the [message contract](skills/ai-commit-attribution/references/messages.md).
-For an installed copy or another cwd, replace the script path with its absolute
-installed path. Helpers prepare/check data and do not authorize or perform commits.
+This follows development `main`. `--agent codex` selects the installation target; the copy goes in the executing home's `.agents/skills/ai-commit-attribution`. See the [installation and host guidance](docs/user-guide/README.md#install-for-codex) for scope and loading checks.
 
-The [acceptance guide](docs/acceptance/README.md) provides portable synthetic cases,
-reproduction commands, all eighteen requirement IDs and observed limits. Final
-immutable-GitHub-source acquisition and safe user installation follow all seven
-merged PRs and passing main CI; a completed source installation is not claimed
-here. Use its installation gate before updating an existing canonical copy.
+### Start a task
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for trusted development setup and review,
-[AGENTS.md](AGENTS.md) for contributor entry instructions, and
-[the policy migration record](docs/policies/migration.md) for adopted governance.
-Development uses exact pnpm 12.4.2 and Node 24.21.0 as the CI reproduction baseline.
+In Codex, explicitly invoke the Skill and ask:
 
-Use Issues for ordinary questions and proposals. Before submitting a typed bug
-or feature report, read the [current forms](.github/ISSUE_TEMPLATE/README.md) and
-[Issue submission policy](docs/policies/commits-and-scope.md#typed-issue-submissions).
-Freeform Issues remain available. Report suspected vulnerabilities through
-[SECURITY.md](SECURITY.md). The project is licensed under [MIT](LICENSE).
+> $ai-commit-attribution Prepare and validate a commit message for the selected changes in the current actual worktree, following the applicable repository policy. Show the preview and any decision or evidence gaps. Do not commit or push.
+
+Illustrative default format from the [message contract](skills/ai-commit-attribution/references/messages.md), with placeholders rather than detected identities:
+
+```text
+Assisted-by: <canonical Agent host>:<actual formal Model>
+```
+
+This default applies only when no applicable repository AI disclosure policy exists. Repository policy may choose another format or no disclosure.
+
+To try the [source Skill](skills/ai-commit-attribution/SKILL.md), ask the Agent to read that checkout's `skills/ai-commit-attribution/SKILL.md` and its before-use references, then work in the actual target worktree, which may differ from the Skill checkout. See [source-checkout use](docs/user-guide/README.md#from-a-source-checkout) or [existing-copy use](docs/user-guide/README.md#from-an-existing-skill-copy) for the corresponding access and host steps.
+
+## Documentation
+
+- [User guide](docs/user-guide/README.md): first use, results and common questions.
+- [Host integration](skills/ai-commit-attribution/references/hosts.md): discovery, loading and host evidence.
+- [Manual CLI integration](skills/ai-commit-attribution/references/integration.md): explicit inputs and commands.
+- [Acceptance](docs/acceptance/README.md): reproducible checks and verification limits.
+
+---
+
+<p align="center"><sub><a href="CONTRIBUTING.md">Contributing</a> · <a href="SECURITY.md">Security</a> · <a href="docs/README.md">Documentation index</a></sub></p>
