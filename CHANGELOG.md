@@ -10,6 +10,8 @@ Version 0.1.0 is in development. No runtime Skill has been released.
 
 ### Added
 
+- skills.sh installation for Codex, with a first-use landing page and user guide
+  covering source and existing-copy use, policy outcomes and evidence gaps.
 - Complete installed disclosure workflow, conditional host evidence and a human
   first-use guide for explicit policy, participation and message inputs. Portable
   acceptance cases distinguish copied-bundle/real-Git checks from native-host,
@@ -19,7 +21,8 @@ Version 0.1.0 is in development. No runtime Skill has been released.
   explicitly scoped incomplete-disclosure exception applications.
 - Read-only policy scanning with bounded candidate evidence, explicit semantic
   decisions and freshness checks for actual worktree/operation/path state,
-  including merge message operations and valid unborn commit preparation.
+  including merge message operations, valid unborn commit preparation, bounded
+  navigation graph reuse and prose-only link adoption with raw evidence binding.
 - A self-contained development Skill distribution with a researched host
   registry and read-only participation summary command. Summaries preserve
   event evidence, all declared/observed participant accounting, stable identity

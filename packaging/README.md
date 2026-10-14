@@ -1,7 +1,10 @@
 # Skill packaging inputs
 
-SKILL.md is the installed policy/summary entry. policy.md owns its before-use
-scan/decision/freshness contract; records.md owns the record/evidence contract.
+skill-entry.md is the maintained policy/summary entry. The builder emits it as
+SKILL.md in the generated payload, so repository-root installers discover the
+complete generated Skill instead of these packaging inputs. policy.md owns its
+before-use scan/decision/freshness contract; records.md owns the record/evidence
+contract.
 messages.md owns render/validate, signature assessment, scoped exception
 application and new-file behavior. hosts.md owns per-consumer discovery,
 metadata, identity-acquisition and native-interaction evidence. integration.md

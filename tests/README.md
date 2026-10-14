@@ -27,6 +27,9 @@ policy-review-fixes.test.ts covers amended/merged affected scope, adopted/cached
 references, bounded empty-directory and byte traversal, absence/races, exact
 Windows extended-path locators and rejected Git write modes, including installed
 business regressions and real read-boundary observation.
+policy-navigation.test.ts covers source and copied CLI navigation graphs, prose
+literal boundaries, text/template compatibility, directory widening and late
+reference edges, raw structured-byte freshness and retained hop/visit blockers.
 message-attribution.test.ts exercises fresh exclusive route entry, real isolated
 Git trailer semantics, byte preservation, strict signatures/scoped exceptions,
 new-file refusal and external installed command behavior. Native questions and
@@ -52,7 +55,9 @@ to these mechanical checks and separate optional native exercises.
   actual toolchain/workflow contracts.
 - hook-isolation.test.ts covers Git hook routing and partial-stage protection.
 - supply-chain.test.ts covers full audit inventory, failures and bounded reviews.
-- installer-evidence.test.ts covers the independent official package evidence.
+- installer-evidence.test.ts covers the independent official package evidence
+  and audited CLI repository-root discovery/copy of the complete generated payload
+  in an isolated home without network acquisition.
 - security-build.test.ts checks exact generated audit output and notices.
 - typescript-gates.test.ts checks actual type/syntax/erasable-language failures.
 - cli-entry.test.ts invokes ten guarded maintainer CLI entries through real filesystem

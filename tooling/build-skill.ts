@@ -68,7 +68,7 @@ export async function generateSkillFiles(): Promise<Map<string, Buffer>> {
     const inputs = await readPackagingInputs(path.join(root, 'packaging'));
     const manifest: unknown = JSON.parse((await readRegularFile(path.join(root, 'package.json'))).toString('utf8'));
     if (!isRecord(manifest) || !isSemVer(manifest.version)) throw new Error('Root version is invalid.');
-    const source = inputs.get('SKILL.md')?.toString('utf8') ?? '';
+    const source = inputs.get('skill-entry.md')?.toString('utf8') ?? '';
     const metadata = skillFrontmatter(source);
     if (!namesEqual(Object.keys(metadata), ['name', 'description']))
         throw new Error('Packaging frontmatter must not create a second version or host metadata authority.');

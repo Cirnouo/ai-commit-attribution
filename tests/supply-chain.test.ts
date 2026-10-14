@@ -203,7 +203,7 @@ test('security review fingerprints bind installed business bytes and maintained/
         const files = [
             'skills/ai-commit-attribution/scripts/attribution.mjs',
             'packaging/agent-registry.json',
-            'packaging/SKILL.md',
+            'packaging/skill-entry.md',
             'packaging/records.md',
             'skills/ai-commit-attribution/references/agent-registry.json',
             'skills/ai-commit-attribution/references/records.md',

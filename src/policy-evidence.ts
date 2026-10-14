@@ -4,6 +4,7 @@ import path from 'node:path';
 import { readRegularFile } from '../tooling/file-evidence.ts';
 import type { Candidate, Issue, ScopeContext } from './policy-contract.ts';
 import { LIMITS } from './policy-contract.ts';
+import { markdownReferenceTargets, proseEvidence } from './policy-markdown.ts';
 import type { CapturedScope } from './policy-scope.ts';
 import { byteDigest, digest, inspectPath } from './policy-scope.ts';
 import type { Operation } from './records.ts';
@@ -16,8 +17,11 @@ export class EvidenceSearch {
     readonly issues: Issue[] = [];
     readonly fingerprints: unknown[] = [];
     readonly seen = new Set<string>();
+    readonly proseSeen = new Set<string>();
     readonly scopeUses = new Map<string, Set<string>>();
     readonly directories = new Map<string, 'narrow' | 'adopted'>();
+    readonly activeDirectories = new Map<string, 'narrow' | 'adopted'>();
+    readonly directoryUses: { sourceCandidateId: string; directory: string }[] = [];
     repository?: string;
     readonly limitations: string[] = [];
     files = 0;
@@ -49,10 +53,6 @@ export class EvidenceSearch {
         stack: string[] = [],
         display?: string,
     ): Promise<Candidate | undefined> {
-        if (stack.includes(locator)) {
-            this.issue('reference-cycle', locator, 'Adopted evidence reference cycle.');
-            return;
-        }
         const uses = this.scopeUses.get(locator) ?? new Set<string>();
         uses.add(scopeBasis);
         this.scopeUses.set(locator, uses);
@@ -70,6 +70,15 @@ export class EvidenceSearch {
                     const issue = this.issues.find((item) => item.id === digest(['missing-reference', locator]));
                     if (issue) issue.detail = detail;
                 }
+                if (
+                    cached &&
+                    !this.proseSeen.has(locator) &&
+                    cached.sourceKind !== 'message-hook' &&
+                    cached.sourceKind !== 'git-configuration' &&
+                    !this.checkedLocations.some((item) => item.locator === locator && item.status === 'failed') &&
+                    proseEvidence(locator, sourceKind)
+                )
+                    await this.references(cached, cached.text, depth, stack);
                 return cached;
             }
             this.seen.add(locator);
@@ -127,59 +136,8 @@ export class EvidenceSearch {
             });
             this.candidates.push(candidate);
             this.checkedLocations.push({ locator, status: 'present' });
-            if (display !== undefined) return candidate;
-            for (const match of decoded.matchAll(/\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
-                const link = match[1];
-                if (!link || link.startsWith('#')) continue;
-                this.referenceHops = Math.max(this.referenceHops, depth + 1);
-                if (depth >= LIMITS.referenceHops) {
-                    this.issue('reference-budget', locator, 'Adopted reference hop budget exceeded.');
-                    break;
-                }
-                if (/^https?:\/\//i.test(link)) {
-                    this.limitations.push(`Unfetched network evidence locator: ${link}`);
-                    continue;
-                }
-                if (/^[a-z][a-z0-9+.-]*:/i.test(link) && !/^[a-z]:[/\\]/i.test(link)) {
-                    this.issue('unsupported-reference', locator, 'Unsupported adopted evidence locator scheme.');
-                    continue;
-                }
-                let decodedLink: string;
-                try {
-                    decodedLink = decodeURIComponent(link.split('#')[0] ?? '');
-                    checkRaw(decodedLink);
-                } catch {
-                    this.issue('invalid-reference', locator, 'Adopted reference has invalid encoding or controls.');
-                    continue;
-                }
-                const target = path.resolve(path.dirname(locator), decodedLink);
-                const targetInfo = await inspectPath(target);
-                if (targetInfo?.isDirectory()) {
-                    if (!this.repository || !inside(this.repository, target))
-                        this.issue(
-                            'external-directory-reference',
-                            target,
-                            'External directory navigation is unresolved; only exact external file targets may be read.',
-                        );
-                    else {
-                        await this.docs(target, 0, depth + 1, [...stack, locator], true);
-                        candidate.referenceIds.push(
-                            ...this.candidates.filter((item) => inside(target, item.locator)).map((item) => item.id),
-                        );
-                    }
-                    continue;
-                }
-                const child = await this.read(
-                    target,
-                    'adopted-reference',
-                    `Explicit link from ${locator}`,
-                    true,
-                    depth + 1,
-                    [...stack, locator],
-                );
-                if (child) candidate.referenceIds.push(child.id);
-            }
-            candidate.referenceIds = unique(candidate.referenceIds);
+            if (display !== undefined || !proseEvidence(locator, sourceKind)) return candidate;
+            await this.references(candidate, decoded, depth, stack);
             return candidate;
         } catch (error) {
             this.checkedLocations.push({ locator, status: 'failed' });
@@ -193,6 +151,66 @@ export class EvidenceSearch {
             return;
         }
     }
+    async references(candidate: Candidate, decoded: string, depth: number, stack: string[]): Promise<void> {
+        this.proseSeen.add(candidate.locator);
+        const locator = candidate.locator;
+        for (const link of markdownReferenceTargets(decoded)) {
+            if (!link || link.startsWith('#')) continue;
+            this.referenceHops = Math.max(this.referenceHops, depth + 1);
+            if (/^https?:\/\//i.test(link)) {
+                if (depth >= LIMITS.referenceHops) {
+                    this.issue('reference-budget', locator, 'Adopted reference hop budget exceeded.');
+                    break;
+                }
+                this.limitations.push(`Unfetched network evidence locator: ${link}`);
+                continue;
+            }
+            if (/^[a-z][a-z0-9+.-]*:/i.test(link) && !/^[a-z]:[/\\]/i.test(link)) {
+                this.issue('unsupported-reference', locator, 'Unsupported adopted evidence locator scheme.');
+                continue;
+            }
+            let decodedLink: string;
+            try {
+                decodedLink = decodeURIComponent(link.split('#')[0] ?? '');
+                checkRaw(decodedLink);
+            } catch {
+                this.issue('invalid-reference', locator, 'Adopted reference has invalid encoding or controls.');
+                continue;
+            }
+            const target = path.resolve(path.dirname(locator), decodedLink);
+            const targetInfo = await inspectPath(target);
+            const observed = targetInfo?.isDirectory()
+                ? this.directories.get(target) === 'adopted' || this.activeDirectories.get(target) === 'adopted'
+                : this.seen.has(target);
+            if (depth >= LIMITS.referenceHops && !observed) {
+                this.issue('reference-budget', locator, 'Adopted reference hop budget exceeded.');
+                break;
+            }
+            if (targetInfo?.isDirectory()) {
+                if (!this.repository || !inside(this.repository, target))
+                    this.issue(
+                        'external-directory-reference',
+                        target,
+                        'External directory navigation is unresolved; only exact external file targets may be read.',
+                    );
+                else {
+                    this.directoryUses.push({ sourceCandidateId: candidate.id, directory: target });
+                    await this.docs(target, 0, depth + 1, [...stack, locator], true);
+                }
+                continue;
+            }
+            const child = await this.read(
+                target,
+                'adopted-reference',
+                `Explicit link from ${locator}`,
+                true,
+                depth + 1,
+                [...stack, locator],
+            );
+            if (child) candidate.referenceIds.push(child.id);
+        }
+        candidate.referenceIds = unique(candidate.referenceIds);
+    }
     async docs(
         directory: string,
         depth = 0,
@@ -200,10 +218,11 @@ export class EvidenceSearch {
         stack: string[] = [],
         required = false,
     ): Promise<void> {
+        let entered = false;
+        const previous = this.activeDirectories.get(directory);
         try {
             this.count();
             if (depth > LIMITS.directoryLevels) throw new ObservationError('Policy directory level budget exceeded.');
-            if (stack.includes(directory)) throw new ObservationError('Adopted directory reference cycle.');
             const info = await inspectPath(directory);
             if (!info) {
                 if (required) throw new ObservationError('Observed/adopted directory disappeared before discovery.');
@@ -214,6 +233,9 @@ export class EvidenceSearch {
             const mode = referenceDepth > 0 ? 'adopted' : 'narrow';
             const completed = this.directories.get(directory);
             if (completed === 'adopted' || completed === mode) return;
+            if (previous === 'adopted' || previous === mode) return;
+            this.activeDirectories.set(directory, mode);
+            entered = true;
             const entries = await this.directoryEntries(directory);
             this.checkedLocations.push({ locator: directory, status: 'present' });
             this.fingerprints.push({
@@ -244,7 +266,7 @@ export class EvidenceSearch {
                 if (entry.isDirectory())
                     await this.docs(target, depth + 1, referenceDepth, [...stack, directory], true);
                 else if (
-                    /\.(?:md|txt|ya?ml|json)$/i.test(entry.name) &&
+                    /\.(?:md|markdown|txt|ya?ml|json)$/i.test(entry.name) &&
                     (referenceDepth > 0 ||
                         /readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) ||
                         directory.endsWith(`${path.sep}.github${path.sep}workflows`))
@@ -269,7 +291,7 @@ export class EvidenceSearch {
                 throw new ObservationError('Policy directory changed/disappeared during discovery.');
             // A narrow crawl cannot satisfy later explicit adoption. Cache only completed
             // coverage so widening revisits every child under the same shared budgets.
-            this.directories.set(directory, mode);
+            if (this.directories.get(directory) !== 'adopted') this.directories.set(directory, mode);
         } catch {
             this.checkedLocations.push({ locator: directory, status: 'failed' });
             this.issue(
@@ -277,6 +299,11 @@ export class EvidenceSearch {
                 directory,
                 'Directory discovery failed or exceeded its enumeration/level budget.',
             );
+        } finally {
+            if (entered) {
+                if (previous) this.activeDirectories.set(directory, previous);
+                else this.activeDirectories.delete(directory);
+            }
         }
     }
     async configuration(scope: CapturedScope): Promise<void> {
@@ -463,14 +490,27 @@ export class EvidenceSearch {
         await this.configuration(scope);
         for (const locator of context.additionalCandidatePaths ?? [])
             await this.read(locator, 'explicit-candidate', 'Exact candidate supplied by caller', true);
+        this.completeDirectoryReferences();
+    }
+    completeDirectoryReferences(): void {
+        for (const { sourceCandidateId, directory } of this.directoryUses) {
+            const candidate = this.candidates.find((item) => item.id === sourceCandidateId);
+            if (candidate)
+                candidate.referenceIds = unique([
+                    ...candidate.referenceIds,
+                    ...this.candidates.filter((item) => inside(directory, item.locator)).map((item) => item.id),
+                ]);
+        }
     }
     bindingDigest(): string {
+        this.completeDirectoryReferences();
         this.candidates.sort((a, b) => ordinal(a.id, b.id));
         this.checkedLocations.sort((a, b) => ordinal(a.locator, b.locator) || ordinal(a.status, b.status));
         this.issues.sort((a, b) => ordinal(a.id, b.id));
         return digest({
             profile: LIMITS,
             enumerationLimit: LIMITS.entries,
+            directoryUses: unique(this.directoryUses.map((use) => JSON.stringify(use))),
             scopeUses: [...this.scopeUses]
                 .sort(([a], [b]) => ordinal(a, b))
                 .map(([locator, uses]) => ({ locator, uses: unique([...uses]) })),

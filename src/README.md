@@ -10,6 +10,8 @@ policy-contract.ts owns strict scan/context/decision/route shapes and limits.
 policy-scope.ts owns deterministic binding serialization and live Git/path
 observation through safe-git.ts. policy-evidence.ts owns bounded discovery and
 safe evidence; policy.ts joins Agent semantic decisions to a fresh capture.
+policy-markdown.ts owns the finite prose format profile and bounded lexical
+inline-link extraction without reading files or interpreting policy meaning.
 checkFreshRouting retains its exact freshScan for internal downstream evidence
 joins; attribution.ts omits that internal member from public route JSON.
 Policy paths never import default summary or read the installed registry.
