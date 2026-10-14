@@ -3,7 +3,7 @@ import { isMainModule } from '../tooling/cli-entry.ts';
 import { readRegularFile } from '../tooling/file-evidence.ts';
 import { checkFreshRouting, scanPolicy } from './policy.ts';
 import { LIMITS } from './policy-contract.ts';
-import { InputError } from './records.ts';
+import { checkRaw, InputError } from './records.ts';
 
 export function parseArguments(args: readonly string[]): { input: string; operation: string } {
     const values = [...args];
@@ -75,6 +75,62 @@ export function parsePolicyArguments(args: readonly string[]): {
     return { operation, context, ...(decision ? { decision } : {}) };
 }
 export async function run(args: readonly string[]) {
+    if (args[0] === 'render' || args[0] === 'validate') {
+        const mode = args[0];
+        const options = new Map<string, string>();
+        for (let index = 1; index < args.length; index += 2) {
+            const flag = args[index],
+                value = args[index + 1];
+            if (
+                !flag ||
+                ![
+                    '--message',
+                    '--operation',
+                    '--context',
+                    '--decision',
+                    '--input',
+                    '--assessment',
+                    '--output',
+                ].includes(flag) ||
+                options.has(flag) ||
+                !value ||
+                value.startsWith('--') ||
+                (mode === 'validate' && flag === '--output')
+            )
+                throw new InputError('Invalid message flag, duplicate or missing value.');
+            checkRaw(value);
+            options.set(flag, value);
+        }
+        const messageFile = options.get('--message'),
+            operationFile = options.get('--operation'),
+            contextFile = options.get('--context'),
+            decisionFile = options.get('--decision');
+        if (!messageFile || !operationFile || !contextFile || !decisionFile)
+            throw new InputError('Message commands require explicit message, operation, context and decision files.');
+        const operation = await jsonFile(operationFile),
+            context = await jsonFile(contextFile),
+            decision = await jsonFile(decisionFile);
+        const message = await readRegularFile(messageFile, { physicalPath: true, maximumBytes: LIMITS.inputBytes });
+        // Unused default paths remain opaque. No stat, decode, registry lookup or summary occurs before actual routing.
+        const consumedPaths = [...options].filter(([flag]) => flag !== '--output').map(([, value]) => value);
+        const { processMessage } = await import('./message.ts');
+        const output = options.get('--output');
+        return processMessage(
+            { mode, message, operation, context, decision, consumedPaths, ...(output ? { output } : {}) },
+            async () => {
+                const input = options.get('--input');
+                if (!input) throw new InputError('Current skill-default message requires an explicit ledger input.');
+                const registryFile = new URL('../references/agent-registry.json', import.meta.url);
+                consumedPaths.push(fileURLToPath(registryFile));
+                const assessment = options.get('--assessment');
+                return {
+                    ledger: await jsonFile(input),
+                    registry: await jsonFile(registryFile),
+                    ...(assessment ? { assessment: await jsonFile(assessment) } : {}),
+                };
+            },
+        );
+    }
     if (args[0] === 'policy') {
         const options = parsePolicyArguments(args);
         const operation = await jsonFile(options.operation),
@@ -104,7 +160,14 @@ if (isMainModule(import.meta)) {
     } catch (error) {
         const input = error instanceof InputError;
         console.error(
-            JSON.stringify({ error: input ? error.message : 'Attribution execution failed.', exitCode: input ? 2 : 1 }),
+            JSON.stringify({
+                error: input
+                    ? error.message
+                    : process.argv.includes('--output')
+                      ? 'Attribution execution failed. Check the explicit output location for a residual artifact; uncertain ownership is preserved.'
+                      : 'Attribution execution failed.',
+                exitCode: input ? 2 : 1,
+            }),
         );
         process.exitCode = input ? 2 : 1;
     }

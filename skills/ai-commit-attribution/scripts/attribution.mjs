@@ -13,6 +13,67 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// tooling/file-evidence.ts
+import { constants } from "node:fs";
+import { lstat, open, realpath } from "node:fs/promises";
+import path from "node:path";
+function sameFile(expected, actual) {
+  return actual.isFile() && !actual.isSymbolicLink() && expected.dev === actual.dev && expected.ino === actual.ino;
+}
+function unchanged(expected, actual) {
+  return sameFile(expected, actual) && expected.size === actual.size && expected.mtimeNs === actual.mtimeNs && expected.ctimeNs === actual.ctimeNs;
+}
+function samePhysicalPath(expected, actual) {
+  return path.relative(path.toNamespacedPath(path.resolve(expected)), path.toNamespacedPath(actual)) === "";
+}
+async function readRegularFile(file, io = {}) {
+  const inspect = io.lstat ?? ((name) => lstat(name, { bigint: true }));
+  const acquire = io.open ?? (async (name, flags) => {
+    const handle2 = await open(name, flags);
+    return {
+      stat: () => handle2.stat({ bigint: true }),
+      readFile: async (maximumBytes) => {
+        if (maximumBytes === void 0) return handle2.readFile();
+        const chunks = [];
+        let length = 0;
+        for (; ; ) {
+          const chunk = Buffer.alloc(Math.min(64 * 1024, maximumBytes - length + 1));
+          const { bytesRead } = await handle2.read(chunk, 0, chunk.length, null);
+          if (!bytesRead) return Buffer.concat(chunks, length);
+          length += bytesRead;
+          if (length > maximumBytes) throw new Error("Evidence byte budget exceeded.");
+          chunks.push(chunk.subarray(0, bytesRead));
+        }
+      },
+      close: () => handle2.close()
+    };
+  });
+  const handle = await acquire(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  try {
+    const before = await handle.stat();
+    if (!before.isFile()) throw new Error("Evidence must be a regular file without links.");
+    if (io.maximumBytes !== void 0 && (!Number.isSafeInteger(io.maximumBytes) || io.maximumBytes < 0 || before.size > BigInt(io.maximumBytes)))
+      throw new Error("Evidence byte budget exceeded.");
+    if (io.singleLink && before.nlink !== 1n) throw new Error("Output evidence must have a single link.");
+    if (!unchanged(before, await inspect(file))) throw new Error("Evidence file identity or metadata changed.");
+    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
+      throw new Error("Evidence path must be physical and contain no links.");
+    const bytes = await handle.readFile(io.maximumBytes);
+    if (!unchanged(before, await handle.stat()) || !unchanged(before, await inspect(file)) || BigInt(bytes.length) !== before.size)
+      throw new Error("Evidence file identity or metadata changed.");
+    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
+      throw new Error("Evidence path changed during descriptor read.");
+    return bytes;
+  } finally {
+    await handle.close();
+  }
+}
+var init_file_evidence = __esm({
+  "tooling/file-evidence.ts"() {
+    "use strict";
+  }
+});
+
 // tooling/errors.ts
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -56,9 +117,11 @@ function list(value, parse) {
   if (!Array.isArray(value)) throw new InputError("Invalid input: expected an array.");
   return value.map(parse);
 }
-function identity(value) {
+function identity(value, field) {
+  checkRaw(value);
   const result = text(value);
-  if (/[:()<>]|\s/u.test(result)) throw new InputError("Invalid input: ambiguous single-line identity field.");
+  if (/[()<>]|\s/u.test(result) || field === "reasoning" && result.includes(":"))
+    throw new InputError("Invalid input: ambiguous single-line identity field.");
   return result;
 }
 function version(value) {
@@ -139,7 +202,7 @@ function parseEvidence(value) {
   }
   if (data.mapping !== void 0) {
     const mapping = record(data.mapping, ["route", "model"]);
-    evidence.mapping = { route: text(mapping.route), model: identity(mapping.model) };
+    evidence.mapping = { route: text(mapping.route), model: identity(mapping.model, "model") };
   }
   return evidence;
 }
@@ -164,11 +227,12 @@ function parseEvent(value) {
     id: opaque(data.id),
     participantId: opaque(data.participantId),
     task: text(data.task),
-    reasoning: reasoning.state === "unknown" ? { state: "unknown" } : { state: "confirmed", value: identity(reasoning.value) },
+    reasoning: reasoning.state === "unknown" ? { state: "unknown" } : { state: "confirmed", value: identity(reasoning.value, "reasoning") },
     evidence: list(data.evidence, parseEvidence)
   };
   for (const field of ["agent", "host", "model", "modelRoute"])
-    if (data[field] !== void 0) event[field] = field === "model" ? identity(data[field]) : text(data[field]);
+    if (data[field] !== void 0)
+      event[field] = field === "model" ? identity(data[field], "model") : text(data[field]);
   if ([event.agent, event.host].some((field) => field && /[:()<>]/u.test(field)))
     throw new InputError("Invalid input: ambiguous Agent host field.");
   return event;
@@ -249,274 +313,8 @@ var init_records = __esm({
   }
 });
 
-// src/summarize.ts
-var summarize_exports = {};
-__export(summarize_exports, {
-  summarize: () => summarize
-});
-function effective(event, field) {
-  return event.evidence.some((item) => item.observation === "effective" && item.fields.includes(field));
-}
-function resolveAgent(event, registry, hostNames) {
-  if (!event.agent || !effective(event, "agent")) return;
-  const exact = registry.hosts.find((host) => host.name === event.agent || host.aliases.includes(event.agent ?? ""));
-  const contextual = hostNames.length === 1 ? registry.hosts.find((host) => host.name === hostNames[0]) : void 0;
-  if (exact) return !contextual || exact.name === contextual.name ? exact.name : void 0;
-  if (contextual && registry.ambiguousAliases.includes(event.agent) && contextual.family === (Object.hasOwn(registry.familyAliases, event.agent) ? registry.familyAliases[event.agent] : event.agent))
-    return contextual.name;
-  return;
-}
-function formalCandidate(value) {
-  return value !== void 0 && !["auto", "latest", "unknown", "n/a", "null"].includes(value.toLowerCase());
-}
-function resolveModels(records) {
-  const observations = records.filter((event) => effective(event, "model"));
-  const candidates = unique(observations.map((event) => event.model).filter(formalCandidate));
-  const routes = unique(observations.map((event) => event.modelRoute).filter((route) => route !== void 0));
-  const mappings = observations.flatMap(
-    (event) => event.evidence.filter((item) => item.observation === "effective" && item.fields.includes("model")).flatMap((item) => item.mapping ? [{ event, mapping: item.mapping }] : [])
-  );
-  const values = unique([...candidates, ...mappings.map((item) => item.mapping.model).filter(formalCandidate)]);
-  const conflict = values.length > 1 || mappings.some(
-    ({ event, mapping }) => !formalCandidate(mapping.model) || formalCandidate(event.model) && event.model !== mapping.model || (event.modelRoute !== void 0 ? event.modelRoute !== mapping.route : !routes.includes(mapping.route))
-  );
-  const covered = routes.every(
-    (route) => mappings.some(({ mapping }) => mapping.route === route && mapping.model === candidates[0])
-  );
-  return { values: covered ? candidates : [], conflict };
-}
-function resolveReasoning(event) {
-  if (event.reasoning.state !== "confirmed") return { conflict: false };
-  const value = event.reasoning.value;
-  const native = unique(
-    event.evidence.filter(
-      (item) => item.observation === "effective" && item.fields.includes("reasoning") && item.nativeReasoning
-    ).map((item) => item.nativeReasoning ?? "")
-  );
-  if (native.length > 1) return { conflict: true };
-  if (native[0] === "disabled") return { value: "none", conflict: false };
-  if (native[0] === "enabled" && !["none", "unknown", "N/A", "null", "off"].includes(value))
-    return { value, conflict: false };
-  return { conflict: false };
-}
-async function summarize(input, currentOperation, registryInput) {
-  const ledger = await parseLedger(input);
-  const operation = await parseOperation(currentOperation);
-  if (JSON.stringify(ledger.operation) !== JSON.stringify(operation))
-    throw new InputError("Invalid input scope: ledger and current operation differ.");
-  const registry = parseRegistry(registryInput);
-  const issues = [];
-  const diagnostics = [];
-  const tuples = /* @__PURE__ */ new Map();
-  const groups = /* @__PURE__ */ new Map();
-  for (const event of ledger.events) groups.set(event.id, [...groups.get(event.id) ?? [], event]);
-  const participants = unique([
-    ...ledger.knownParticipants.map((item) => item.id),
-    ...ledger.events.map((item) => item.participantId)
-  ]).map((id) => ({
-    id,
-    declared: ledger.knownParticipants.some((item) => item.id === id),
-    eventIds: unique(ledger.events.filter((event) => event.participantId === id).map((event) => event.id))
-  }));
-  for (const participant of ledger.knownParticipants) {
-    for (const eventId of participant.eventIds)
-      if (!groups.has(eventId))
-        issues.push({
-          id: JSON.stringify(["participant", participant.id, "event", eventId]),
-          code: "missing-event",
-          participantId: participant.id,
-          eventId
-        });
-    if (!ledger.events.some((event) => event.participantId === participant.id))
-      issues.push({
-        id: JSON.stringify(["participant", participant.id, "events"]),
-        code: "missing-participant-event",
-        participantId: participant.id
-      });
-  }
-  const events = [...groups].sort(([a], [b]) => ordinal(a, b)).map(([eventId, records]) => {
-    const first = records[0];
-    if (!first) throw new Error("Event grouping failed.");
-    const hostCandidates = records.filter((event) => event.host && effective(event, "host")).map((event) => event.host);
-    const hostNames = unique(
-      hostCandidates.map(
-        (candidate) => registry.hosts.find(
-          (host) => host.name === candidate || host.aliases.includes(candidate ?? "")
-        )?.name
-      ).filter((value) => value !== void 0)
-    );
-    const candidateAgents = records.filter((event) => event.agent && effective(event, "agent")).map((event) => resolveAgent(event, registry, hostNames));
-    const invalidHost = hostNames.length > 1 || hostCandidates.some(
-      (candidate) => !registry.hosts.some(
-        (host) => host.name === candidate || host.aliases.includes(candidate ?? "")
-      )
-    );
-    const agents = invalidHost || candidateAgents.some((agent2) => agent2 === void 0) ? [] : unique(candidateAgents.filter((value) => value !== void 0));
-    const modelResolution = resolveModels(records);
-    const models = modelResolution.values;
-    const reasoningObservations = records.map(resolveReasoning);
-    const efforts = unique(
-      reasoningObservations.map((item) => item.value).filter((value) => value !== void 0)
-    );
-    const reasoningConflict = efforts.length > 1 || reasoningObservations.some((item) => item.conflict);
-    for (const [field, values] of [
-      ["agent", agents],
-      ["model", models]
-    ]) {
-      if (values.length !== 1 || field === "model" && modelResolution.conflict)
-        issues.push({
-          id: JSON.stringify(["event", eventId, field]),
-          code: values.length > 1 || field === "model" && modelResolution.conflict ? `conflicting-${field}` : `unresolved-${field}`,
-          eventId,
-          participantId: first.participantId
-        });
-    }
-    const reasoning = !reasoningConflict && efforts.length === 1 ? efforts[0] : void 0;
-    if (!reasoning)
-      diagnostics.push({
-        id: JSON.stringify(["event", eventId, "reasoning"]),
-        code: reasoningConflict ? "conflicting-reasoning" : "unknown-reasoning",
-        eventId,
-        participantId: first.participantId
-      });
-    const agent = agents.length === 1 ? agents[0] : void 0;
-    const model = !modelResolution.conflict && models.length === 1 ? models[0] : void 0;
-    if (agent && model) {
-      const key = JSON.stringify([agent, model, reasoning ?? null]);
-      const tuple = tuples.get(key) ?? {
-        agent,
-        model,
-        ...reasoning ? { reasoning } : {},
-        participantIds: [],
-        eventIds: []
-      };
-      tuple.participantIds = unique([...tuple.participantIds, first.participantId]);
-      tuple.eventIds = unique([...tuple.eventIds, eventId]);
-      tuples.set(key, tuple);
-    }
-    return {
-      id: eventId,
-      participantId: first.participantId,
-      task: first.task,
-      ...agent ? { agent } : {},
-      ...model ? { model } : {},
-      ...reasoning ? { reasoning } : {},
-      records: records.map((event) => ({ ...event, evidence: event.evidence.map((item) => ({ ...item })) }))
-    };
-  });
-  const issueIds = new Set(issues.map((issue) => issue.id));
-  if (ledger.userExceptions.some((exception) => exception.issueIds.some((id) => !issueIds.has(id))))
-    throw new InputError("Invalid input: exception references an absent concrete issue.");
-  return {
-    schemaVersion: 1,
-    operation,
-    exitCode: issues.length ? 20 : 0,
-    tuples: [...tuples.values()].sort(
-      (a, b) => ordinal(a.agent, b.agent) || ordinal(a.model, b.model) || (a.reasoning === void 0 ? b.reasoning === void 0 ? 0 : -1 : b.reasoning === void 0 ? 1 : ordinal(a.reasoning, b.reasoning))
-    ),
-    events,
-    participants,
-    issues: issues.sort((a, b) => ordinal(a.id, b.id)),
-    diagnostics,
-    userExceptions: ledger.userExceptions,
-    limitations: [
-      "Supplied evidence is a declaration; this summary cannot authenticate runtime dispatch, handoffs, mappings or user consent.",
-      "Declared participant accounting cannot prove that no contributing actors were undisclosed.",
-      "Matching supplied physical scope does not prove the live Git operation or its freshness.",
-      "Summary completion is not repository-policy validation or authorization to commit or modify Git state."
-    ]
-  };
-}
-var init_summarize = __esm({
-  "src/summarize.ts"() {
-    "use strict";
-    init_records();
-  }
-});
-
-// src/attribution.ts
-import { fileURLToPath } from "node:url";
-
-// tooling/cli-entry.ts
-function isMainModule(metadata) {
-  if (typeof metadata.main !== "boolean")
-    throw new Error("CLI entry detection requires the supported Node 24 runtime with import.meta.main.");
-  return metadata.main;
-}
-
-// tooling/file-evidence.ts
-import { constants } from "node:fs";
-import { lstat, open, realpath } from "node:fs/promises";
-import path from "node:path";
-function sameFile(expected, actual) {
-  return actual.isFile() && !actual.isSymbolicLink() && expected.dev === actual.dev && expected.ino === actual.ino;
-}
-function unchanged(expected, actual) {
-  return sameFile(expected, actual) && expected.size === actual.size && expected.mtimeNs === actual.mtimeNs && expected.ctimeNs === actual.ctimeNs;
-}
-function samePhysicalPath(expected, actual) {
-  return path.relative(path.toNamespacedPath(path.resolve(expected)), path.toNamespacedPath(actual)) === "";
-}
-async function readRegularFile(file, io = {}) {
-  const inspect = io.lstat ?? ((name) => lstat(name, { bigint: true }));
-  const acquire = io.open ?? (async (name, flags) => {
-    const handle2 = await open(name, flags);
-    return {
-      stat: () => handle2.stat({ bigint: true }),
-      readFile: async (maximumBytes) => {
-        if (maximumBytes === void 0) return handle2.readFile();
-        const chunks = [];
-        let length = 0;
-        for (; ; ) {
-          const chunk = Buffer.alloc(Math.min(64 * 1024, maximumBytes - length + 1));
-          const { bytesRead } = await handle2.read(chunk, 0, chunk.length, null);
-          if (!bytesRead) return Buffer.concat(chunks, length);
-          length += bytesRead;
-          if (length > maximumBytes) throw new Error("Evidence byte budget exceeded.");
-          chunks.push(chunk.subarray(0, bytesRead));
-        }
-      },
-      close: () => handle2.close()
-    };
-  });
-  const handle = await acquire(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
-  try {
-    const before = await handle.stat();
-    if (!before.isFile()) throw new Error("Evidence must be a regular file without links.");
-    if (io.maximumBytes !== void 0 && (!Number.isSafeInteger(io.maximumBytes) || io.maximumBytes < 0 || before.size > BigInt(io.maximumBytes)))
-      throw new Error("Evidence byte budget exceeded.");
-    if (io.singleLink && before.nlink !== 1n) throw new Error("Output evidence must have a single link.");
-    if (!unchanged(before, await inspect(file))) throw new Error("Evidence file identity or metadata changed.");
-    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
-      throw new Error("Evidence path must be physical and contain no links.");
-    const bytes = await handle.readFile(io.maximumBytes);
-    if (!unchanged(before, await handle.stat()) || !unchanged(before, await inspect(file)) || BigInt(bytes.length) !== before.size)
-      throw new Error("Evidence file identity or metadata changed.");
-    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
-      throw new Error("Evidence path changed during descriptor read.");
-    return bytes;
-  } finally {
-    await handle.close();
-  }
-}
-
 // src/policy-contract.ts
-init_errors();
-init_records();
 import path3 from "node:path";
-var LIMITS = Object.freeze({
-  profile: "policy-scan-v1",
-  inputBytes: 2 * 1024 * 1024,
-  paths: 1e4,
-  files: 128,
-  fileBytes: 256 * 1024,
-  bytes: 4 * 1024 * 1024,
-  candidates: 256,
-  ancestors: 64,
-  directoryLevels: 16,
-  referenceHops: 8,
-  entries: 4096
-});
 function object(value, keys) {
   if (!isRecord(value) || Object.keys(value).some((key) => !keys.includes(key)))
     throw new InputError("Invalid policy input shape or unknown member.");
@@ -614,36 +412,50 @@ function parseBinding(value) {
   }
   return result;
 }
-var LIMITATIONS = [
-  "Finite bounded discovery records checked locations; it cannot prove no undiscovered policy exists.",
-  "Agent semantic assessments and invocation references are declarations, not authenticated policy truth, wrapper intent or user authorization.",
-  "Observed bytes and identity checks are not an atomic snapshot and cannot prevent later races; repeat freshness checks before consumption and after waiting.",
-  "Repository-policy validation is not performed; no default identity, registry, summary or message validation is run by policy commands."
-];
-
-// src/policy-evidence.ts
-import { lstat as lstat4, opendir as opendir2 } from "node:fs/promises";
-import path6 from "node:path";
-
-// src/policy-scope.ts
-init_errors();
-import { createHash } from "node:crypto";
-import { lstat as lstat3, opendir, realpath as realpath4 } from "node:fs/promises";
-import path5 from "node:path";
-init_records();
+var LIMITS, LIMITATIONS;
+var init_policy_contract = __esm({
+  "src/policy-contract.ts"() {
+    "use strict";
+    init_errors();
+    init_records();
+    LIMITS = Object.freeze({
+      profile: "policy-scan-v1",
+      inputBytes: 2 * 1024 * 1024,
+      paths: 1e4,
+      files: 128,
+      fileBytes: 256 * 1024,
+      bytes: 4 * 1024 * 1024,
+      candidates: 256,
+      ancestors: 64,
+      directoryLevels: 16,
+      referenceHops: 8,
+      entries: 4096
+    });
+    LIMITATIONS = [
+      "Finite bounded discovery records checked locations; it cannot prove no undiscovered policy exists.",
+      "Agent semantic assessments and invocation references are declarations, not authenticated policy truth, wrapper intent or user authorization.",
+      "Observed bytes and identity checks are not an atomic snapshot and cannot prevent later races; repeat freshness checks before consumption and after waiting.",
+      "Repository-policy validation is not performed; no default identity, registry, summary or message validation is run by policy commands."
+    ];
+  }
+});
 
 // src/safe-git.ts
 import { execFile } from "node:child_process";
 import { lstat as lstat2, realpath as realpath3 } from "node:fs/promises";
 import path4 from "node:path";
-var ObservationError = class extends Error {
-};
 function inside(root, target) {
   const relative = path4.relative(root, target);
   return relative === "" || !relative.startsWith(`..${path4.sep}`) && relative !== ".." && !path4.isAbsolute(relative);
 }
 async function resolveTrustedGit(excluded, environment = process.env) {
-  const candidates = process.platform === "win32" ? [environment.ProgramFiles, environment["ProgramFiles(x86)"]].filter((item) => !!item && path4.isAbsolute(item)).map((base) => path4.join(base, "Git/cmd/git.exe")) : ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"];
+  const windowsRoot = (name) => {
+    const values = Object.entries(environment).filter(([key]) => key.toLowerCase() === name).map(([, value]) => value);
+    if (new Set(values).size > 1)
+      throw new ObservationError("Conflicting Windows host installation root environment keys.");
+    return values[0];
+  };
+  const candidates = process.platform === "win32" ? [windowsRoot("programfiles"), windowsRoot("programfiles(x86)")].filter((item) => !!item && path4.isAbsolute(item)).map((base) => path4.join(base, "Git/cmd/git.exe")) : ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"];
   for (const candidate of candidates) {
     try {
       const actual = await realpath3(candidate);
@@ -673,8 +485,6 @@ function gitEnvironment(environment = process.env) {
     LC_ALL: "C"
   };
 }
-var sameArgs = (actual, expected) => actual.length === expected.length && actual.every((value, index) => value === expected[index]);
-var objectId = (value) => value !== void 0 && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value);
 function readOnlyArguments(command, args) {
   switch (command) {
     case "symbolic-ref":
@@ -708,80 +518,93 @@ function readOnlyArguments(command, args) {
       return false;
   }
 }
-var SafeGit = class {
-  executable;
-  directory;
-  environment;
-  started = performance.now();
-  constructor(executable, directory, environment = process.env) {
-    if (!path4.isAbsolute(executable)) throw new ObservationError("Git executable must be trusted and absolute.");
-    this.executable = executable;
-    this.directory = directory;
-    this.environment = gitEnvironment(environment);
+var ObservationError, sameArgs, objectId, SafeGit;
+var init_safe_git = __esm({
+  "src/safe-git.ts"() {
+    "use strict";
+    ObservationError = class extends Error {
+    };
+    sameArgs = (actual, expected) => actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+    objectId = (value) => value !== void 0 && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value);
+    SafeGit = class {
+      executable;
+      directory;
+      environment;
+      started = performance.now();
+      constructor(executable, directory, environment = process.env) {
+        if (!path4.isAbsolute(executable)) throw new ObservationError("Git executable must be trusted and absolute.");
+        this.executable = executable;
+        this.directory = directory;
+        this.environment = gitEnvironment(environment);
+      }
+      async #execute(args, allowMissing = false) {
+        const remaining = 3e4 - (performance.now() - this.started);
+        if (remaining <= 0) throw new ObservationError("Git observation total time budget exceeded.");
+        return new Promise((resolve, reject) => {
+          const child = execFile(
+            this.executable,
+            args,
+            {
+              cwd: this.directory,
+              env: this.environment,
+              encoding: "buffer",
+              windowsHide: true,
+              shell: false,
+              timeout: Math.min(1e4, remaining),
+              maxBuffer: 4 * 1024 * 1024
+            },
+            (error, stdout) => {
+              if (error && !(allowMissing && "code" in error && error.code === 1))
+                reject(
+                  new ObservationError(
+                    "Git observation failed, timed out, exceeded output budget or required object is unavailable."
+                  )
+                );
+              else resolve(stdout);
+            }
+          );
+          child.stdin?.end();
+        });
+      }
+      async guard() {
+        await this.#execute(["--no-lazy-fetch", "--version"]);
+      }
+      async run(command, args, allowMissing = false) {
+        if (!readOnlyArguments(command, args)) throw new ObservationError("Unsupported read-only Git argv.");
+        return this.#execute(
+          [
+            "--no-lazy-fetch",
+            "--no-optional-locks",
+            "--literal-pathspecs",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.untrackedCache=false",
+            "-c",
+            "core.pager=cat",
+            "-c",
+            "core.quotePath=false",
+            "-c",
+            "diff.external=",
+            "-c",
+            "core.hooksPath=",
+            command,
+            ...args
+          ],
+          allowMissing
+        );
+      }
+      async text(command, args, allowMissing = false) {
+        return new TextDecoder("utf-8", { fatal: true }).decode(await this.run(command, args, allowMissing)).replace(/\r?\n$/, "");
+      }
+    };
   }
-  async #execute(args, allowMissing = false) {
-    const remaining = 3e4 - (performance.now() - this.started);
-    if (remaining <= 0) throw new ObservationError("Git observation total time budget exceeded.");
-    return new Promise((resolve, reject) => {
-      const child = execFile(
-        this.executable,
-        args,
-        {
-          cwd: this.directory,
-          env: this.environment,
-          encoding: "buffer",
-          windowsHide: true,
-          shell: false,
-          timeout: Math.min(1e4, remaining),
-          maxBuffer: 4 * 1024 * 1024
-        },
-        (error, stdout) => {
-          if (error && !(allowMissing && "code" in error && error.code === 1))
-            reject(
-              new ObservationError(
-                "Git observation failed, timed out, exceeded output budget or required object is unavailable."
-              )
-            );
-          else resolve(stdout);
-        }
-      );
-      child.stdin?.end();
-    });
-  }
-  async guard() {
-    await this.#execute(["--no-lazy-fetch", "--version"]);
-  }
-  async run(command, args, allowMissing = false) {
-    if (!readOnlyArguments(command, args)) throw new ObservationError("Unsupported read-only Git argv.");
-    return this.#execute(
-      [
-        "--no-lazy-fetch",
-        "--no-optional-locks",
-        "--literal-pathspecs",
-        "-c",
-        "core.fsmonitor=false",
-        "-c",
-        "core.untrackedCache=false",
-        "-c",
-        "core.pager=cat",
-        "-c",
-        "core.quotePath=false",
-        "-c",
-        "diff.external=",
-        "-c",
-        "core.hooksPath=",
-        command,
-        ...args
-      ],
-      allowMissing
-    );
-  }
-  async text(command, args, allowMissing = false) {
-    return new TextDecoder("utf-8", { fatal: true }).decode(await this.run(command, args, allowMissing)).replace(/\r?\n$/, "");
-  }
-};
+});
 
 // src/policy-scope.ts
+import { createHash } from "node:crypto";
+import { lstat as lstat3, opendir, realpath as realpath4 } from "node:fs/promises";
+import path5 from "node:path";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (isRecord(value))
@@ -790,8 +613,6 @@ function canonical(value) {
     );
   return value;
 }
-var digest = (value) => createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
-var byteDigest = (value) => createHash("sha256").update(value).digest("hex");
 function sameObserved(left, right) {
   return left.dev === right.dev && left.ino === right.ino && left.mode === right.mode && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
@@ -1234,442 +1055,466 @@ async function captureScope(operation, context) {
     scopeDigest
   };
 }
+var digest, byteDigest;
+var init_policy_scope = __esm({
+  "src/policy-scope.ts"() {
+    "use strict";
+    init_errors();
+    init_file_evidence();
+    init_policy_contract();
+    init_records();
+    init_safe_git();
+    digest = (value) => createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
+    byteDigest = (value) => createHash("sha256").update(value).digest("hex");
+  }
+});
 
 // src/policy-evidence.ts
-init_records();
-var EvidenceSearch = class {
-  candidates = [];
-  checkedLocations = [];
-  issues = [];
-  fingerprints = [];
-  seen = /* @__PURE__ */ new Set();
-  scopeUses = /* @__PURE__ */ new Map();
-  directories = /* @__PURE__ */ new Map();
-  repository;
-  limitations = [];
-  files = 0;
-  bytes = 0;
-  referenceHops = 0;
-  entries = 0;
-  issue(code, locator, detail) {
-    const id = digest([code, locator]);
-    if (!this.issues.some((item) => item.id === id)) this.issues.push({ id, code, locator, detail });
-  }
-  count() {
-    if (++this.entries > LIMITS.entries) throw new ObservationError("Evidence enumeration budget exceeded.");
-  }
-  async directoryEntries(directory) {
-    const entries = [];
-    for await (const entry of await opendir2(directory)) {
-      this.count();
-      checkRaw(entry.name);
-      entries.push(entry);
-    }
-    return entries.sort((a, b) => ordinal(a.name, b.name));
-  }
-  async read(locator, sourceKind, scopeBasis, required = false, depth = 0, stack = [], display) {
-    if (stack.includes(locator)) {
-      this.issue("reference-cycle", locator, "Adopted evidence reference cycle.");
-      return;
-    }
-    const uses = this.scopeUses.get(locator) ?? /* @__PURE__ */ new Set();
-    uses.add(scopeBasis);
-    this.scopeUses.set(locator, uses);
-    try {
-      this.count();
-      if (this.seen.has(locator)) {
-        const cached = this.candidates.find((item) => item.locator === locator);
-        if (cached) cached.scopeBasis = unique([...uses]).join("; ");
-        if (required && this.checkedLocations.some((item) => item.locator === locator && item.status === "absent")) {
-          const detail = `An explicitly referenced policy/configuration target is missing. Scope: ${unique([...uses]).join("; ")}`;
-          this.issue("missing-reference", locator, detail);
-          const issue = this.issues.find((item) => item.id === digest(["missing-reference", locator]));
-          if (issue) issue.detail = detail;
-        }
-        return cached;
+import { lstat as lstat4, opendir as opendir2 } from "node:fs/promises";
+import path6 from "node:path";
+var EvidenceSearch;
+var init_policy_evidence = __esm({
+  "src/policy-evidence.ts"() {
+    "use strict";
+    init_file_evidence();
+    init_policy_contract();
+    init_policy_scope();
+    init_records();
+    init_safe_git();
+    EvidenceSearch = class {
+      candidates = [];
+      checkedLocations = [];
+      issues = [];
+      fingerprints = [];
+      seen = /* @__PURE__ */ new Set();
+      scopeUses = /* @__PURE__ */ new Map();
+      directories = /* @__PURE__ */ new Map();
+      repository;
+      limitations = [];
+      files = 0;
+      bytes = 0;
+      referenceHops = 0;
+      entries = 0;
+      issue(code, locator, detail) {
+        const id = digest([code, locator]);
+        if (!this.issues.some((item) => item.id === id)) this.issues.push({ id, code, locator, detail });
       }
-      this.seen.add(locator);
-      const info = await inspectPath(locator);
-      if (!info) {
-        this.checkedLocations.push({ locator, status: "absent" });
-        if (required)
-          this.issue(
-            "missing-reference",
-            locator,
-            `An explicitly referenced policy/configuration target is missing. Scope: ${unique([...uses]).join("; ")}`
-          );
-        return;
+      count() {
+        if (++this.entries > LIMITS.entries) throw new ObservationError("Evidence enumeration budget exceeded.");
       }
-      if (!info.isFile() || info.isSymbolicLink())
-        throw new ObservationError("Policy evidence is not a regular physical file.");
-      if (++this.files > LIMITS.files || this.candidates.length >= LIMITS.candidates)
-        throw new ObservationError("Policy file/candidate budget exceeded.");
-      const bytes = await readRegularFile(locator, {
-        physicalPath: true,
-        maximumBytes: Math.min(LIMITS.fileBytes, LIMITS.bytes - this.bytes)
-      });
-      const after = await lstat4(locator);
-      if (info.dev !== after.dev || info.ino !== after.ino || info.size !== after.size || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs)
-        throw new ObservationError("Evidence identity changed across bounded observation.");
-      this.bytes += bytes.length;
-      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]/u.test(decoded))
-        throw new ObservationError("Policy evidence contains unsupported document controls.");
-      const id = digest(["candidate", locator]);
-      const candidate = {
-        id,
-        locator,
-        sourceKind,
-        scopeBasis,
-        sha256: byteDigest(bytes),
-        byteLength: bytes.length,
-        text: display ?? decoded,
-        referenceIds: []
-      };
-      this.fingerprints.push({
-        locator,
-        dev: info.dev,
-        ino: info.ino,
-        size: bytes.length,
-        sha256: candidate.sha256,
-        sourceKind,
-        scopeBasis
-      });
-      this.candidates.push(candidate);
-      this.checkedLocations.push({ locator, status: "present" });
-      if (display !== void 0) return candidate;
-      for (const match of decoded.matchAll(/\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
-        const link = match[1];
-        if (!link || link.startsWith("#")) continue;
-        this.referenceHops = Math.max(this.referenceHops, depth + 1);
-        if (depth >= LIMITS.referenceHops) {
-          this.issue("reference-budget", locator, "Adopted reference hop budget exceeded.");
-          break;
+      async directoryEntries(directory) {
+        const entries = [];
+        for await (const entry of await opendir2(directory)) {
+          this.count();
+          checkRaw(entry.name);
+          entries.push(entry);
         }
-        if (/^https?:\/\//i.test(link)) {
-          this.limitations.push(`Unfetched network evidence locator: ${link}`);
-          continue;
+        return entries.sort((a, b) => ordinal(a.name, b.name));
+      }
+      async read(locator, sourceKind, scopeBasis, required = false, depth = 0, stack = [], display) {
+        if (stack.includes(locator)) {
+          this.issue("reference-cycle", locator, "Adopted evidence reference cycle.");
+          return;
         }
-        if (/^[a-z][a-z0-9+.-]*:/i.test(link) && !/^[a-z]:[/\\]/i.test(link)) {
-          this.issue("unsupported-reference", locator, "Unsupported adopted evidence locator scheme.");
-          continue;
-        }
-        let decodedLink;
+        const uses = this.scopeUses.get(locator) ?? /* @__PURE__ */ new Set();
+        uses.add(scopeBasis);
+        this.scopeUses.set(locator, uses);
         try {
-          decodedLink = decodeURIComponent(link.split("#")[0] ?? "");
-          checkRaw(decodedLink);
-        } catch {
-          this.issue("invalid-reference", locator, "Adopted reference has invalid encoding or controls.");
-          continue;
-        }
-        const target = path6.resolve(path6.dirname(locator), decodedLink);
-        const targetInfo = await inspectPath(target);
-        if (targetInfo?.isDirectory()) {
-          if (!this.repository || !inside(this.repository, target))
-            this.issue(
-              "external-directory-reference",
-              target,
-              "External directory navigation is unresolved; only exact external file targets may be read."
-            );
-          else {
-            await this.docs(target, 0, depth + 1, [...stack, locator], true);
-            candidate.referenceIds.push(
-              ...this.candidates.filter((item) => inside(target, item.locator)).map((item) => item.id)
-            );
+          this.count();
+          if (this.seen.has(locator)) {
+            const cached = this.candidates.find((item) => item.locator === locator);
+            if (cached) cached.scopeBasis = unique([...uses]).join("; ");
+            if (required && this.checkedLocations.some((item) => item.locator === locator && item.status === "absent")) {
+              const detail = `An explicitly referenced policy/configuration target is missing. Scope: ${unique([...uses]).join("; ")}`;
+              this.issue("missing-reference", locator, detail);
+              const issue2 = this.issues.find((item) => item.id === digest(["missing-reference", locator]));
+              if (issue2) issue2.detail = detail;
+            }
+            return cached;
           }
-          continue;
-        }
-        const child = await this.read(
-          target,
-          "adopted-reference",
-          `Explicit link from ${locator}`,
-          true,
-          depth + 1,
-          [...stack, locator]
-        );
-        if (child) candidate.referenceIds.push(child.id);
-      }
-      candidate.referenceIds = unique(candidate.referenceIds);
-      return candidate;
-    } catch (error) {
-      this.checkedLocations.push({ locator, status: "failed" });
-      this.issue(
-        "unsafe-evidence",
-        locator,
-        error instanceof ObservationError ? error.message : "Evidence read failed identity/type/encoding/byte-budget checks."
-      );
-      return;
-    }
-  }
-  async docs(directory, depth = 0, referenceDepth = 0, stack = [], required = false) {
-    try {
-      this.count();
-      if (depth > LIMITS.directoryLevels) throw new ObservationError("Policy directory level budget exceeded.");
-      if (stack.includes(directory)) throw new ObservationError("Adopted directory reference cycle.");
-      const info = await inspectPath(directory);
-      if (!info) {
-        if (required) throw new ObservationError("Observed/adopted directory disappeared before discovery.");
-        this.checkedLocations.push({ locator: directory, status: "absent" });
-        return;
-      }
-      if (!info.isDirectory()) throw new ObservationError("Policy discovery root must be a physical directory.");
-      const mode = referenceDepth > 0 ? "adopted" : "narrow";
-      const completed = this.directories.get(directory);
-      if (completed === "adopted" || completed === mode) return;
-      const entries = await this.directoryEntries(directory);
-      this.checkedLocations.push({ locator: directory, status: "present" });
-      this.fingerprints.push({
-        directory,
-        dev: info.dev,
-        ino: info.ino,
-        entries: entries.map((entry) => entry.name)
-      });
-      for (const entry of entries) {
-        if ([
-          ".git",
-          "node_modules",
-          ".pnpm",
-          "vendor",
-          "third_party",
-          "third-party",
-          "dist",
-          "coverage"
-        ].includes(entry.name))
-          continue;
-        const target = path6.join(directory, entry.name);
-        if (entry.isSymbolicLink()) {
-          this.issue("unsafe-directory-entry", target, "Policy discovery encountered a linked path.");
-          continue;
-        }
-        if (entry.isDirectory())
-          await this.docs(target, depth + 1, referenceDepth, [...stack, directory], true);
-        else if (/\.(?:md|txt|ya?ml|json)$/i.test(entry.name) && (referenceDepth > 0 || /readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) || directory.endsWith(`${path6.sep}.github${path6.sep}workflows`)))
-          await this.read(
-            target,
-            "repository-document",
-            `Bounded contribution/policy document discovery under ${directory}`,
-            false,
-            referenceDepth,
-            [...stack, directory]
+          this.seen.add(locator);
+          const info = await inspectPath(locator);
+          if (!info) {
+            this.checkedLocations.push({ locator, status: "absent" });
+            if (required)
+              this.issue(
+                "missing-reference",
+                locator,
+                `An explicitly referenced policy/configuration target is missing. Scope: ${unique([...uses]).join("; ")}`
+              );
+            return;
+          }
+          if (!info.isFile() || info.isSymbolicLink())
+            throw new ObservationError("Policy evidence is not a regular physical file.");
+          if (++this.files > LIMITS.files || this.candidates.length >= LIMITS.candidates)
+            throw new ObservationError("Policy file/candidate budget exceeded.");
+          const bytes = await readRegularFile(locator, {
+            physicalPath: true,
+            maximumBytes: Math.min(LIMITS.fileBytes, LIMITS.bytes - this.bytes)
+          });
+          const after = await lstat4(locator);
+          if (info.dev !== after.dev || info.ino !== after.ino || info.size !== after.size || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs)
+            throw new ObservationError("Evidence identity changed across bounded observation.");
+          this.bytes += bytes.length;
+          const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+          if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]/u.test(decoded))
+            throw new ObservationError("Policy evidence contains unsupported document controls.");
+          const id = digest(["candidate", locator]);
+          const candidate = {
+            id,
+            locator,
+            sourceKind,
+            scopeBasis,
+            sha256: byteDigest(bytes),
+            byteLength: bytes.length,
+            text: display ?? decoded,
+            referenceIds: []
+          };
+          this.fingerprints.push({
+            locator,
+            dev: info.dev,
+            ino: info.ino,
+            size: bytes.length,
+            sha256: candidate.sha256,
+            sourceKind,
+            scopeBasis
+          });
+          this.candidates.push(candidate);
+          this.checkedLocations.push({ locator, status: "present" });
+          if (display !== void 0) return candidate;
+          for (const match of decoded.matchAll(/\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
+            const link = match[1];
+            if (!link || link.startsWith("#")) continue;
+            this.referenceHops = Math.max(this.referenceHops, depth + 1);
+            if (depth >= LIMITS.referenceHops) {
+              this.issue("reference-budget", locator, "Adopted reference hop budget exceeded.");
+              break;
+            }
+            if (/^https?:\/\//i.test(link)) {
+              this.limitations.push(`Unfetched network evidence locator: ${link}`);
+              continue;
+            }
+            if (/^[a-z][a-z0-9+.-]*:/i.test(link) && !/^[a-z]:[/\\]/i.test(link)) {
+              this.issue("unsupported-reference", locator, "Unsupported adopted evidence locator scheme.");
+              continue;
+            }
+            let decodedLink;
+            try {
+              decodedLink = decodeURIComponent(link.split("#")[0] ?? "");
+              checkRaw(decodedLink);
+            } catch {
+              this.issue("invalid-reference", locator, "Adopted reference has invalid encoding or controls.");
+              continue;
+            }
+            const target = path6.resolve(path6.dirname(locator), decodedLink);
+            const targetInfo = await inspectPath(target);
+            if (targetInfo?.isDirectory()) {
+              if (!this.repository || !inside(this.repository, target))
+                this.issue(
+                  "external-directory-reference",
+                  target,
+                  "External directory navigation is unresolved; only exact external file targets may be read."
+                );
+              else {
+                await this.docs(target, 0, depth + 1, [...stack, locator], true);
+                candidate.referenceIds.push(
+                  ...this.candidates.filter((item) => inside(target, item.locator)).map((item) => item.id)
+                );
+              }
+              continue;
+            }
+            const child = await this.read(
+              target,
+              "adopted-reference",
+              `Explicit link from ${locator}`,
+              true,
+              depth + 1,
+              [...stack, locator]
+            );
+            if (child) candidate.referenceIds.push(child.id);
+          }
+          candidate.referenceIds = unique(candidate.referenceIds);
+          return candidate;
+        } catch (error) {
+          this.checkedLocations.push({ locator, status: "failed" });
+          this.issue(
+            "unsafe-evidence",
+            locator,
+            error instanceof ObservationError ? error.message : "Evidence read failed identity/type/encoding/byte-budget checks."
           );
+          return;
+        }
       }
-      const after = await inspectPath(directory);
-      if (!after || info.dev !== after.dev || info.ino !== after.ino || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs)
-        throw new ObservationError("Policy directory changed/disappeared during discovery.");
-      this.directories.set(directory, mode);
-    } catch {
-      this.checkedLocations.push({ locator: directory, status: "failed" });
-      this.issue(
-        "directory-observation",
-        directory,
-        "Directory discovery failed or exceeded its enumeration/level budget."
-      );
-    }
-  }
-  async configuration(scope) {
-    const keys = ["core.hooksPath", "commit.template", "include.path"];
-    const visited = /* @__PURE__ */ new Set();
-    const active = /* @__PURE__ */ new Set();
-    const settings = /* @__PURE__ */ new Map();
-    const inspect = async (file, depth = 0) => {
-      if (active.has(file) || depth > LIMITS.referenceHops) {
-        this.issue("config-cycle-budget", file, "Configuration include cycle/depth is unsupported.");
-        return;
+      async docs(directory, depth = 0, referenceDepth = 0, stack = [], required = false) {
+        try {
+          this.count();
+          if (depth > LIMITS.directoryLevels) throw new ObservationError("Policy directory level budget exceeded.");
+          if (stack.includes(directory)) throw new ObservationError("Adopted directory reference cycle.");
+          const info = await inspectPath(directory);
+          if (!info) {
+            if (required) throw new ObservationError("Observed/adopted directory disappeared before discovery.");
+            this.checkedLocations.push({ locator: directory, status: "absent" });
+            return;
+          }
+          if (!info.isDirectory()) throw new ObservationError("Policy discovery root must be a physical directory.");
+          const mode = referenceDepth > 0 ? "adopted" : "narrow";
+          const completed = this.directories.get(directory);
+          if (completed === "adopted" || completed === mode) return;
+          const entries = await this.directoryEntries(directory);
+          this.checkedLocations.push({ locator: directory, status: "present" });
+          this.fingerprints.push({
+            directory,
+            dev: info.dev,
+            ino: info.ino,
+            entries: entries.map((entry) => entry.name)
+          });
+          for (const entry of entries) {
+            if ([
+              ".git",
+              "node_modules",
+              ".pnpm",
+              "vendor",
+              "third_party",
+              "third-party",
+              "dist",
+              "coverage"
+            ].includes(entry.name))
+              continue;
+            const target = path6.join(directory, entry.name);
+            if (entry.isSymbolicLink()) {
+              this.issue("unsafe-directory-entry", target, "Policy discovery encountered a linked path.");
+              continue;
+            }
+            if (entry.isDirectory())
+              await this.docs(target, depth + 1, referenceDepth, [...stack, directory], true);
+            else if (/\.(?:md|txt|ya?ml|json)$/i.test(entry.name) && (referenceDepth > 0 || /readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) || directory.endsWith(`${path6.sep}.github${path6.sep}workflows`)))
+              await this.read(
+                target,
+                "repository-document",
+                `Bounded contribution/policy document discovery under ${directory}`,
+                false,
+                referenceDepth,
+                [...stack, directory]
+              );
+          }
+          const after = await inspectPath(directory);
+          if (!after || info.dev !== after.dev || info.ino !== after.ino || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs)
+            throw new ObservationError("Policy directory changed/disappeared during discovery.");
+          this.directories.set(directory, mode);
+        } catch {
+          this.checkedLocations.push({ locator: directory, status: "failed" });
+          this.issue(
+            "directory-observation",
+            directory,
+            "Directory discovery failed or exceeded its enumeration/level budget."
+          );
+        }
       }
-      if (visited.has(file)) return;
-      visited.add(file);
-      active.add(file);
-      const candidate = await this.read(
-        file,
-        "git-configuration",
-        "Actual local/worktree/include configuration; only policy locator keys are displayed.",
-        depth > 0,
-        0,
-        [],
-        "Configuration bytes are bound; unrelated and secret values are omitted."
-      );
-      if (!candidate) {
-        active.delete(file);
-        return;
-      }
-      try {
-        const conditional = await scope.git.text(
+      async configuration(scope) {
+        const keys = ["core.hooksPath", "commit.template", "include.path"];
+        const visited = /* @__PURE__ */ new Set();
+        const active = /* @__PURE__ */ new Set();
+        const settings = /* @__PURE__ */ new Map();
+        const inspect = async (file, depth = 0) => {
+          if (active.has(file) || depth > LIMITS.referenceHops) {
+            this.issue("config-cycle-budget", file, "Configuration include cycle/depth is unsupported.");
+            return;
+          }
+          if (visited.has(file)) return;
+          visited.add(file);
+          active.add(file);
+          const candidate = await this.read(
+            file,
+            "git-configuration",
+            "Actual local/worktree/include configuration; only policy locator keys are displayed.",
+            depth > 0,
+            0,
+            [],
+            "Configuration bytes are bound; unrelated and secret values are omitted."
+          );
+          if (!candidate) {
+            active.delete(file);
+            return;
+          }
+          try {
+            const conditional = await scope.git.text(
+              "config",
+              ["--no-includes", "--file", file, "--get-regexp", "^includeIf\\..*\\.path$"],
+              true
+            );
+            if (conditional) {
+              this.issue(
+                "conditional-config",
+                file,
+                "Conditional include semantics require an explicit decision; no include is guessed."
+              );
+            }
+            const selected = [];
+            for (const key of keys) {
+              const bytes = await scope.git.run(
+                "config",
+                ["--no-includes", "--null", "--file", file, "--get-all", key],
+                true
+              );
+              const values = new TextDecoder("utf-8", { fatal: true }).decode(bytes).split("\0").filter(Boolean);
+              for (const value of values) {
+                checkRaw(value);
+                selected.push(`${key}=${value}`);
+                if (key === "include.path") {
+                  this.issue(
+                    "config-include-order",
+                    file,
+                    "Included configuration is bound as data; its effective inline precedence requires a decision."
+                  );
+                  if (value.startsWith("~") || !value || /\$|%/.test(value)) {
+                    this.issue(
+                      "config-locator",
+                      file,
+                      "Unsupported include path expansion requires a decision."
+                    );
+                    continue;
+                  }
+                  const target = path6.resolve(path6.dirname(file), value);
+                  const child = await this.read(
+                    target,
+                    "git-configuration",
+                    `Exact include referenced by ${file}`,
+                    true,
+                    0,
+                    [],
+                    "Included configuration bytes are bound; unrelated and secret values are omitted."
+                  );
+                  if (child) candidate.referenceIds.push(child.id);
+                  await inspect(target, depth + 1);
+                } else settings.set(key, value);
+              }
+            }
+            candidate.text = selected.join("\n");
+          } catch {
+            this.issue("config-read", file, "Malformed or unsupported configuration cannot be safely resolved.");
+          }
+          active.delete(file);
+        };
+        await inspect(path6.join(scope.commonGitDir, "config"));
+        const worktreeConfig = await scope.git.text(
           "config",
-          ["--no-includes", "--file", file, "--get-regexp", "^includeIf\\..*\\.path$"],
+          [
+            "--no-includes",
+            "--file",
+            path6.join(scope.commonGitDir, "config"),
+            "--bool",
+            "--get",
+            "extensions.worktreeConfig"
+          ],
           true
         );
-        if (conditional) {
+        if (worktreeConfig === "true") await inspect(path6.join(scope.gitDirectory, "config.worktree"));
+        const hookSetting = settings.get("core.hooksPath");
+        if (hookSetting?.startsWith("~") || settings.get("commit.template")?.startsWith("~")) {
           this.issue(
-            "conditional-config",
-            file,
-            "Conditional include semantics require an explicit decision; no include is guessed."
+            "config-locator",
+            scope.gitDirectory,
+            "Home-relative policy locators need an explicit exact candidate."
           );
+          return;
         }
-        const selected = [];
-        for (const key of keys) {
-          const bytes = await scope.git.run(
-            "config",
-            ["--no-includes", "--null", "--file", file, "--get-all", key],
+        const hooks = hookSetting ? path6.resolve(scope.worktree, hookSetting) : path6.join(scope.commonGitDir, "hooks");
+        for (const name of ["prepare-commit-msg", "commit-msg"])
+          await this.read(
+            path6.join(hooks, name),
+            "message-hook",
+            "Effective message-related hook definition, read as data"
+          );
+        const template = settings.get("commit.template");
+        if (template)
+          await this.read(
+            path6.resolve(scope.git.directory, template),
+            "commit-template",
+            "Effective explicitly configured commit template",
             true
           );
-          const values = new TextDecoder("utf-8", { fatal: true }).decode(bytes).split("\0").filter(Boolean);
-          for (const value of values) {
-            checkRaw(value);
-            selected.push(`${key}=${value}`);
-            if (key === "include.path") {
-              this.issue(
-                "config-include-order",
-                file,
-                "Included configuration is bound as data; its effective inline precedence requires a decision."
-              );
-              if (value.startsWith("~") || !value || /\$|%/.test(value)) {
-                this.issue(
-                  "config-locator",
-                  file,
-                  "Unsupported include path expansion requires a decision."
-                );
-                continue;
-              }
-              const target = path6.resolve(path6.dirname(file), value);
-              const child = await this.read(
-                target,
-                "git-configuration",
-                `Exact include referenced by ${file}`,
-                true,
-                0,
-                [],
-                "Included configuration bytes are bound; unrelated and secret values are omitted."
-              );
-              if (child) candidate.referenceIds.push(child.id);
-              await inspect(target, depth + 1);
-            } else settings.set(key, value);
+      }
+      async discover(operation, context, scope) {
+        this.repository = operation.worktree;
+        const dirs = /* @__PURE__ */ new Set();
+        let current = operation.worktree;
+        let steps = 0;
+        for (; ; ) {
+          if (++steps > LIMITS.ancestors) {
+            this.issue("ancestor-budget", current, "Applicable ancestor instruction budget exceeded.");
+            break;
+          }
+          dirs.add(current);
+          const parent = path6.dirname(current);
+          if (parent === current) break;
+          current = parent;
+        }
+        for (const relative of scope.paths) {
+          let parent = path6.dirname(path6.join(operation.worktree, relative));
+          const state = await inspectPath(path6.join(operation.worktree, relative));
+          if (state?.isDirectory()) parent = path6.join(operation.worktree, relative);
+          let depth = 0;
+          while (inside(operation.worktree, parent)) {
+            if (++depth > LIMITS.directoryLevels) {
+              this.issue("local-depth-budget", parent, "Applicable local instruction depth budget exceeded.");
+              break;
+            }
+            dirs.add(parent);
+            if (parent === operation.worktree) break;
+            parent = path6.dirname(parent);
           }
         }
-        candidate.text = selected.join("\n");
-      } catch {
-        this.issue("config-read", file, "Malformed or unsupported configuration cannot be safely resolved.");
-      }
-      active.delete(file);
-    };
-    await inspect(path6.join(scope.commonGitDir, "config"));
-    const worktreeConfig = await scope.git.text(
-      "config",
-      [
-        "--no-includes",
-        "--file",
-        path6.join(scope.commonGitDir, "config"),
-        "--bool",
-        "--get",
-        "extensions.worktreeConfig"
-      ],
-      true
-    );
-    if (worktreeConfig === "true") await inspect(path6.join(scope.gitDirectory, "config.worktree"));
-    const hookSetting = settings.get("core.hooksPath");
-    if (hookSetting?.startsWith("~") || settings.get("commit.template")?.startsWith("~")) {
-      this.issue(
-        "config-locator",
-        scope.gitDirectory,
-        "Home-relative policy locators need an explicit exact candidate."
-      );
-      return;
-    }
-    const hooks = hookSetting ? path6.resolve(scope.worktree, hookSetting) : path6.join(scope.commonGitDir, "hooks");
-    for (const name of ["prepare-commit-msg", "commit-msg"])
-      await this.read(
-        path6.join(hooks, name),
-        "message-hook",
-        "Effective message-related hook definition, read as data"
-      );
-    const template = settings.get("commit.template");
-    if (template)
-      await this.read(
-        path6.resolve(scope.git.directory, template),
-        "commit-template",
-        "Effective explicitly configured commit template",
-        true
-      );
-  }
-  async discover(operation, context, scope) {
-    this.repository = operation.worktree;
-    const dirs = /* @__PURE__ */ new Set();
-    let current = operation.worktree;
-    let steps = 0;
-    for (; ; ) {
-      if (++steps > LIMITS.ancestors) {
-        this.issue("ancestor-budget", current, "Applicable ancestor instruction budget exceeded.");
-        break;
-      }
-      dirs.add(current);
-      const parent = path6.dirname(current);
-      if (parent === current) break;
-      current = parent;
-    }
-    for (const relative of scope.paths) {
-      let parent = path6.dirname(path6.join(operation.worktree, relative));
-      const state = await inspectPath(path6.join(operation.worktree, relative));
-      if (state?.isDirectory()) parent = path6.join(operation.worktree, relative);
-      let depth = 0;
-      while (inside(operation.worktree, parent)) {
-        if (++depth > LIMITS.directoryLevels) {
-          this.issue("local-depth-budget", parent, "Applicable local instruction depth budget exceeded.");
-          break;
+        for (const directory of [...dirs].sort(ordinal))
+          for (const name of ["AGENTS.md", "CLAUDE.md"])
+            await this.read(
+              path6.join(directory, name),
+              "applicable-instruction",
+              "Exact ancestor/local instruction of worktree or selected/intended path"
+            );
+        try {
+          for (const entry of await this.directoryEntries(operation.worktree)) {
+            if (/^(?:README|CONTRIBUTING)(?:[._-].*)?$/i.test(entry.name))
+              await this.read(
+                path6.join(operation.worktree, entry.name),
+                "contribution-entry",
+                "Root contribution/navigation entry"
+              );
+          }
+        } catch {
+          this.issue("root-discovery", operation.worktree, "Root entry discovery failed.");
         }
-        dirs.add(parent);
-        if (parent === operation.worktree) break;
-        parent = path6.dirname(parent);
-      }
-    }
-    for (const directory of [...dirs].sort(ordinal))
-      for (const name of ["AGENTS.md", "CLAUDE.md"])
-        await this.read(
-          path6.join(directory, name),
-          "applicable-instruction",
-          "Exact ancestor/local instruction of worktree or selected/intended path"
-        );
-    try {
-      for (const entry of await this.directoryEntries(operation.worktree)) {
-        if (/^(?:README|CONTRIBUTING)(?:[._-].*)?$/i.test(entry.name))
+        for (const name of ["README.md", "CONTRIBUTING.md"])
           await this.read(
-            path6.join(operation.worktree, entry.name),
+            path6.join(operation.worktree, name),
             "contribution-entry",
-            "Root contribution/navigation entry"
+            "Expected root contribution/navigation entry"
           );
+        await this.docs(path6.join(operation.worktree, "docs"));
+        await this.docs(path6.join(operation.worktree, ".github/workflows"));
+        await this.configuration(scope);
+        for (const locator of context.additionalCandidatePaths ?? [])
+          await this.read(locator, "explicit-candidate", "Exact candidate supplied by caller", true);
       }
-    } catch {
-      this.issue("root-discovery", operation.worktree, "Root entry discovery failed.");
-    }
-    for (const name of ["README.md", "CONTRIBUTING.md"])
-      await this.read(
-        path6.join(operation.worktree, name),
-        "contribution-entry",
-        "Expected root contribution/navigation entry"
-      );
-    await this.docs(path6.join(operation.worktree, "docs"));
-    await this.docs(path6.join(operation.worktree, ".github/workflows"));
-    await this.configuration(scope);
-    for (const locator of context.additionalCandidatePaths ?? [])
-      await this.read(locator, "explicit-candidate", "Exact candidate supplied by caller", true);
+      bindingDigest() {
+        this.candidates.sort((a, b) => ordinal(a.id, b.id));
+        this.checkedLocations.sort((a, b) => ordinal(a.locator, b.locator) || ordinal(a.status, b.status));
+        this.issues.sort((a, b) => ordinal(a.id, b.id));
+        return digest({
+          profile: LIMITS,
+          enumerationLimit: LIMITS.entries,
+          scopeUses: [...this.scopeUses].sort(([a], [b]) => ordinal(a, b)).map(([locator, uses]) => ({ locator, uses: unique([...uses]) })),
+          candidates: this.candidates,
+          checkedLocations: this.checkedLocations,
+          issues: this.issues,
+          fingerprints: this.fingerprints.sort((a, b) => ordinal(JSON.stringify(a), JSON.stringify(b))),
+          limitations: unique(this.limitations)
+        });
+      }
+    };
   }
-  bindingDigest() {
-    this.candidates.sort((a, b) => ordinal(a.id, b.id));
-    this.checkedLocations.sort((a, b) => ordinal(a.locator, b.locator) || ordinal(a.status, b.status));
-    this.issues.sort((a, b) => ordinal(a.id, b.id));
-    return digest({
-      profile: LIMITS,
-      enumerationLimit: LIMITS.entries,
-      scopeUses: [...this.scopeUses].sort(([a], [b]) => ordinal(a, b)).map(([locator, uses]) => ({ locator, uses: unique([...uses]) })),
-      candidates: this.candidates,
-      checkedLocations: this.checkedLocations,
-      issues: this.issues,
-      fingerprints: this.fingerprints.sort((a, b) => ordinal(JSON.stringify(a), JSON.stringify(b))),
-      limitations: unique(this.limitations)
-    });
-  }
-};
+});
 
 // src/policy.ts
-init_records();
 async function scanPolicy(input) {
   const operation = await parseOperation(input.operation);
   const context = parseContext(input.context);
@@ -1813,8 +1658,909 @@ async function checkFreshRouting(input) {
     freshScan: scan
   };
 }
+var init_policy = __esm({
+  "src/policy.ts"() {
+    "use strict";
+    init_policy_contract();
+    init_policy_evidence();
+    init_policy_scope();
+    init_records();
+    init_safe_git();
+  }
+});
+
+// src/message-assessment.ts
+function rows(value) {
+  if (!Array.isArray(value)) throw new InputError("Assessment requires an array.");
+  return value;
+}
+async function parseAssessment(value, route, messageSha256, records, summary) {
+  if (value === void 0) return { signatures: [], migrations: [], exceptionApplications: [] };
+  checkRaw(value);
+  const data = object(value, [
+    "schemaVersion",
+    "artifact",
+    "operation",
+    "binding",
+    "messageSha256",
+    "signatures",
+    "migrations",
+    "exceptionApplications"
+  ]);
+  if (data.schemaVersion !== 1 || data.artifact !== "message-assessment" || data.messageSha256 !== messageSha256 || digest(await parseOperation(data.operation)) !== digest(route.operation) || digest(parseBinding(data.binding)) !== digest(route.binding))
+    throw new InputError("Message assessment is malformed or bound to another message/scope/evidence.");
+  const eventIds = new Set(summary.events.map((event) => event.id));
+  const signatures = rows(data.signatures).map((item) => {
+    const row = object(item, ["id", "source", "classification", "eventIds", "evidenceReferences", "rationale"]);
+    const source = object(row.source, ["messageRecordId", "policyCandidateId"]);
+    const classification = text(row.classification);
+    if (!["ai-signature", "human-signature", "unrelated", "uncertain"].includes(classification) || Object.keys(source).length !== 1)
+      throw new InputError("Invalid signature assessment source/classification.");
+    const location = {};
+    if (source.messageRecordId !== void 0) {
+      location.messageRecordId = exact(source.messageRecordId);
+      if (!records.some((record2) => record2.id === location.messageRecordId))
+        throw new InputError("Unknown message record assessment.");
+    } else {
+      location.policyCandidateId = exact(source.policyCandidateId);
+      if (!route.freshScan.candidates.some((candidate) => candidate.id === location.policyCandidateId))
+        throw new InputError("Unknown fresh policy candidate assessment.");
+    }
+    const events = strings(row.eventIds);
+    if (events.some((id) => !eventIds.has(id))) throw new InputError("Unknown signature event association.");
+    const evidenceReferences = strings(row.evidenceReferences);
+    if (!evidenceReferences.length)
+      throw new InputError("Signature assessment needs concrete evidence references.");
+    return {
+      id: exact(row.id),
+      source: location,
+      classification,
+      eventIds: events,
+      evidenceReferences,
+      rationale: text(row.rationale)
+    };
+  });
+  if (new Set(signatures.map((signature) => signature.id)).size !== signatures.length || new Set(signatures.map((signature) => JSON.stringify(signature.source))).size !== signatures.length)
+    throw new InputError("Duplicate signature assessment ID/source.");
+  const migrated = /* @__PURE__ */ new Set();
+  const migrations = rows(data.migrations).map((item) => {
+    const row = object(item, ["signatureIds", "eventIds", "mappingReferences", "modificationDecision"]);
+    const signatureIds = strings(row.signatureIds), events = strings(row.eventIds), mappingReferences = strings(row.mappingReferences);
+    const decision = object(row.modificationDecision, ["operationId", "reference"]);
+    if (!signatureIds.length || !events.length || !mappingReferences.length || exact(decision.operationId) !== route.operation.id)
+      throw new InputError(
+        "Migration requires exact signatures/events/mapping and a current modification decision."
+      );
+    for (const id of signatureIds) {
+      const signature = signatures.find((signature2) => signature2.id === id);
+      if (signature?.classification !== "ai-signature" || !signature.source.messageRecordId || migrated.has(id) || !signature.eventIds.length || signature.eventIds.some((eventId) => !events.includes(eventId)))
+        throw new InputError("Invalid, duplicate or unsupported migration signature mapping.");
+      migrated.add(id);
+    }
+    const joined = unique(
+      signatures.filter((signature) => signatureIds.includes(signature.id)).flatMap((signature) => signature.eventIds)
+    );
+    if (JSON.stringify(joined) !== JSON.stringify(events) || events.some((id) => !summary.tuples.some((tuple) => tuple.eventIds.includes(id))))
+      throw new InputError("Migration pairing does not cover exact resolved event evidence.");
+    return {
+      signatureIds,
+      eventIds: events,
+      mappingReferences,
+      modificationDecision: { operationId: exact(decision.operationId), reference: text(decision.reference) }
+    };
+  });
+  const applied = /* @__PURE__ */ new Set();
+  const exceptionApplications = rows(data.exceptionApplications ?? []).map((item) => {
+    const row = object(item, ["operationId", "reference", "issueIds", "action"]);
+    const operationId = exact(row.operationId), reference = exact(row.reference), issueIds = strings(row.issueIds);
+    const matching = summary.userExceptions.filter(
+      (exception) => exception.operationId === operationId && exception.reference === reference && issueIds.every((id) => exception.issueIds.includes(id))
+    );
+    if (row.action !== "continue-with-incomplete-disclosure" || operationId !== route.operation.id || !issueIds.length || issueIds.some((id) => applied.has(id)) || matching.length !== 1 || issueIds.some((id) => !summary.issues.some((issue2) => issue2.id === id)))
+      throw new InputError("Invalid exception application scope/reference or concrete issue coverage.");
+    issueIds.forEach((id) => {
+      applied.add(id);
+    });
+    return { operationId, reference, issueIds, action: "continue-with-incomplete-disclosure" };
+  });
+  return { signatures, migrations, exceptionApplications };
+}
+var exact;
+var init_message_assessment = __esm({
+  "src/message-assessment.ts"() {
+    "use strict";
+    init_policy_contract();
+    init_policy_scope();
+    init_records();
+    exact = (value) => {
+      text(value);
+      return value;
+    };
+  }
+});
+
+// src/message-output.ts
+import { constants as constants2 } from "node:fs";
+import { lstat as lstat5, open as open2, unlink } from "node:fs/promises";
+import path7 from "node:path";
+async function writeNewMessage(file, bytes, binding, consumed, signal) {
+  const cancelled = () => {
+    if (signal?.aborted) throw new Error("Output publication cancelled.");
+  };
+  cancelled();
+  checkRaw(file);
+  if (!file) throw new InputError("Explicit output path is empty.");
+  const destination = path7.resolve(file);
+  if (consumed.some((input) => samePhysicalPath(path7.resolve(input), destination)) || inside(binding.gitDirectory, destination) || inside(binding.commonGitDir, destination) || destination.split(path7.sep).some((part) => part.toLowerCase() === ".git"))
+    throw new InputError("Output aliases a consumed input or protected Git metadata.");
+  let parent;
+  try {
+    if (await inspectPath(destination)) throw new Error("exists");
+    parent = await physical(path7.dirname(destination));
+    if (!(await lstat5(parent)).isDirectory()) throw new Error("parent");
+  } catch {
+    throw new InputError("Output requires an absent leaf and an existing safe physical parent directory.");
+  }
+  const before = await lstat5(parent, { bigint: true });
+  const same = (a, b) => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode;
+  const unchanged2 = (a, b) => same(a, b) && a.nlink === b.nlink && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+  cancelled();
+  const handle = await open2(
+    destination,
+    constants2.O_WRONLY | constants2.O_CREAT | constants2.O_EXCL | (constants2.O_NOFOLLOW ?? 0),
+    384
+  );
+  let owned;
+  let cleanupState;
+  let complete = false;
+  try {
+    owned = await handle.stat({ bigint: true });
+    if (!owned.isFile() || owned.nlink !== 1n || !same(owned, await lstat5(destination, { bigint: true })) || !same(before, await lstat5(parent, { bigint: true })) || !await physical(parent))
+      throw new Error("Output identity changed during exclusive creation.");
+    await handle.writeFile(bytes);
+    await handle.sync();
+    cancelled();
+    const after = await handle.stat({ bigint: true });
+    if (!same(owned, after) || after.nlink !== 1n || after.size !== BigInt(bytes.length) || !unchanged2(after, await lstat5(destination, { bigint: true })) || !same(before, await lstat5(parent, { bigint: true })))
+      throw new Error("Output identity or length changed during writing.");
+    await physical(destination);
+    if (!(await readRegularFile(destination, { physicalPath: true, singleLink: true, maximumBytes: bytes.length })).equals(bytes) || !unchanged2(after, await handle.stat({ bigint: true })) || !unchanged2(after, await lstat5(destination, { bigint: true })))
+      throw new Error("Output bytes changed during publication.");
+    cleanupState = after;
+    cancelled();
+    await handle.close();
+    cancelled();
+    complete = true;
+    return destination;
+  } finally {
+    if (!complete)
+      await handle.close().catch(() => {
+      });
+    if (!complete && cleanupState) {
+      try {
+        const current = await lstat5(destination, { bigint: true });
+        if (current.isFile() && current.nlink === 1n && unchanged2(cleanupState, current) && same(before, await lstat5(parent, { bigint: true }))) {
+          const actual = await readRegularFile(destination, {
+            physicalPath: true,
+            singleLink: true,
+            maximumBytes: bytes.length
+          });
+          const final = await lstat5(destination, { bigint: true });
+          if (actual.equals(bytes) && unchanged2(cleanupState, final)) await unlink(destination);
+        }
+      } catch {
+      }
+    }
+  }
+}
+var init_message_output = __esm({
+  "src/message-output.ts"() {
+    "use strict";
+    init_file_evidence();
+    init_policy_scope();
+    init_records();
+    init_safe_git();
+  }
+});
+
+// src/message-trailers.ts
+import { execFile as execFile2 } from "node:child_process";
+import { mkdir, mkdtemp, realpath as realpath5, rm } from "node:fs/promises";
+import os from "node:os";
+import path8 from "node:path";
+async function runTrailers(message, options) {
+  if (message.length > LIMITS.inputBytes) throw new InputError("Message byte budget exceeded.");
+  options.additions?.forEach(checkRaw);
+  const executable = await resolveTrustedGit(options.excluded, options.environment);
+  const parent = await physical(await realpath5(os.tmpdir()));
+  if (options.excluded.some((root) => inside(root, parent)))
+    throw new Error("Trailer temporary directory is inside an excluded scope.");
+  const directory = await mkdtemp(path8.join(parent, "attribution-trailer-"));
+  try {
+    await physical(directory);
+    const home = path8.join(directory, "home");
+    await mkdir(home);
+    const environment = {
+      ...gitEnvironment(options.environment),
+      HOME: home,
+      USERPROFILE: home,
+      XDG_CONFIG_HOME: home,
+      GIT_CONFIG_SYSTEM: process.platform === "win32" ? "NUL" : "/dev/null",
+      GIT_CEILING_DIRECTORIES: parent,
+      GIT_DISCOVERY_ACROSS_FILESYSTEM: "0"
+    };
+    const args = ["--no-optional-locks", "interpret-trailers", "--no-divider"];
+    if (options.additions !== void 0) {
+      args.push("--where=end", "--if-exists=addIfDifferent", "--if-missing=add");
+      for (const line of options.additions) {
+        if (!line.startsWith("Assisted-by: ")) throw new InputError("Unsupported generated trailer key.");
+        args.push("--trailer", line);
+      }
+    } else args.push("--parse");
+    return await new Promise((resolve, reject) => {
+      const child = execFile2(
+        executable,
+        args,
+        {
+          cwd: directory,
+          env: environment,
+          shell: false,
+          windowsHide: true,
+          encoding: "buffer",
+          timeout: 1e4,
+          maxBuffer: LIMITS.inputBytes * 2,
+          ...options.signal ? { signal: options.signal } : {}
+        },
+        (error, stdout) => {
+          if (error)
+            reject(
+              new Error("Trailer processing failed, cancelled, timed out or exceeded its output budget.")
+            );
+          else resolve(stdout);
+        }
+      );
+      child.stdin?.on("error", () => {
+      });
+      child.stdin?.end(message);
+    });
+  } finally {
+    await removeTemporary(directory, parent);
+  }
+}
+async function removeTemporary(directory, parent) {
+  if (path8.dirname(directory) !== parent || !path8.basename(directory).startsWith("attribution-trailer-"))
+    throw new Error("Unsafe trailer temporary cleanup.");
+  await rm(directory, { recursive: true, force: true });
+}
+function decodeMessage(bytes) {
+  let message;
+  try {
+    message = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new InputError("Message must be strict UTF-8.");
+  }
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]|\r(?!\n)/u.test(message))
+    throw new InputError("Message contains unsupported controls or line separators.");
+  return message;
+}
+function preflightAssisted(message) {
+  const lines = message.split(/\r?\n/);
+  while (lines.at(-1)?.trim() === "") lines.pop();
+  const start = lines.findLastIndex((line) => line.trim() === "");
+  if (start < 0) return;
+  const suffix = lines.slice(start + 1);
+  if (!suffix.every((line) => /^[A-Za-z0-9][A-Za-z0-9 -]*?[ \t]*:/.test(line) || /^[ \t]/.test(line))) return;
+  for (let index = 0; index < suffix.length; index++) {
+    const line = suffix[index] ?? "";
+    if (!/^assisted\s*-\s*by\s*:/i.test(line)) continue;
+    checkRaw(line);
+    if (/^[ \t]/.test(suffix[index + 1] ?? ""))
+      throw new InputError("Folded Assisted-by is not a single-line record.");
+  }
+}
+function messageLayout(message, parsed) {
+  const lines = [...message.matchAll(/([^\n]*)(?:\n|$)/g)].filter((match) => match[0] !== "").map((match) => ({
+    raw: match[0],
+    text: (match[1] ?? "").replace(/\r$/, ""),
+    start: match.index,
+    end: match.index + match[0].length
+  }));
+  const eol = [...message.matchAll(/\r?\n/g)].at(-1)?.[0] ?? "\n";
+  let last = lines.length - 1;
+  while (last >= 0 && lines[last]?.text.trim() === "") last--;
+  let first = last;
+  while (first > 0 && lines[first - 1]?.text.trim() !== "") first--;
+  const suffix = lines.slice(first, last + 1);
+  const records = [];
+  for (const line of suffix) {
+    const match = /^([A-Za-z0-9][A-Za-z0-9 -]*?)[ \t]*:[ \t]*(.*)$/.exec(line.text);
+    if (match?.[1] && match[2] !== void 0) {
+      records.push({
+        id: "",
+        key: match[1],
+        value: match[2],
+        raw: line.raw,
+        start: line.start,
+        end: line.end,
+        folded: false
+      });
+    } else if (/^[ \t]/.test(line.text) && records.length) {
+      const previous = records.at(-1);
+      if (previous) {
+        previous.raw += line.raw;
+        previous.end = line.end;
+        previous.folded = true;
+      }
+    } else if (parsed.trim()) throw new InputError("Ambiguous terminal trailer spans cannot be preserved safely.");
+  }
+  const hasAssisted = suffix.some((line) => /^assisted\s*-\s*by\s*:/i.test(line.text));
+  if (!parsed.trim()) {
+    if (hasAssisted && first > 0 && suffix.every((line) => /^[A-Za-z0-9][A-Za-z0-9 -]*?[ \t]*:/.test(line.text) || /^[ \t]/.test(line.text)))
+      throw new InputError("Malformed terminal Assisted-by trailer block.");
+    return { records: [], start: message.length, end: message.length, eol };
+  }
+  if (first === 0 || records.length !== parsed.trimEnd().split("\n").length)
+    throw new InputError("Ambiguous terminal trailer structure cannot be preserved safely.");
+  for (const record2 of records)
+    record2.id = digest([
+      "message-record-v1",
+      byteDigest(Buffer.from(message)),
+      record2.start,
+      record2.end,
+      record2.raw
+    ]);
+  const endings = new Set(records.flatMap((record2) => [...record2.raw.matchAll(/\r?\n/g)].map((match) => match[0])));
+  if (endings.size > 1)
+    throw new InputError("Mixed terminal trailer line endings require a decision before rewriting.");
+  return {
+    records,
+    start: suffix[0]?.start ?? message.length,
+    end: suffix.at(-1)?.end ?? message.length,
+    eol: [...endings][0] ?? eol
+  };
+}
+function reconcileSpans(message, layout, removed, additions) {
+  if (!removed.size && !additions.length) return message;
+  if (!layout.records.length) {
+    if (!additions.length) return message;
+    let prefix2 = message;
+    if (!prefix2.endsWith("\n")) prefix2 += layout.eol;
+    if (!/\r?\n[ \t]*\r?\n$/.test(prefix2)) prefix2 += layout.eol;
+    return prefix2 + additions.join(layout.eol) + layout.eol;
+  }
+  const prefix = message.slice(0, layout.start);
+  let retained = layout.records.filter((record2) => !removed.has(record2.id)).map((record2) => record2.raw).join("");
+  if (additions.length) {
+    if (retained && !retained.endsWith("\n")) retained += layout.eol;
+    retained += additions.join(layout.eol);
+    if (message.slice(0, layout.end).endsWith("\n")) retained += layout.eol;
+  }
+  return prefix + retained + message.slice(layout.end);
+}
+var init_message_trailers = __esm({
+  "src/message-trailers.ts"() {
+    "use strict";
+    init_policy_contract();
+    init_policy_scope();
+    init_records();
+    init_safe_git();
+  }
+});
+
+// src/summarize.ts
+var summarize_exports = {};
+__export(summarize_exports, {
+  summarize: () => summarize
+});
+function effective(event, field) {
+  return event.evidence.some((item) => item.observation === "effective" && item.fields.includes(field));
+}
+function resolveAgent(event, registry, hostNames) {
+  if (!event.agent || !effective(event, "agent")) return;
+  const exact2 = registry.hosts.find((host) => host.name === event.agent || host.aliases.includes(event.agent ?? ""));
+  const contextual = hostNames.length === 1 ? registry.hosts.find((host) => host.name === hostNames[0]) : void 0;
+  if (exact2) return !contextual || exact2.name === contextual.name ? exact2.name : void 0;
+  if (contextual && registry.ambiguousAliases.includes(event.agent) && contextual.family === (Object.hasOwn(registry.familyAliases, event.agent) ? registry.familyAliases[event.agent] : event.agent))
+    return contextual.name;
+  return;
+}
+function formalCandidate(value) {
+  return value !== void 0 && !["auto", "latest", "unknown", "n/a", "null"].includes(value.toLowerCase());
+}
+function resolveModels(records) {
+  const observations = records.filter((event) => effective(event, "model"));
+  const candidates = unique(observations.map((event) => event.model).filter(formalCandidate));
+  const routes = unique(observations.map((event) => event.modelRoute).filter((route) => route !== void 0));
+  const mappings = observations.flatMap(
+    (event) => event.evidence.filter((item) => item.observation === "effective" && item.fields.includes("model")).flatMap((item) => item.mapping ? [{ event, mapping: item.mapping }] : [])
+  );
+  const values = unique([...candidates, ...mappings.map((item) => item.mapping.model).filter(formalCandidate)]);
+  const conflict = values.length > 1 || mappings.some(
+    ({ event, mapping }) => !formalCandidate(mapping.model) || formalCandidate(event.model) && event.model !== mapping.model || (event.modelRoute !== void 0 ? event.modelRoute !== mapping.route : !routes.includes(mapping.route))
+  );
+  const covered = routes.every(
+    (route) => mappings.some(({ mapping }) => mapping.route === route && mapping.model === candidates[0])
+  );
+  return { values: covered ? candidates : [], conflict };
+}
+function resolveReasoning(event) {
+  if (event.reasoning.state !== "confirmed") return { conflict: false };
+  const value = event.reasoning.value;
+  const native = unique(
+    event.evidence.filter(
+      (item) => item.observation === "effective" && item.fields.includes("reasoning") && item.nativeReasoning
+    ).map((item) => item.nativeReasoning ?? "")
+  );
+  if (native.length > 1) return { conflict: true };
+  if (native[0] === "disabled") return { value: "none", conflict: false };
+  if (native[0] === "enabled" && !["none", "unknown", "n/a", "null", "off"].includes(value.toLowerCase()))
+    return { value, conflict: false };
+  return { conflict: false };
+}
+async function summarize(input, currentOperation, registryInput) {
+  const ledger = await parseLedger(input);
+  const operation = await parseOperation(currentOperation);
+  if (JSON.stringify(ledger.operation) !== JSON.stringify(operation))
+    throw new InputError("Invalid input scope: ledger and current operation differ.");
+  const registry = parseRegistry(registryInput);
+  const issues = [];
+  const diagnostics = [];
+  const tuples = /* @__PURE__ */ new Map();
+  const groups = /* @__PURE__ */ new Map();
+  for (const event of ledger.events) groups.set(event.id, [...groups.get(event.id) ?? [], event]);
+  const participants = unique([
+    ...ledger.knownParticipants.map((item) => item.id),
+    ...ledger.events.map((item) => item.participantId)
+  ]).map((id) => ({
+    id,
+    declared: ledger.knownParticipants.some((item) => item.id === id),
+    eventIds: unique(ledger.events.filter((event) => event.participantId === id).map((event) => event.id))
+  }));
+  for (const participant of ledger.knownParticipants) {
+    for (const eventId of participant.eventIds)
+      if (!groups.has(eventId))
+        issues.push({
+          id: JSON.stringify(["participant", participant.id, "event", eventId]),
+          code: "missing-event",
+          participantId: participant.id,
+          eventId
+        });
+    if (!ledger.events.some((event) => event.participantId === participant.id))
+      issues.push({
+        id: JSON.stringify(["participant", participant.id, "events"]),
+        code: "missing-participant-event",
+        participantId: participant.id
+      });
+  }
+  const events = [...groups].sort(([a], [b]) => ordinal(a, b)).map(([eventId, records]) => {
+    const first = records[0];
+    if (!first) throw new Error("Event grouping failed.");
+    const hostCandidates = records.filter((event) => event.host && effective(event, "host")).map((event) => event.host);
+    const hostNames = unique(
+      hostCandidates.map(
+        (candidate) => registry.hosts.find(
+          (host) => host.name === candidate || host.aliases.includes(candidate ?? "")
+        )?.name
+      ).filter((value) => value !== void 0)
+    );
+    const candidateAgents = records.filter((event) => event.agent && effective(event, "agent")).map((event) => resolveAgent(event, registry, hostNames));
+    const invalidHost = hostNames.length > 1 || hostCandidates.some(
+      (candidate) => !registry.hosts.some(
+        (host) => host.name === candidate || host.aliases.includes(candidate ?? "")
+      )
+    );
+    const agents = invalidHost || candidateAgents.some((agent2) => agent2 === void 0) ? [] : unique(candidateAgents.filter((value) => value !== void 0));
+    const modelResolution = resolveModels(records);
+    const models = modelResolution.values;
+    const reasoningObservations = records.map(resolveReasoning);
+    const efforts = unique(
+      reasoningObservations.map((item) => item.value).filter((value) => value !== void 0)
+    );
+    const reasoningConflict = efforts.length > 1 || reasoningObservations.some((item) => item.conflict);
+    for (const [field, values] of [
+      ["agent", agents],
+      ["model", models]
+    ]) {
+      if (values.length !== 1 || field === "model" && modelResolution.conflict)
+        issues.push({
+          id: JSON.stringify(["event", eventId, field]),
+          code: values.length > 1 || field === "model" && modelResolution.conflict ? `conflicting-${field}` : `unresolved-${field}`,
+          eventId,
+          participantId: first.participantId
+        });
+    }
+    const reasoning = !reasoningConflict && efforts.length === 1 ? efforts[0] : void 0;
+    if (!reasoning)
+      diagnostics.push({
+        id: JSON.stringify(["event", eventId, "reasoning"]),
+        code: reasoningConflict ? "conflicting-reasoning" : "unknown-reasoning",
+        eventId,
+        participantId: first.participantId
+      });
+    const agent = agents.length === 1 ? agents[0] : void 0;
+    const model = !modelResolution.conflict && models.length === 1 ? models[0] : void 0;
+    if (agent && model) {
+      const key = JSON.stringify([agent, model, reasoning ?? null]);
+      const tuple = tuples.get(key) ?? {
+        agent,
+        model,
+        ...reasoning ? { reasoning } : {},
+        participantIds: [],
+        eventIds: []
+      };
+      tuple.participantIds = unique([...tuple.participantIds, first.participantId]);
+      tuple.eventIds = unique([...tuple.eventIds, eventId]);
+      tuples.set(key, tuple);
+    }
+    return {
+      id: eventId,
+      participantId: first.participantId,
+      task: first.task,
+      ...agent ? { agent } : {},
+      ...model ? { model } : {},
+      ...reasoning ? { reasoning } : {},
+      records: records.map((event) => ({ ...event, evidence: event.evidence.map((item) => ({ ...item })) }))
+    };
+  });
+  const issueIds = new Set(issues.map((issue2) => issue2.id));
+  if (ledger.userExceptions.some((exception) => exception.issueIds.some((id) => !issueIds.has(id))))
+    throw new InputError("Invalid input: exception references an absent concrete issue.");
+  return {
+    schemaVersion: 1,
+    operation,
+    exitCode: issues.length ? 20 : 0,
+    tuples: [...tuples.values()].sort(
+      (a, b) => ordinal(a.agent, b.agent) || ordinal(a.model, b.model) || (a.reasoning === void 0 ? b.reasoning === void 0 ? 0 : -1 : b.reasoning === void 0 ? 1 : ordinal(a.reasoning, b.reasoning))
+    ),
+    events,
+    participants,
+    issues: issues.sort((a, b) => ordinal(a.id, b.id)),
+    diagnostics,
+    userExceptions: ledger.userExceptions,
+    limitations: [
+      "Supplied evidence is a declaration; this summary cannot authenticate runtime dispatch, handoffs, mappings or user consent.",
+      "Declared participant accounting cannot prove that no contributing actors were undisclosed.",
+      "Matching supplied physical scope does not prove the live Git operation or its freshness.",
+      "Summary completion is not repository-policy validation or authorization to commit or modify Git state."
+    ]
+  };
+}
+var init_summarize = __esm({
+  "src/summarize.ts"() {
+    "use strict";
+    init_records();
+  }
+});
+
+// src/message.ts
+var message_exports = {};
+__export(message_exports, {
+  processMessage: () => processMessage
+});
+function assisted(record2, registry) {
+  checkRaw(record2.key);
+  checkRaw(record2.value);
+  if (record2.folded) throw new InputError("Folded Assisted-by is not a single-line record.");
+  const match = /^([^:()<>]+):([^\s()<>]+)(?: \(([^\s:()<>]+)\))?$/.exec(record2.value);
+  if (!match?.[1] || !match[2] || ["unknown", "n/a", "null", "auto", "latest"].includes(match[2].toLowerCase()))
+    throw new InputError("Malformed default Assisted-by identity or optional suffix.");
+  const agent = match[1].trim();
+  if (!agent || ["unknown", "n/a", "null"].includes(agent.toLowerCase()))
+    throw new InputError("Malformed default Assisted-by Agent placeholder.");
+  const host = registry.hosts.find((host2) => host2.name === agent || host2.aliases.includes(agent));
+  return {
+    agent: host?.name ?? agent,
+    model: identity(match[2], "model"),
+    ...match[3] ? { reasoning: identity(match[3], "reasoning") } : {}
+  };
+}
+async function processMessage(input, loadDefault) {
+  if (!["render", "validate"].includes(input.mode) || input.mode === "validate" && input.output !== void 0)
+    throw new InputError("Invalid message command or validate output option.");
+  checkRaw(input.output);
+  if (input.message.length > LIMITS.inputBytes) throw new InputError("Message byte budget exceeded.");
+  const message = decodeMessage(input.message);
+  const route = await checkFreshRouting(input);
+  const result = {
+    schemaVersion: 1,
+    artifact: input.mode === "render" ? "message-render" : "message-validation",
+    operation: route.operation,
+    binding: route.binding,
+    routing: { branch: route.branch, freshness: route.freshness },
+    message: { inputSha256: byteDigest(input.message) },
+    format: {
+      status: "not-run",
+      convention: route.branch === "repository-policy" ? "repository-policy" : "undetermined"
+    },
+    participationEvidence: { status: "not-run", appliedExceptionIssueIds: [] },
+    repositoryPolicyValidation: { status: "not-run" },
+    issues: [...route.issues],
+    limitations: [
+      ...route.limitations,
+      "Message results cannot authenticate declared participation, semantic signature mappings or actual user decisions; they never grant operation permission.",
+      "Unobserved host signing and ordinary repository commit-format criteria remain integrator responsibilities."
+    ],
+    exitCode: route.exitCode
+  };
+  if (route.branch === "needs-decision") return result;
+  const recheck = async () => {
+    if (input.signal?.aborted) throw new Error("Message processing cancelled before completion.");
+    const fresh = await checkFreshRouting(input);
+    if (fresh.exitCode !== route.exitCode || digest(fresh.binding) !== digest(route.binding)) {
+      result.binding = fresh.binding;
+      result.routing = { branch: fresh.branch, freshness: fresh.freshness };
+      result.exitCode = 20;
+      result.issues.push(...fresh.issues);
+      return false;
+    }
+    return true;
+  };
+  let candidate = message;
+  if (route.branch === "skill-default") {
+    const defaults = await loadDefault();
+    const { summarize: summarize2 } = await Promise.resolve().then(() => (init_summarize(), summarize_exports));
+    const summary = await summarize2(defaults.ledger, route.operation, defaults.registry);
+    const registry = parseRegistry(defaults.registry);
+    for (const host of registry.hosts) {
+      checkRaw(host.name);
+      if (/[:()<>]/.test(host.name))
+        throw new InputError("Registry host cannot be expressed as a default trailer.");
+    }
+    result.format = { status: "valid", convention: "skill-default" };
+    result.participationEvidence = {
+      status: summary.issues.length ? "incomplete" : "complete-against-declared-input",
+      summary,
+      appliedExceptionIssueIds: []
+    };
+    const summaryIssues = new Set(
+      summary.issues.map(
+        (item) => issue(
+          item.id,
+          item.code,
+          "Declared participation has an unresolved required identity or participant gap."
+        )
+      )
+    );
+    result.issues.push(...summaryIssues);
+    const excluded = [
+      route.operation.repository,
+      route.operation.worktree,
+      route.binding.gitDirectory,
+      route.binding.commonGitDir
+    ];
+    let layout;
+    try {
+      preflightAssisted(message);
+      const parsed = decodeMessage(
+        await runTrailers(Buffer.from(message.replaceAll("\r\n", "\n")), {
+          excluded,
+          ...input.signal ? { signal: input.signal } : {}
+        })
+      );
+      layout = messageLayout(message, parsed);
+    } catch (error) {
+      if (!(error instanceof InputError)) throw error;
+      result.format.status = "invalid";
+      result.exitCode = 2;
+      result.issues.push(
+        issue(digest(["format", result.message.inputSha256]), "invalid-trailer-layout", error.message)
+      );
+      return result;
+    }
+    const assessment = await parseAssessment(
+      defaults.assessment,
+      route,
+      result.message.inputSha256,
+      layout.records,
+      summary
+    );
+    result.message.records = layout.records.map((record2) => ({
+      id: record2.id,
+      key: record2.key,
+      sha256: byteDigest(Buffer.from(record2.raw)),
+      byteLength: Buffer.byteLength(record2.raw)
+    }));
+    const applied = unique(assessment.exceptionApplications.flatMap((application) => application.issueIds));
+    result.participationEvidence.appliedExceptionIssueIds = applied;
+    if (summary.issues.length && applied.length)
+      result.participationEvidence.status = "incomplete-with-user-exception";
+    const removed = /* @__PURE__ */ new Set();
+    const canonical2 = summary.tuples.map(
+      (tuple) => `Assisted-by: ${tuple.agent}:${tuple.model}${tuple.reasoning ? ` (${tuple.reasoning})` : ""}`
+    );
+    const actual = [];
+    let invalid = false;
+    for (const record2 of layout.records) {
+      if (/^assisted\s*-\s*by$/i.test(record2.key)) {
+        try {
+          const tuple = assisted(record2, registry);
+          const matching = summary.tuples.filter(
+            (expected) => expected.agent === tuple.agent && expected.model === tuple.model
+          );
+          if (!matching.length) {
+            result.issues.push(
+              issue(
+                record2.id,
+                "unresolved-existing-identity",
+                "Existing Agent/model has no supported current event association."
+              )
+            );
+          } else {
+            const line = `Assisted-by: ${tuple.agent}:${tuple.model}${tuple.reasoning ? ` (${tuple.reasoning})` : ""}`;
+            actual.push(line);
+            if (!canonical2.includes(line) || record2.key !== "Assisted-by" || record2.raw.replace(/\r?\n$/, "") !== line)
+              invalid = true;
+            removed.add(record2.id);
+          }
+        } catch (error) {
+          if (!(error instanceof InputError)) throw error;
+          invalid = true;
+          result.issues.push(issue(record2.id, "invalid-assisted-by", error.message));
+        }
+      } else if (/^AI-(?:Agent|Model|Reasoning-Effort)$/i.test(record2.key)) {
+        const signature = assessment.signatures.find(
+          (signature2) => signature2.source.messageRecordId === record2.id
+        );
+        const migration = signature && assessment.migrations.find((migration2) => migration2.signatureIds.includes(signature.id));
+        if (migration && input.mode === "render") removed.add(record2.id);
+        else
+          result.issues.push(
+            issue(
+              record2.id,
+              "legacy-signature",
+              "Legacy signature needs an exact event mapping and current modification decision."
+            )
+          );
+      }
+    }
+    for (const signature of assessment.signatures) {
+      if (signature.classification === "uncertain")
+        result.issues.push(
+          issue(
+            signature.id,
+            "uncertain-signature",
+            "A concrete supplied signature assessment remains uncertain."
+          )
+        );
+      if (signature.classification !== "ai-signature") continue;
+      if (signature.source.policyCandidateId) {
+        result.issues.push(
+          issue(
+            signature.id,
+            "automatic-ai-signature",
+            "Observed automatic AI signing conflicts with the default route; resolve it without changing identity or global configuration."
+          )
+        );
+      } else {
+        const record2 = layout.records.find((record3) => record3.id === signature.source.messageRecordId);
+        if (record2 && !/^assisted\s*-\s*by$/i.test(record2.key) && !removed.has(record2.id)) {
+          if (input.mode === "render" && assessment.migrations.some((migration) => migration.signatureIds.includes(signature.id)))
+            removed.add(record2.id);
+          else if (!/^AI-(?:Agent|Model|Reasoning-Effort)$/i.test(record2.key))
+            result.issues.push(
+              issue(
+                record2.id,
+                "ai-signature-conflict",
+                "Known AI signature needs exact authorized migration before default completion."
+              )
+            );
+        }
+      }
+    }
+    const formatIssues = result.issues.filter((item) => item.code === "invalid-assisted-by");
+    const blockers = result.issues.filter(
+      (item) => !(summaryIssues.has(item) && applied.includes(item.id)) && !formatIssues.includes(item)
+    );
+    if (formatIssues.length || input.mode === "validate" && invalid) {
+      result.format.status = "invalid";
+      result.exitCode = 2;
+      if (!formatIssues.length)
+        result.issues.push(
+          issue(
+            digest(["canonical", result.message.inputSha256]),
+            "noncanonical-assisted-by",
+            "Default records need canonical names, spacing and supported optional effort."
+          )
+        );
+      return result;
+    }
+    if (blockers.length) {
+      result.exitCode = 20;
+      return result;
+    }
+    if (input.mode === "validate") {
+      const expected = canonical2.join("\n");
+      const indexes = layout.records.flatMap(
+        (record2, index) => /^assisted\s*-\s*by$/i.test(record2.key) ? [index] : []
+      );
+      const adjacent = indexes.every(
+        (index, position) => position === 0 || index === (indexes[position - 1] ?? 0) + 1
+      );
+      if (actual.join("\n") !== expected || !adjacent) {
+        result.exitCode = actual.length === new Set(actual).size && actual.length < canonical2.length ? 20 : 2;
+        result.format.status = result.exitCode === 2 ? "invalid" : "valid";
+        result.issues.push(
+          issue(
+            digest(["tuples", result.message.inputSha256]),
+            "missing-or-unsorted-tuples",
+            "Actual trailer group differs from the canonical supported current tuples."
+          )
+        );
+      } else result.exitCode = 0;
+      if (result.exitCode === 0) await recheck();
+      return result;
+    }
+    const retained = reconcileSpans(message, layout, removed, []);
+    const inserted = decodeMessage(
+      await runTrailers(Buffer.from(retained.replaceAll("\r\n", "\n")), {
+        excluded,
+        additions: canonical2,
+        ...input.signal ? { signal: input.signal } : {}
+      })
+    );
+    const interpreted = decodeMessage(
+      await runTrailers(Buffer.from(inserted), { excluded, ...input.signal ? { signal: input.signal } : {} })
+    );
+    if (canonical2.some((line) => !interpreted.split("\n").includes(line)))
+      throw new Error("Trailer insertion did not retain canonical supplied records.");
+    candidate = reconcileSpans(message, layout, removed, canonical2);
+    const finalParsed = decodeMessage(
+      await runTrailers(Buffer.from(candidate.replaceAll("\r\n", "\n")), {
+        excluded,
+        ...input.signal ? { signal: input.signal } : {}
+      })
+    );
+    const finalLayout = messageLayout(candidate, finalParsed);
+    const final = finalLayout.records.filter((record2) => /^Assisted-by$/i.test(record2.key)).map((record2) => record2.raw.replace(/\r?\n$/, ""));
+    if (JSON.stringify(final) !== JSON.stringify(canonical2))
+      throw new Error("Final canonical trailer semantics differ from the supported tuple set.");
+    result.exitCode = 0;
+  }
+  if (input.mode === "render") {
+    if (!await recheck()) return result;
+    result.message.outputSha256 = byteDigest(Buffer.from(candidate));
+    result.message.preview = candidate;
+    result.message.changed = candidate !== message;
+    if (input.output !== void 0)
+      result.message.outputPath = await writeNewMessage(
+        input.output,
+        Buffer.from(candidate),
+        route.binding,
+        input.consumedPaths ?? [],
+        input.signal
+      );
+  }
+  return result;
+}
+var issue;
+var init_message = __esm({
+  "src/message.ts"() {
+    "use strict";
+    init_message_assessment();
+    init_message_output();
+    init_message_trailers();
+    init_policy();
+    init_policy_contract();
+    init_policy_scope();
+    init_records();
+    issue = (id, code, detail) => ({ id, code, detail });
+  }
+});
 
 // src/attribution.ts
+import { fileURLToPath } from "node:url";
+
+// tooling/cli-entry.ts
+function isMainModule(metadata) {
+  if (typeof metadata.main !== "boolean")
+    throw new Error("CLI entry detection requires the supported Node 24 runtime with import.meta.main.");
+  return metadata.main;
+}
+
+// src/attribution.ts
+init_file_evidence();
+init_policy();
+init_policy_contract();
 init_records();
 function parseArguments(args) {
   const values = [...args];
@@ -1867,6 +2613,48 @@ function parsePolicyArguments(args) {
   return { operation, context, ...decision ? { decision } : {} };
 }
 async function run(args) {
+  if (args[0] === "render" || args[0] === "validate") {
+    const mode = args[0];
+    const options2 = /* @__PURE__ */ new Map();
+    for (let index = 1; index < args.length; index += 2) {
+      const flag = args[index], value = args[index + 1];
+      if (!flag || ![
+        "--message",
+        "--operation",
+        "--context",
+        "--decision",
+        "--input",
+        "--assessment",
+        "--output"
+      ].includes(flag) || options2.has(flag) || !value || value.startsWith("--") || mode === "validate" && flag === "--output")
+        throw new InputError("Invalid message flag, duplicate or missing value.");
+      checkRaw(value);
+      options2.set(flag, value);
+    }
+    const messageFile = options2.get("--message"), operationFile = options2.get("--operation"), contextFile = options2.get("--context"), decisionFile = options2.get("--decision");
+    if (!messageFile || !operationFile || !contextFile || !decisionFile)
+      throw new InputError("Message commands require explicit message, operation, context and decision files.");
+    const operation2 = await jsonFile(operationFile), context = await jsonFile(contextFile), decision = await jsonFile(decisionFile);
+    const message = await readRegularFile(messageFile, { physicalPath: true, maximumBytes: LIMITS.inputBytes });
+    const consumedPaths = [...options2].filter(([flag]) => flag !== "--output").map(([, value]) => value);
+    const { processMessage: processMessage2 } = await Promise.resolve().then(() => (init_message(), message_exports));
+    const output = options2.get("--output");
+    return processMessage2(
+      { mode, message, operation: operation2, context, decision, consumedPaths, ...output ? { output } : {} },
+      async () => {
+        const input = options2.get("--input");
+        if (!input) throw new InputError("Current skill-default message requires an explicit ledger input.");
+        const registryFile = new URL("../references/agent-registry.json", import.meta.url);
+        consumedPaths.push(fileURLToPath(registryFile));
+        const assessment = options2.get("--assessment");
+        return {
+          ledger: await jsonFile(input),
+          registry: await jsonFile(registryFile),
+          ...assessment ? { assessment: await jsonFile(assessment) } : {}
+        };
+      }
+    );
+  }
   if (args[0] === "policy") {
     const options2 = parsePolicyArguments(args);
     const operation2 = await jsonFile(options2.operation), context = await jsonFile(options2.context);
@@ -1895,7 +2683,10 @@ if (isMainModule(import.meta)) {
   } catch (error) {
     const input = error instanceof InputError;
     console.error(
-      JSON.stringify({ error: input ? error.message : "Attribution execution failed.", exitCode: input ? 2 : 1 })
+      JSON.stringify({
+        error: input ? error.message : process.argv.includes("--output") ? "Attribution execution failed. Check the explicit output location for a residual artifact; uncertain ownership is preserved." : "Attribution execution failed.",
+        exitCode: input ? 2 : 1
+      })
     );
     process.exitCode = input ? 2 : 1;
   }

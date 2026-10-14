@@ -60,7 +60,7 @@ function resolveReasoning(event: Event): { value?: string; conflict: boolean } {
     );
     if (native.length > 1) return { conflict: true };
     if (native[0] === 'disabled') return { value: 'none', conflict: false };
-    if (native[0] === 'enabled' && !['none', 'unknown', 'N/A', 'null', 'off'].includes(value))
+    if (native[0] === 'enabled' && !['none', 'unknown', 'n/a', 'null', 'off'].includes(value.toLowerCase()))
         return { value, conflict: false };
     return { conflict: false };
 }

@@ -13,4 +13,9 @@ safe evidence; policy.ts joins Agent semantic decisions to a fresh capture.
 checkFreshRouting retains its exact freshScan for internal downstream evidence
 joins; attribution.ts omits that internal member from public route JSON.
 Policy paths never import default summary or read the installed registry.
-Message rendering/validation remain later features.
+message.ts adds route-first render/validate with a lazy default-input boundary.
+message-contract.ts owns their result types; message-assessment.ts checks exact
+current signature/migration/exception joins. message-trailers.ts runs isolated
+Git interpretation and reconciles owned byte spans. message-output.ts creates
+only safe absent new files. packaging/messages.md owns the installed contract.
+The observation-only SafeGit argv allowlist does not include trailer processing.

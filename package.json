@@ -26,7 +26,7 @@
         "build:skill": "node tooling/build-skill.ts",
         "check:build": "node tooling/build-skill.ts --check",
         "check:distribution": "node tooling/check-distribution.ts",
-        "test:distribution": "node --test tests/distribution.test.ts tests/policy-distribution.test.ts",
+        "test:distribution": "node --test tests/distribution.test.ts tests/policy-distribution.test.ts tests/message-distribution.test.ts",
         "verify:push": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm check:scripts && pnpm test:coverage && pnpm check:build && pnpm check:distribution && pnpm test:distribution && pnpm check:repo && pnpm check:security:build && pnpm check:commits"
     },
     "lint-staged": {

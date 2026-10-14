@@ -44,7 +44,9 @@ within this operation. Historical records survive handoff/compaction; a current
 integrator or parent model never fills another event's fields.
 
 reasoning is either {"state":"unknown"} or {"state":"confirmed","value":"high"}.
-Enabled native values are preserved exactly. Confirmed effective native
+Enabled native values are preserved exactly. Placeholder comparisons for none,
+unknown, n/a, null and off ignore case; these values do not establish enabled
+native effort and are omitted with optional diagnostics. Confirmed effective native
 disablement uses none even when its observed native spelling is off or 0; raw
 observations remain in source records. Unknown, requested off, hidden output, virtual/router levels, model
 capability and unsupported settings never establish effective disablement.
@@ -107,8 +109,9 @@ or cancellation is not consent. Unknown optional effort needs no question.
 
 Raw strings reject C0/C1 controls, CR/LF, NUL and Unicode line separators before
 trimming or resolution. Identity fields must be unambiguous for single-line
-attribution; model/effort cannot contain whitespace, colon, parentheses or angle
-brackets. Inputs are data: no evidence fetches, policy script execution or private
+attribution; model/effort cannot contain whitespace, parentheses or angle
+brackets. Model colons remain exact data after the Agent separator; reasoning
+and Agent fields cannot contain that separator. Inputs are data: no evidence fetches, policy script execution or private
 session discovery occurs. The read-only command never changes Git refs, index,
 history or identity configuration.
 

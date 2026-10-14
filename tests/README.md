@@ -16,14 +16,29 @@ payloads and unchanged peers on failure; distribution.test.ts executes installed
 summary business paths from outside dependencies with Git-state preservation.
 policy-routing.test.ts, policy-safety.test.ts and policy-operations.test.ts cover
 live scope/freshness, semantic routing, bounded evidence/config redaction and
-real operation/worktree/promisor/executable sentinels. policy-distribution.test.ts
-executes installed scan and route paths outside dependencies, corrupts the
-registry to prove bypass and uses a real import sentinel for default summary.
+real operation/worktree/promisor/executable sentinels.
+safe-git-environment.test.ts covers Windows copied bootstrap root-key casing,
+ambiguous duplicate rejection and actual Git Bash source/installed message paths
+using dynamically derived host and fixture paths.
+policy-distribution.test.ts executes installed scan and route paths outside
+dependencies, corrupts the registry to prove bypass and uses a real import
+sentinel for default summary.
 policy-review-fixes.test.ts covers amended/merged affected scope, adopted/cached
 references, bounded empty-directory and byte traversal, absence/races, exact
 Windows extended-path locators and rejected Git write modes, including installed
 business regressions and real read-boundary observation.
-Later message and real host acceptance are added with those features.
+message-attribution.test.ts exercises fresh exclusive route entry, real isolated
+Git trailer semantics, byte preservation, strict signatures/scoped exceptions,
+new-file refusal and external installed command behavior. Native questions and
+actual host acceptance remain integrator/host checks, distinct from simulation.
+message-distribution.test.ts runs installed render/validate business paths,
+including unusable default inputs on repository-policy. message-output.test.ts
+uses real filesystem fault observation for short writes, cancellation, exclusive
+creation races and replaced-path peer preservation.
+message-review-fixes.test.ts covers summary-owned exception boundaries, unique
+exception joins and optional reasoning placeholders through source and copied
+installed render/validate commands. Output fault regressions retain same-inode
+peer prefix, empty and equal content as well as uncertain partial writes.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.
