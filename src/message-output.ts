@@ -39,6 +39,8 @@ export async function writeNewMessage(
     }
     const before = await lstat(parent, { bigint: true });
     const same = (a: BigIntStats, b: BigIntStats) => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode;
+    const unchanged = (a: BigIntStats, b: BigIntStats) =>
+        same(a, b) && a.nlink === b.nlink && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
     cancelled();
     const handle = await open(
         destination,
@@ -46,6 +48,7 @@ export async function writeNewMessage(
         0o600,
     );
     let owned: BigIntStats | undefined;
+    let cleanupState: BigIntStats | undefined;
     let complete = false;
     try {
         owned = await handle.stat({ bigint: true });
@@ -65,7 +68,7 @@ export async function writeNewMessage(
             !same(owned, after) ||
             after.nlink !== 1n ||
             after.size !== BigInt(bytes.length) ||
-            !same(after, await lstat(destination, { bigint: true })) ||
+            !unchanged(after, await lstat(destination, { bigint: true })) ||
             !same(before, await lstat(parent, { bigint: true }))
         )
             throw new Error('Output identity or length changed during writing.');
@@ -73,9 +76,13 @@ export async function writeNewMessage(
         if (
             !(
                 await readRegularFile(destination, { physicalPath: true, singleLink: true, maximumBytes: bytes.length })
-            ).equals(bytes)
+            ).equals(bytes) ||
+            !unchanged(after, await handle.stat({ bigint: true })) ||
+            !unchanged(after, await lstat(destination, { bigint: true }))
         )
             throw new Error('Output bytes changed during publication.');
+        // A failed or interrupted write has no exact known owned state and must leave its artifact intact.
+        cleanupState = after;
         cancelled();
         await handle.close();
         cancelled();
@@ -86,30 +93,22 @@ export async function writeNewMessage(
             await handle.close().catch(() => {
                 /* Preserve the primary failure and attempt only owned cleanup. */
             });
-        if (!complete && owned) {
+        if (!complete && cleanupState) {
             try {
                 const current = await lstat(destination, { bigint: true });
                 if (
                     current.isFile() &&
                     current.nlink === 1n &&
-                    same(owned, current) &&
+                    unchanged(cleanupState, current) &&
                     same(before, await lstat(parent, { bigint: true }))
                 ) {
-                    const partial = await readRegularFile(destination, {
+                    const actual = await readRegularFile(destination, {
                         physicalPath: true,
                         singleLink: true,
                         maximumBytes: bytes.length,
                     });
                     const final = await lstat(destination, { bigint: true });
-                    // A same-inode peer edit is not an owned partial write. Preserve uncertain content.
-                    if (
-                        partial.equals(bytes.subarray(0, partial.length)) &&
-                        same(current, final) &&
-                        current.size === final.size &&
-                        current.mtimeNs === final.mtimeNs &&
-                        current.ctimeNs === final.ctimeNs
-                    )
-                        await unlink(destination);
+                    if (actual.equals(bytes) && unchanged(cleanupState, final)) await unlink(destination);
                 }
             } catch {
                 /* Uncertain ownership: preserve and report the failed output operation. */

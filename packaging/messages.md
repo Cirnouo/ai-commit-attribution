@@ -139,22 +139,27 @@ PR4 userExceptions remain declared records and never clear summary issues.
 To apply an inspected current user decision, the assessment may include
 exceptionApplications entries with operationId, exact existing exception reference,
 concrete current summary issueIds and action continue-with-incomplete-disclosure.
-The matching ledger record must cover those IDs; operation, binding and message
+Exactly one matching ledger record must cover those IDs; ambiguous duplicate
+records are rejected. Operation, binding and message
 hash must be current. The integrator MUST confirm the referenced actual decision
 before supplying this handoff. JSON cannot authenticate consent or grant commit
 authority. Applied IDs are reported separately; original gaps, records and summary
 exit 20 remain. Outer message completion may return 0 only when every remaining
 required identity/participant gap is explicitly covered. Raw invalid data,
 stale routing, unsafe paths, existing-signature conflicts and migration authority
-are never waived. Free-text exception records alone do not authorize continuation.
+are never waived, even if their issue IDs coincide with applied summary issue IDs.
+Free-text exception records alone do not authorize continuation.
 
 Render previews by default; validate never writes. --output creates only an
 explicit absent new regular file under a safe physical existing parent. It
 rejects existing files/directories, links/reparse points, hardlinks, consumed
 input aliases and Git administrative paths. No overwrite, in-place edit,
-recursive replacement or repair occurs. A partial file is removed only while
-its owned identity and parent are still established; uncertain artifacts remain
-with an execution failure. No file is created on a blocker/error. Repository
+recursive replacement or repair occurs. Failure cleanup removes a file only
+after its exact full bytes were verified and its recorded identity, metadata and
+parent remain unchanged. Failed/interrupted or short writes leave uncertain
+artifacts intact, including empty or candidate-prefix content; inspect the
+explicit output path after an execution failure. No file is created on a
+pre-publication blocker/input error. Repository
 handoff may explicitly copy unchanged bytes with exit 10. Unused default paths
 remain opaque and are not opened/statted/resolved on that route.
 

@@ -243,7 +243,12 @@ for (const heldName of ['check-security.mjs', 'THIRD-PARTY-NOTICES.txt']) {
             assert.deepEqual(await readdir(parent), ['output'], 'staging directories must be cleaned');
         } finally {
             assert.equal(dirname(resolve(parent)), resolve(await realpath(tmpdir())));
-            await rm(parent, { recursive: true, force: true });
+            await rm(parent, {
+                recursive: true,
+                force: true,
+                maxRetries: process.platform === 'win32' ? 3 : 0,
+                retryDelay: 100,
+            });
         }
     });
 }

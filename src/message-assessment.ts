@@ -130,17 +130,18 @@ export async function parseAssessment(
         const operationId = exact(row.operationId),
             reference = exact(row.reference),
             issueIds = strings(row.issueIds);
+        const matching = summary.userExceptions.filter(
+            (exception) =>
+                exception.operationId === operationId &&
+                exception.reference === reference &&
+                issueIds.every((id) => exception.issueIds.includes(id)),
+        );
         if (
             row.action !== 'continue-with-incomplete-disclosure' ||
             operationId !== route.operation.id ||
             !issueIds.length ||
             issueIds.some((id) => applied.has(id)) ||
-            !summary.userExceptions.some(
-                (exception) =>
-                    exception.operationId === operationId &&
-                    exception.reference === reference &&
-                    issueIds.every((id) => exception.issueIds.includes(id)),
-            ) ||
+            matching.length !== 1 ||
             issueIds.some((id) => !summary.issues.some((issue) => issue.id === id))
         )
             throw new InputError('Invalid exception application scope/reference or concrete issue coverage.');

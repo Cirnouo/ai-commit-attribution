@@ -31,6 +31,10 @@ message-distribution.test.ts runs installed render/validate business paths,
 including unusable default inputs on repository-policy. message-output.test.ts
 uses real filesystem fault observation for short writes, cancellation, exclusive
 creation races and replaced-path peer preservation.
+message-review-fixes.test.ts covers summary-owned exception boundaries, unique
+exception joins and optional reasoning placeholders through source and copied
+installed render/validate commands. Output fault regressions retain same-inode
+peer prefix, empty and equal content as well as uncertain partial writes.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.

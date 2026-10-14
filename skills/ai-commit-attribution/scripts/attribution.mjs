@@ -1747,9 +1747,10 @@ async function parseAssessment(value, route, messageSha256, records, summary) {
   const exceptionApplications = rows(data.exceptionApplications ?? []).map((item) => {
     const row = object(item, ["operationId", "reference", "issueIds", "action"]);
     const operationId = exact(row.operationId), reference = exact(row.reference), issueIds = strings(row.issueIds);
-    if (row.action !== "continue-with-incomplete-disclosure" || operationId !== route.operation.id || !issueIds.length || issueIds.some((id) => applied.has(id)) || !summary.userExceptions.some(
+    const matching = summary.userExceptions.filter(
       (exception) => exception.operationId === operationId && exception.reference === reference && issueIds.every((id) => exception.issueIds.includes(id))
-    ) || issueIds.some((id) => !summary.issues.some((issue2) => issue2.id === id)))
+    );
+    if (row.action !== "continue-with-incomplete-disclosure" || operationId !== route.operation.id || !issueIds.length || issueIds.some((id) => applied.has(id)) || matching.length !== 1 || issueIds.some((id) => !summary.issues.some((issue2) => issue2.id === id)))
       throw new InputError("Invalid exception application scope/reference or concrete issue coverage.");
     issueIds.forEach((id) => {
       applied.add(id);
@@ -1796,6 +1797,7 @@ async function writeNewMessage(file, bytes, binding, consumed, signal) {
   }
   const before = await lstat5(parent, { bigint: true });
   const same = (a, b) => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode;
+  const unchanged2 = (a, b) => same(a, b) && a.nlink === b.nlink && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
   cancelled();
   const handle = await open2(
     destination,
@@ -1803,6 +1805,7 @@ async function writeNewMessage(file, bytes, binding, consumed, signal) {
     384
   );
   let owned;
+  let cleanupState;
   let complete = false;
   try {
     owned = await handle.stat({ bigint: true });
@@ -1812,11 +1815,12 @@ async function writeNewMessage(file, bytes, binding, consumed, signal) {
     await handle.sync();
     cancelled();
     const after = await handle.stat({ bigint: true });
-    if (!same(owned, after) || after.nlink !== 1n || after.size !== BigInt(bytes.length) || !same(after, await lstat5(destination, { bigint: true })) || !same(before, await lstat5(parent, { bigint: true })))
+    if (!same(owned, after) || after.nlink !== 1n || after.size !== BigInt(bytes.length) || !unchanged2(after, await lstat5(destination, { bigint: true })) || !same(before, await lstat5(parent, { bigint: true })))
       throw new Error("Output identity or length changed during writing.");
     await physical(destination);
-    if (!(await readRegularFile(destination, { physicalPath: true, singleLink: true, maximumBytes: bytes.length })).equals(bytes))
+    if (!(await readRegularFile(destination, { physicalPath: true, singleLink: true, maximumBytes: bytes.length })).equals(bytes) || !unchanged2(after, await handle.stat({ bigint: true })) || !unchanged2(after, await lstat5(destination, { bigint: true })))
       throw new Error("Output bytes changed during publication.");
+    cleanupState = after;
     cancelled();
     await handle.close();
     cancelled();
@@ -1826,18 +1830,17 @@ async function writeNewMessage(file, bytes, binding, consumed, signal) {
     if (!complete)
       await handle.close().catch(() => {
       });
-    if (!complete && owned) {
+    if (!complete && cleanupState) {
       try {
         const current = await lstat5(destination, { bigint: true });
-        if (current.isFile() && current.nlink === 1n && same(owned, current) && same(before, await lstat5(parent, { bigint: true }))) {
-          const partial = await readRegularFile(destination, {
+        if (current.isFile() && current.nlink === 1n && unchanged2(cleanupState, current) && same(before, await lstat5(parent, { bigint: true }))) {
+          const actual = await readRegularFile(destination, {
             physicalPath: true,
             singleLink: true,
             maximumBytes: bytes.length
           });
           const final = await lstat5(destination, { bigint: true });
-          if (partial.equals(bytes.subarray(0, partial.length)) && same(current, final) && current.size === final.size && current.mtimeNs === final.mtimeNs && current.ctimeNs === final.ctimeNs)
-            await unlink(destination);
+          if (actual.equals(bytes) && unchanged2(cleanupState, final)) await unlink(destination);
         }
       } catch {
       }
@@ -2084,7 +2087,7 @@ function resolveReasoning(event) {
   );
   if (native.length > 1) return { conflict: true };
   if (native[0] === "disabled") return { value: "none", conflict: false };
-  if (native[0] === "enabled" && !["none", "unknown", "N/A", "null", "off"].includes(value))
+  if (native[0] === "enabled" && !["none", "unknown", "n/a", "null", "off"].includes(value.toLowerCase()))
     return { value, conflict: false };
   return { conflict: false };
 }
@@ -2303,8 +2306,8 @@ async function processMessage(input, loadDefault) {
       summary,
       appliedExceptionIssueIds: []
     };
-    result.issues.push(
-      ...summary.issues.map(
+    const summaryIssues = new Set(
+      summary.issues.map(
         (item) => issue(
           item.id,
           item.code,
@@ -2312,6 +2315,7 @@ async function processMessage(input, loadDefault) {
         )
       )
     );
+    result.issues.push(...summaryIssues);
     const excluded = [
       route.operation.repository,
       route.operation.worktree,
@@ -2438,7 +2442,9 @@ async function processMessage(input, loadDefault) {
       }
     }
     const formatIssues = result.issues.filter((item) => item.code === "invalid-assisted-by");
-    const blockers = result.issues.filter((item) => !applied.includes(item.id) && !formatIssues.includes(item));
+    const blockers = result.issues.filter(
+      (item) => !(summaryIssues.has(item) && applied.includes(item.id)) && !formatIssues.includes(item)
+    );
     if (formatIssues.length || input.mode === "validate" && invalid) {
       result.format.status = "invalid";
       result.exitCode = 2;

@@ -101,8 +101,8 @@ export async function processMessage(
             summary,
             appliedExceptionIssueIds: [],
         };
-        result.issues.push(
-            ...summary.issues.map((item) =>
+        const summaryIssues = new Set(
+            summary.issues.map((item) =>
                 issue(
                     item.id,
                     item.code,
@@ -110,6 +110,7 @@ export async function processMessage(
                 ),
             ),
         );
+        result.issues.push(...summaryIssues);
         const excluded = [
             route.operation.repository,
             route.operation.worktree,
@@ -245,7 +246,9 @@ export async function processMessage(
             }
         }
         const formatIssues = result.issues.filter((item) => item.code === 'invalid-assisted-by');
-        const blockers = result.issues.filter((item) => !applied.includes(item.id) && !formatIssues.includes(item));
+        const blockers = result.issues.filter(
+            (item) => !(summaryIssues.has(item) && applied.includes(item.id)) && !formatIssues.includes(item),
+        );
         if (formatIssues.length || (input.mode === 'validate' && invalid)) {
             result.format.status = 'invalid';
             result.exitCode = 2;

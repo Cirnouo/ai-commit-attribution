@@ -44,7 +44,9 @@ within this operation. Historical records survive handoff/compaction; a current
 integrator or parent model never fills another event's fields.
 
 reasoning is either {"state":"unknown"} or {"state":"confirmed","value":"high"}.
-Enabled native values are preserved exactly. Confirmed effective native
+Enabled native values are preserved exactly. Placeholder comparisons for none,
+unknown, n/a, null and off ignore case; these values do not establish enabled
+native effort and are omitted with optional diagnostics. Confirmed effective native
 disablement uses none even when its observed native spelling is off or 0; raw
 observations remain in source records. Unknown, requested off, hidden output, virtual/router levels, model
 capability and unsupported settings never establish effective disablement.
