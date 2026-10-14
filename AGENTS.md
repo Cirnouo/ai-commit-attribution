@@ -4,6 +4,9 @@ Preserve unrelated work. Read all applicable ancestor and local AGENTS.md files
 together; local instructions supplement parent instructions. Read only the
 policies needed for the operation, using the before-use links below.
 
+Before adding or changing tracked content or public verification evidence, read
+[portable content and public evidence](docs/policies/documentation.md#portable-content-and-public-evidence).
+
 This repository maintains YAML files with the `.yaml` extension. Before adding
 or editing YAML, read the authoritative [YAML policy](docs/policies/quality.md#yaml-files).
 Its only approved naming exception is `.github/ISSUE_TEMPLATE/config.yml`.
