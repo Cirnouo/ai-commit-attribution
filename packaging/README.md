@@ -1,7 +1,8 @@
 # Skill packaging inputs
 
-SKILL.md is the installed PR4 summary entry. records.md owns its before-use
-record/evidence contract; agent-registry.json owns researched host names, exact
+SKILL.md is the installed policy/summary entry. policy.md owns its before-use
+scan/decision/freshness contract; records.md owns the record/evidence contract.
+agent-registry.json owns researched host names, exact
 aliases, primary sources, dates and remaining gaps. These files are copied into
 the generated payload, with version metadata injected from root package.json.
 This README is contributor navigation and does not enter the installed Skill.

@@ -10,6 +10,9 @@ Version 0.1.0 is in development. No runtime Skill has been released.
 
 ### Added
 
+- Read-only policy scanning with bounded candidate evidence, explicit semantic
+  decisions and freshness checks for actual worktree/operation/path state,
+  including merge message operations and valid unborn commit preparation.
 - A self-contained development Skill distribution with a researched host
   registry and read-only participation summary command. Summaries preserve
   event evidence, all declared/observed participant accounting, stable identity
@@ -19,6 +22,9 @@ Version 0.1.0 is in development. No runtime Skill has been released.
 
 ### Security
 
+- Repository policy routing bypasses default identity/registry/summary logic.
+  Trusted absolute Git observation disables lazy fetch and execution surfaces;
+  unsafe reads, unsupported scope and stale decisions stop downstream work.
 - Summary inputs reject raw control injection and incompatible supplied operation
   scopes. Exact generated payload inventories, license bytes and isolated
   business execution are checked without repairing drift; evidence declarations

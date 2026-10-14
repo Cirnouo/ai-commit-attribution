@@ -141,7 +141,7 @@ export async function parseOperation(value: unknown): Promise<Operation> {
     if (new Set(targets.map((target) => target.role)).size !== targets.length)
         throw new InputError('Invalid input scope: duplicate target role.');
     const kind = text(data.kind);
-    if (!['commit', 'amend', 'rebase', 'cherry-pick', 'squash'].includes(kind))
+    if (!['commit', 'amend', 'rebase', 'cherry-pick', 'squash', 'merge'].includes(kind))
         throw new InputError('Invalid input scope: unsupported operation kind.');
     return {
         schemaVersion: 1,

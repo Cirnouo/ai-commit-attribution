@@ -7887,13 +7887,28 @@ function sameFile(expected, actual) {
 function unchanged(expected, actual) {
   return sameFile(expected, actual) && expected.size === actual.size && expected.mtimeNs === actual.mtimeNs && expected.ctimeNs === actual.ctimeNs;
 }
+function samePhysicalPath(expected, actual) {
+  return path.relative(path.toNamespacedPath(path.resolve(expected)), path.toNamespacedPath(actual)) === "";
+}
 async function readRegularFile(file, io = {}) {
   const inspect = io.lstat ?? ((name) => lstat(name, { bigint: true }));
   const acquire = io.open ?? (async (name, flags) => {
     const handle2 = await open(name, flags);
     return {
       stat: () => handle2.stat({ bigint: true }),
-      readFile: () => handle2.readFile(),
+      readFile: async (maximumBytes) => {
+        if (maximumBytes === void 0) return handle2.readFile();
+        const chunks = [];
+        let length = 0;
+        for (; ; ) {
+          const chunk = Buffer.alloc(Math.min(64 * 1024, maximumBytes - length + 1));
+          const { bytesRead } = await handle2.read(chunk, 0, chunk.length, null);
+          if (!bytesRead) return Buffer.concat(chunks, length);
+          length += bytesRead;
+          if (length > maximumBytes) throw new Error("Evidence byte budget exceeded.");
+          chunks.push(chunk.subarray(0, bytesRead));
+        }
+      },
       close: () => handle2.close()
     };
   });
@@ -7901,14 +7916,16 @@ async function readRegularFile(file, io = {}) {
   try {
     const before = await handle.stat();
     if (!before.isFile()) throw new Error("Evidence must be a regular file without links.");
+    if (io.maximumBytes !== void 0 && (!Number.isSafeInteger(io.maximumBytes) || io.maximumBytes < 0 || before.size > BigInt(io.maximumBytes)))
+      throw new Error("Evidence byte budget exceeded.");
     if (io.singleLink && before.nlink !== 1n) throw new Error("Output evidence must have a single link.");
     if (!unchanged(before, await inspect(file))) throw new Error("Evidence file identity or metadata changed.");
-    if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== "")
+    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
       throw new Error("Evidence path must be physical and contain no links.");
-    const bytes = await handle.readFile();
+    const bytes = await handle.readFile(io.maximumBytes);
     if (!unchanged(before, await handle.stat()) || !unchanged(before, await inspect(file)) || BigInt(bytes.length) !== before.size)
       throw new Error("Evidence file identity or metadata changed.");
-    if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== "")
+    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
       throw new Error("Evidence path changed during descriptor read.");
     return bytes;
   } finally {
@@ -8563,9 +8580,10 @@ var SKILL_FILES = [
   "THIRD-PARTY-NOTICES.txt",
   "references/agent-registry.json",
   "references/records.md",
+  "references/policy.md",
   "scripts/attribution.mjs"
 ];
-var PACKAGING_FILES = ["README.md", "SKILL.md", "agent-registry.json", "records.md"];
+var PACKAGING_FILES = ["README.md", "SKILL.md", "agent-registry.json", "records.md", "policy.md"];
 var SKILL_ROOT = "skills/ai-commit-attribution";
 
 // tooling/check-security.ts
