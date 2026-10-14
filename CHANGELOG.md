@@ -10,6 +10,10 @@ Version 0.1.0 is in development. No runtime Skill has been released.
 
 ### Added
 
+- Complete installed disclosure workflow, conditional host evidence and a human
+  first-use guide for explicit policy, participation and message inputs. Portable
+  acceptance cases distinguish copied-bundle/real-Git checks from native-host,
+  question and fixed-source installation evidence.
 - Message preview/render and read-only validation with fresh exclusive policy
   routing, canonical default trailers, exact signature migration mappings and
   explicitly scoped incomplete-disclosure exception applications.

@@ -39,6 +39,12 @@ message-review-fixes.test.ts covers summary-owned exception boundaries, unique
 exception joins and optional reasoning placeholders through source and copied
 installed render/validate commands. Output fault regressions retain same-inode
 peer prefix, empty and equal content as well as uncertain partial writes.
+skill-integration.test.ts materializes the finite public acceptance corpus and
+executes all fifteen copied-bundle cases in isolated real Git repositories,
+including positive idempotence, exclusive policy handoff, participant/effort
+accounting, stale decisions, raw controls and a synthetic final-hook rewrite.
+The [acceptance guide](../docs/acceptance/README.md) maps all eighteen requirements
+to these mechanical checks and separate optional native exercises.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.

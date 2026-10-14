@@ -19,6 +19,8 @@ test('business build has a separate exact inventory, native version, original li
             'SKILL.md',
             'THIRD-PARTY-NOTICES.txt',
             'references/agent-registry.json',
+            'references/hosts.md',
+            'references/integration.md',
             'references/messages.md',
             'references/policy.md',
             'references/records.md',

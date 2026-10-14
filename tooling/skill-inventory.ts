@@ -7,6 +7,8 @@ export const SKILL_FILES = [
     'references/records.md',
     'references/policy.md',
     'references/messages.md',
+    'references/hosts.md',
+    'references/integration.md',
     'scripts/attribution.mjs',
 ] as const;
 export const PACKAGING_FILES = [
@@ -16,12 +18,16 @@ export const PACKAGING_FILES = [
     'records.md',
     'policy.md',
     'messages.md',
+    'hosts.md',
+    'integration.md',
 ] as const;
 export const PACKAGING_RESOURCES = new Map([
     ['agent-registry.json', 'references/agent-registry.json'],
     ['records.md', 'references/records.md'],
     ['policy.md', 'references/policy.md'],
     ['messages.md', 'references/messages.md'],
+    ['hosts.md', 'references/hosts.md'],
+    ['integration.md', 'references/integration.md'],
 ]);
 export const SKILL_DIRECTORIES = ['references', 'scripts'] as const;
 export const SKILL_ROOT = 'skills/ai-commit-attribution';
