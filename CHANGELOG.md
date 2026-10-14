@@ -10,6 +10,8 @@ Version 0.1.0 is in development. No runtime Skill has been released.
 
 ### Added
 
+- skills.sh installation for Codex, with a first-use landing page and user guide
+  covering source and existing-copy use, policy outcomes and evidence gaps.
 - Complete installed disclosure workflow, conditional host evidence and a human
   first-use guide for explicit policy, participation and message inputs. Portable
   acceptance cases distinguish copied-bundle/real-Git checks from native-host,
