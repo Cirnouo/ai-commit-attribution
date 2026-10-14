@@ -4,13 +4,16 @@ import { copyFile, cp, link, mkdir, mkdtemp, readFile, realpath, rm, symlink, wr
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 test('business build has a separate exact inventory, native version, original license and no invented notices', async () => {
     assert.ok(
         existsSync(new URL('../tooling/build-skill.ts', import.meta.url)),
         'PR4 must build its real business payload',
     );
-    const { generateSkillFiles, verifySkillFiles, writeSkillFiles } = await import('../tooling/build-skill.ts');
+    const { generateSkillFiles, readPackagingInputs, verifySkillFiles, writeSkillFiles } = await import(
+        '../tooling/build-skill.ts'
+    );
     const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'skill-build-')));
     try {
         const files = await generateSkillFiles();
@@ -32,6 +35,14 @@ test('business build has a separate exact inventory, native version, original li
             'No third-party runtime code is included in this Skill bundle.\n',
         );
         assert.match(files.get('SKILL.md')?.toString() ?? '', /version: 0\.1\.0/);
+        const entry = (
+            await readPackagingInputs(path.join(fileURLToPath(new URL('../', import.meta.url)), 'packaging'))
+        ).get('skill-entry.md');
+        assert.ok(entry, 'maintained entry must be mapped to installed SKILL.md');
+        assert.deepEqual(
+            files.get('SKILL.md'),
+            Buffer.from(entry.toString('utf8').replace(/\n---\n/, '\nmetadata:\n    version: 0.1.0\n---\n')),
+        );
         await writeSkillFiles(directory, files);
         await verifySkillFiles(directory, files);
         for (const file of files.keys()) {

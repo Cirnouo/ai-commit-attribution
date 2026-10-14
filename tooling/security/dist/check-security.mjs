@@ -8588,7 +8588,7 @@ var SKILL_FILES = [
 ];
 var PACKAGING_FILES = [
   "README.md",
-  "SKILL.md",
+  "skill-entry.md",
   "agent-registry.json",
   "records.md",
   "policy.md",
