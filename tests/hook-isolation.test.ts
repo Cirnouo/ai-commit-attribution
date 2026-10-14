@@ -80,6 +80,7 @@ test('pre-commit batches every staged file below the launcher capacity while pre
     try {
         git(['init', '--quiet']);
         git(['config', 'core.autocrlf', 'false']);
+        if (process.platform === 'win32') git(['config', 'core.longpaths', 'true']);
         git([
             '-c',
             'user.name=Fixture',
