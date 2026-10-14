@@ -1244,7 +1244,7 @@ var EvidenceSearch = class {
   fingerprints = [];
   seen = /* @__PURE__ */ new Set();
   scopeUses = /* @__PURE__ */ new Map();
-  directories = /* @__PURE__ */ new Set();
+  directories = /* @__PURE__ */ new Map();
   repository;
   limitations = [];
   files = 0;
@@ -1413,8 +1413,9 @@ var EvidenceSearch = class {
         return;
       }
       if (!info.isDirectory()) throw new ObservationError("Policy discovery root must be a physical directory.");
-      if (this.directories.has(directory)) return;
-      this.directories.add(directory);
+      const mode = referenceDepth > 0 ? "adopted" : "narrow";
+      const completed = this.directories.get(directory);
+      if (completed === "adopted" || completed === mode) return;
       const entries = await this.directoryEntries(directory);
       this.checkedLocations.push({ locator: directory, status: "present" });
       this.fingerprints.push({
@@ -1455,6 +1456,7 @@ var EvidenceSearch = class {
       const after = await inspectPath(directory);
       if (!after || info.dev !== after.dev || info.ino !== after.ino || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs)
         throw new ObservationError("Policy directory changed/disappeared during discovery.");
+      this.directories.set(directory, mode);
     } catch {
       this.checkedLocations.push({ locator: directory, status: "failed" });
       this.issue(

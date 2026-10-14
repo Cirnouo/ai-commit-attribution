@@ -6,7 +6,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkFreshRouting, scanPolicy } from '../src/policy.ts';
-import { parseContext } from '../src/policy-contract.ts';
+import { LIMITS, parseContext } from '../src/policy-contract.ts';
+import { EvidenceSearch } from '../src/policy-evidence.ts';
 import { resolveTrustedGit, SafeGit } from '../src/safe-git.ts';
 
 async function fixture() {
@@ -113,11 +114,13 @@ async function instrumented(
     return {
         scratch,
         log,
-        run: async (operation: unknown, context: unknown) => {
+        run: async (operation: unknown, context: unknown, policyDecision?: unknown) => {
             const op = path.join(scratch, 'operation.json'),
                 ctx = path.join(scratch, 'context.json');
             await writeFile(op, JSON.stringify(operation));
             await writeFile(ctx, JSON.stringify(context));
+            const assessment = path.join(scratch, 'decision.json');
+            if (policyDecision !== undefined) await writeFile(assessment, JSON.stringify(policyDecision));
             let cli = entry;
             if (options.installed) {
                 const payload = path.join(scratch, 'payload');
@@ -135,6 +138,7 @@ async function instrumented(
                     op,
                     '--context',
                     ctx,
+                    ...(policyDecision === undefined ? [] : ['--decision', assessment]),
                 ],
                 { cwd: f.root, env: f.env, encoding: 'utf8', windowsHide: true },
             );
@@ -157,6 +161,99 @@ test('review I1 message-only amend captures replaced affected paths and policy f
         assert.deepEqual(await f.snapshot(), before);
         await writeFile(path.join(f.root, 'area/AGENTS.md'), 'A different disclosure policy.\n');
         assert.equal((await checkFreshRouting({ operation, context, decision: decision(scan) })).freshness, 'stale');
+    } finally {
+        await f.dispose();
+    }
+});
+
+async function lateDirectoryAdoption(f: Awaited<ReturnType<typeof fixture>>) {
+    await mkdir(path.join(f.root, 'docs/team'), { recursive: true });
+    await writeFile(path.join(f.root, 'docs/rules.md'), 'AI contributions must disclose their provenance.\n');
+    await writeFile(path.join(f.root, 'docs/team/rules.txt'), 'Nested AI contribution requirements.\n');
+    const navigation = path.join(f.root, 'navigation.md');
+    await writeFile(navigation, '[commit rules](docs/)\n');
+    return { ...f.context, additionalCandidatePaths: [navigation] };
+}
+
+test('review R1 late explicit directory adoption widens previously narrow discovery and binds bytes', async () => {
+    const f = await fixture();
+    try {
+        const context = await lateDirectoryAdoption(f);
+        const before = await f.snapshot();
+        const scan = await scanPolicy({ ...f, context });
+        assert.equal(scan.exitCode, 0, JSON.stringify(scan.issues));
+        assert.ok(scan.candidates.some((item) => item.locator === path.join(f.root, 'docs/rules.md')));
+        assert.ok(scan.candidates.some((item) => item.locator === path.join(f.root, 'docs/team/rules.txt')));
+        assert.deepEqual((await scanPolicy({ ...f, context })).binding, scan.binding);
+        const accepted = decision(scan);
+        assert.equal((await checkFreshRouting({ ...f, context, decision: accepted })).exitCode, 0);
+        await writeFile(path.join(f.root, 'docs/rules.md'), 'Changed AI contributions policy.\n');
+        assert.equal((await checkFreshRouting({ ...f, context, decision: accepted })).exitCode, 20);
+        assert.deepEqual(await f.snapshot(), before);
+    } finally {
+        await f.dispose();
+    }
+});
+
+test('review R1 actual external installed late adoption includes policy hashes and rejects stale bytes', async () => {
+    const f = await fixture();
+    const installed = await instrumented(f, { installed: true });
+    try {
+        const context = await lateDirectoryAdoption(f);
+        const before = await f.snapshot();
+        const result = await installed.run(f.operation, context);
+        assert.equal(result.status, 0, result.stderr + result.stdout);
+        const scan = JSON.parse(result.stdout);
+        assert.ok(
+            scan.candidates.some(
+                (item: { locator: string; sha256: string }) =>
+                    item.locator === path.join(f.root, 'docs/rules.md') && /^[a-f0-9]{64}$/.test(item.sha256),
+            ),
+        );
+        const accepted = decision(scan);
+        assert.equal((await installed.run(f.operation, context, accepted)).status, 0);
+        await writeFile(path.join(f.root, 'docs/rules.md'), 'Changed installed policy evidence.\n');
+        assert.equal((await installed.run(f.operation, context, accepted)).status, 20);
+        assert.deepEqual(await f.snapshot(), before);
+    } finally {
+        await installed.dispose();
+        await f.dispose();
+    }
+});
+
+test('review R1 completed directory modes widen children once, preserve broad coverage, and share the cap', async () => {
+    const f = await fixture();
+    try {
+        await lateDirectoryAdoption(f);
+        const directory = path.join(f.root, 'docs');
+        const narrow = new EvidenceSearch();
+        narrow.repository = f.root;
+        await narrow.docs(directory);
+        assert.equal(narrow.candidates.length, 0);
+        await narrow.docs(directory, 0, 1);
+        assert.equal(narrow.candidates.length, 2);
+        assert.equal(narrow.directories.get(path.join(directory, 'team')), 'adopted');
+        const bytes = narrow.bytes;
+        await narrow.docs(directory, 0, 1);
+        await narrow.docs(directory);
+        assert.equal(narrow.bytes, bytes);
+        assert.equal(new Set(narrow.candidates.map((item) => item.id)).size, 2);
+        const broad = new EvidenceSearch();
+        broad.repository = f.root;
+        await broad.docs(directory, 0, 1);
+        await broad.docs(directory);
+        assert.deepEqual(
+            broad.candidates.map((item) => item.sha256),
+            narrow.candidates.map((item) => item.sha256),
+        );
+        const bounded = new EvidenceSearch();
+        bounded.repository = f.root;
+        await bounded.docs(directory);
+        bounded.entries = LIMITS.entries - 1;
+        await bounded.docs(directory, 0, 1);
+        assert.ok(bounded.issues.some((item) => item.code === 'directory-observation'));
+        assert.equal(bounded.candidates.length, 0);
+        assert.equal(bounded.directories.get(directory), 'narrow');
     } finally {
         await f.dispose();
     }

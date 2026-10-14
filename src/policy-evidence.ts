@@ -17,7 +17,7 @@ export class EvidenceSearch {
     readonly fingerprints: unknown[] = [];
     readonly seen = new Set<string>();
     readonly scopeUses = new Map<string, Set<string>>();
-    readonly directories = new Set<string>();
+    readonly directories = new Map<string, 'narrow' | 'adopted'>();
     repository?: string;
     readonly limitations: string[] = [];
     files = 0;
@@ -211,8 +211,9 @@ export class EvidenceSearch {
                 return;
             }
             if (!info.isDirectory()) throw new ObservationError('Policy discovery root must be a physical directory.');
-            if (this.directories.has(directory)) return;
-            this.directories.add(directory);
+            const mode = referenceDepth > 0 ? 'adopted' : 'narrow';
+            const completed = this.directories.get(directory);
+            if (completed === 'adopted' || completed === mode) return;
             const entries = await this.directoryEntries(directory);
             this.checkedLocations.push({ locator: directory, status: 'present' });
             this.fingerprints.push({
@@ -266,6 +267,9 @@ export class EvidenceSearch {
                 info.ctimeMs !== after.ctimeMs
             )
                 throw new ObservationError('Policy directory changed/disappeared during discovery.');
+            // A narrow crawl cannot satisfy later explicit adoption. Cache only completed
+            // coverage so widening revisits every child under the same shared budgets.
+            this.directories.set(directory, mode);
         } catch {
             this.checkedLocations.push({ locator: directory, status: 'failed' });
             this.issue(
