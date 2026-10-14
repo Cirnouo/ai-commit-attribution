@@ -8581,9 +8581,17 @@ var SKILL_FILES = [
   "references/agent-registry.json",
   "references/records.md",
   "references/policy.md",
+  "references/messages.md",
   "scripts/attribution.mjs"
 ];
-var PACKAGING_FILES = ["README.md", "SKILL.md", "agent-registry.json", "records.md", "policy.md"];
+var PACKAGING_FILES = [
+  "README.md",
+  "SKILL.md",
+  "agent-registry.json",
+  "records.md",
+  "policy.md",
+  "messages.md"
+];
 var SKILL_ROOT = "skills/ai-commit-attribution";
 
 // tooling/check-security.ts

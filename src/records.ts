@@ -81,9 +81,11 @@ function list<T>(value: unknown, parse: (item: unknown) => T): T[] {
     if (!Array.isArray(value)) throw new InputError('Invalid input: expected an array.');
     return value.map(parse);
 }
-function identity(value: unknown): string {
+export function identity(value: unknown, field: 'model' | 'reasoning'): string {
+    checkRaw(value);
     const result = text(value);
-    if (/[:()<>]|\s/u.test(result)) throw new InputError('Invalid input: ambiguous single-line identity field.');
+    if (/[()<>]|\s/u.test(result) || (field === 'reasoning' && result.includes(':')))
+        throw new InputError('Invalid input: ambiguous single-line identity field.');
     return result;
 }
 function version(value: unknown): void {
@@ -172,7 +174,7 @@ function parseEvidence(value: unknown): Evidence {
     }
     if (data.mapping !== undefined) {
         const mapping = record(data.mapping, ['route', 'model']);
-        evidence.mapping = { route: text(mapping.route), model: identity(mapping.model) };
+        evidence.mapping = { route: text(mapping.route), model: identity(mapping.model, 'model') };
     }
     return evidence;
 }
@@ -200,11 +202,12 @@ function parseEvent(value: unknown): Event {
         reasoning:
             reasoning.state === 'unknown'
                 ? { state: 'unknown' }
-                : { state: 'confirmed', value: identity(reasoning.value) },
+                : { state: 'confirmed', value: identity(reasoning.value, 'reasoning') },
         evidence: list(data.evidence, parseEvidence),
     };
     for (const field of ['agent', 'host', 'model', 'modelRoute'] as const)
-        if (data[field] !== undefined) event[field] = field === 'model' ? identity(data[field]) : text(data[field]);
+        if (data[field] !== undefined)
+            event[field] = field === 'model' ? identity(data[field], 'model') : text(data[field]);
     if ([event.agent, event.host].some((field) => field && /[:()<>]/u.test(field)))
         throw new InputError('Invalid input: ambiguous Agent host field.');
     return event;

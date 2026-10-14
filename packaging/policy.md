@@ -149,7 +149,9 @@ needs-decision. Obtain a new semantic assessment; do not silently keep its branc
 
 repository-policy bypasses default registry, required identity, summary, tuple
 rules and Assisted-by/AI Co-authored-by vetoes entirely. It does not mean repository
-policy was validated. This development version does not render/validate messages.
+policy was validated. Before rendering or validating a message, read the
+[message contract](messages.md); those commands repeat actual fresh routing
+before accessing any default evidence or applying default trailer rules.
 needs-decision stops the operation. A request, timeout, failed/cancelled question
 or saved decision is not consent. Independent operation authorization still applies.
 

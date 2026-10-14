@@ -2,6 +2,9 @@
 
 SKILL.md is the installed policy/summary entry. policy.md owns its before-use
 scan/decision/freshness contract; records.md owns the record/evidence contract.
+messages.md owns render/validate, signature assessment, scoped exception
+application and new-file behavior. All three references are linked directly
+from the Skill entry with explicit before-use triggers.
 agent-registry.json owns researched host names, exact
 aliases, primary sources, dates and remaining gaps. These files are copied into
 the generated payload, with version metadata injected from root package.json.

@@ -10,6 +10,9 @@ Version 0.1.0 is in development. No runtime Skill has been released.
 
 ### Added
 
+- Message preview/render and read-only validation with fresh exclusive policy
+  routing, canonical default trailers, exact signature migration mappings and
+  explicitly scoped incomplete-disclosure exception applications.
 - Read-only policy scanning with bounded candidate evidence, explicit semantic
   decisions and freshness checks for actual worktree/operation/path state,
   including merge message operations and valid unborn commit preparation.
@@ -22,6 +25,9 @@ Version 0.1.0 is in development. No runtime Skill has been released.
 
 ### Security
 
+- Trailer processing isolates Git configuration and preserves unrelated message
+  bytes. Explicit output creates only a separate absent safe file; blockers and
+  failures never overwrite inputs or change Git state/identity.
 - Repository policy routing bypasses default identity/registry/summary logic.
   Trusted absolute Git observation disables lazy fetch and execution surfaces;
   unsafe reads, unsupported scope and stale decisions stop downstream work.

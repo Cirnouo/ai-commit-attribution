@@ -5,8 +5,8 @@ verifiable Agent, model, and reasoning configuration identities.
 
 The Skill is under development. Version 0.1.0 is Unreleased. The current payload
 provides read-only policy scanning, operation-bound semantic routing checks,
-a researched host registry and a participation summary. Message rendering and
-validation are still being developed.
+a researched host registry, participation summaries, and message render/validate
+commands. Complete host integration is still being developed.
 
 The intended workflow reads the actual repository's disclosure policy first.
 When no applicable policy exists, it records participants using `Assisted-by`
@@ -30,11 +30,18 @@ unperformed. Incomplete evidence or changed scope requires a new decision.
 Before summarizing declared participants, read the
 [record contract](skills/ai-commit-attribution/references/records.md) and run
 `summarize --input <ledger.json> --operation <operation.json>` using the same script.
+Before previewing or validating a message, read the
+[message contract](skills/ai-commit-attribution/references/messages.md), then run
+`render --message <message.txt> --operation <operation.json> --context <context.json> --decision <decision.json> --input <ledger.json>`
+using that script. Render returns a JSON preview; `--output <new-message.txt>`
+explicitly creates a separate new file. Use `validate` with the same inputs to
+check a candidate without writing. Both commands check fresh routing before any
+default participation input, and leave repository-policy validation unperformed.
 
 Run this development checkout example from its root, or replace the script path
 with an absolute installed payload path. The complete payload also runs outside
 the source checkout without pnpm, TypeScript or node_modules. It requires stable
-Node >=24.21.0 <25 and a supported Git installation for policy observations.
+Node >=24.21.0 <25 and a supported trusted Git installation for observations/trailers.
 A summary reports declared evidence and gaps; it does not
 validate repository policy, authenticate actual dispatch or authorize a commit.
 User-level installation and real host acceptance follow the completed workflow.

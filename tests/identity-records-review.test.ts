@@ -55,6 +55,29 @@ async function fixture(run: (operation: Operation, input: (events: Event[]) => L
     }
 }
 
+test('formal colon-bearing model identifiers and exact same-event route mappings are preserved', async () => {
+    await fixture(async (operation, input) => {
+        const model = 'amazon.nova-micro-v1:0';
+        const observed = event({
+            model,
+            modelRoute: 'gateway/nova',
+            evidence: [
+                {
+                    fields: ['agent', 'model'],
+                    kind: 'synthetic fixture',
+                    observation: 'effective',
+                    reference: 'fixture:dispatch',
+                },
+                mapping(model, 'effective', 'gateway/nova'),
+            ],
+        });
+        const summary = await summarize(input([observed]), operation, registry);
+        assert.equal(summary.exitCode, 0);
+        assert.equal(summary.tuples[0]?.model, model);
+        assert.equal(summary.events[0]?.records[0]?.evidence[1]?.mapping?.model, model);
+    });
+});
+
 test('review F1 preserves whitespace filenames and rejects a different supplied selected path', async () => {
     await fixture(async (operation, input) => {
         const selected = { ...operation, paths: [' report.md', 'report.md ', ' report.md'] };

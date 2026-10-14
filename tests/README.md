@@ -23,7 +23,14 @@ policy-review-fixes.test.ts covers amended/merged affected scope, adopted/cached
 references, bounded empty-directory and byte traversal, absence/races, exact
 Windows extended-path locators and rejected Git write modes, including installed
 business regressions and real read-boundary observation.
-Later message and real host acceptance are added with those features.
+message-attribution.test.ts exercises fresh exclusive route entry, real isolated
+Git trailer semantics, byte preservation, strict signatures/scoped exceptions,
+new-file refusal and external installed command behavior. Native questions and
+actual host acceptance remain integrator/host checks, distinct from simulation.
+message-distribution.test.ts runs installed render/validate business paths,
+including unusable default inputs on repository-policy. message-output.test.ts
+uses real filesystem fault observation for short writes, cancellation, exclusive
+creation races and replaced-path peer preservation.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.

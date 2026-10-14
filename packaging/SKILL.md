@@ -11,6 +11,7 @@ forbidding disclosure or forbidding just one marker. Scan finds evidence; the
 Agent decides its meaning. Unresolved applicability/read issues stop the operation.
 Before preparing a scan or semantic decision, read the [policy contract](references/policy.md).
 Before preparing inputs or interpreting a participation summary, read the [record contract](references/records.md).
+Before rendering, validating or interpreting a message result, read the [message contract](references/messages.md).
 Use the [host registry](references/agent-registry.json) for exact host names,
 aliases, research sources and unresolved discovery limits.
 
@@ -27,7 +28,9 @@ scope freshness or user consent. Apply the repository's disclosure policy
 before using default attribution rules. A bound semantic decision must be checked
 again immediately before consumption and after waiting or material changes.
 Repository-policy handoff skips default checks and leaves policy validation
-unperformed. Message rendering and validation are not implemented in this version.
+unperformed. Render previews a candidate and writes only an explicitly requested
+new file; validate is read-only. Neither command performs the real Git operation.
+Required evidence gaps stop, while unknown optional effort is omitted.
 
 The payload contains its own [MIT license](LICENSE), honest [runtime notices](THIRD-PARTY-NOTICES.txt)
 and the [summary executable](scripts/attribution.mjs). It requires no pnpm,
