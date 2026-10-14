@@ -66,17 +66,69 @@ edit-message merge/cherry-pick/rebase requires consistent active operation state
 Discovery reads exact ancestor/local AGENTS.md and CLAUDE.md for the actual
 worktree and selected/intended paths, root README/CONTRIBUTING entry files, bounded
 contribution/commit/policy documents under docs and workflow definitions, adopted
-local Markdown links, effective message hooks and explicit commit template, and
+local prose links, effective message hooks and explicit commit template, and
 exact additional candidates. Dependency/vendor/generated directories and unrelated
 sibling instruction files are excluded. Missing expected locations are recorded;
 missing adopted references and unsafe/unreadable known evidence are issues.
 A cached expected absence becomes a missing-reference issue when later adopted
 or explicitly supplied. Multiple applicable scope/reference uses remain bound.
+Previously observed files are reused for navigation back edges, including self
+links, with one raw read/candidate and all scope uses and reference IDs retained.
+Every visit still consumes the shared enumeration budget. Reuse never clears
+an absence, failed observation or issue. A known back edge does not recurse or
+exhaust the hop limit; a distinct unseen target beyond eight hops remains blocked.
 Adopted repository directory navigation is discovered within the same limits;
+active navigation reentry reuses coverage, while narrow discovery widens once
+when explicitly adopted. Completed adopted coverage is never downgraded. Directory
+reference IDs are reconciled after discovery so later children remain associated;
+directory uses, including empty targets, and inventories remain bound.
 external directory links require a decision and never authorize a descendant crawl.
 Network links are reported unfetched and never retrieved. The Agent must resolve
 known relevant external policy before selecting a branch; locator presence alone
 does not establish policy applicability or complete evidence.
+
+Recursive prose navigation has a finite format profile: .md, .markdown, .txt and
+extensionless evidence files, including exact external policy files, root entry
+files. Explicitly configured text commit templates may use other suffixes.
+When an earlier raw candidate later becomes an eligible configured text template,
+its already observed text is traversed once without rereading or duplicating the
+candidate. Hook/configuration definitions and failed observations cannot widen
+into prose through this reuse.
+Message-hook and Git-configuration
+definitions are excluded by source kind. Structured/source formats such as JSON,
+YAML, JS/TS and known script/config extensions are excluded even when explicitly
+supplied or configured as a template; extensionless shebang scripts are excluded.
+The excluded template suffixes are .json/.jsonc/.jsonl, .yaml/.yml, JS/TS variants
+(.js/.jsx/.ts/.tsx with optional c/m prefixes), .sh/.bash/.zsh/.fish,
+.ps1/.psm1/.psd1/.bat/.cmd, .py/.rb/.pl/.php/.go/.rs/.java, .c/.h with optional
+pp/xx suffixes, .cs/.swift/.kt/.lua/.sql, .toml/.ini/.cfg/.conf/.config,
+.xml/.htm/.html/.css/.scss/.less/.svg.
+All these nonprose candidates still receive the same bounded physical identity,
+encoding/control checks and raw hashes, and require semantic assessment.
+
+The supported navigation syntax is an inline Markdown link with an immediately
+parenthesized non-whitespace destination and optional double-quoted title.
+Code-formatted labels and existing image-link matching remain supported.
+Anchor-only links are skipped; fragments are removed and file destinations are
+percent-decoded before the existing path/scheme checks. Reference-style links,
+reference definitions, HTML href/src and autolinks are outside this finite
+discovery profile. Their absence from recursive extraction cannot excuse a known
+relevant policy; supply its exact candidate and resolve its applicability.
+
+The bounded lexical pass excludes backtick/tilde fences, four-space/tab indented
+code, equal-length backtick spans (including multiline spans within a prose
+paragraph) and HTML comments. Blank lines and code blocks interrupt span matching.
+Fences allow zero to three spaces, matching marker and a closing run at least
+as long; an unclosed fence masks to EOF. Blockquote prose remains navigable,
+while fences/indented code inside quotes remain literal. Normal list marker
+content and its continuation indentation are prose, including after a blank line.
+Literal comment, fence and span contents cannot change that list context.
+Unindented nonblank prose resets that simple list context. Unmatched backticks
+remain punctuation. Newline
+boundaries survive masking, preventing fabricated links between separate lines.
+This is a small lexical profile, not complete CommonMark parsing; it does not
+interpret arbitrary HTML blocks or every nested list/container grammar. Literal
+regions remain in the candidate's raw bound evidence for semantic review.
 
 Git configuration bytes are hashed in full, while output exposes only policy
 locator keys. Includes are inspected as exact bounded data; inline include

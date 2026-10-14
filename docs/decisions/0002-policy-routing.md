@@ -35,3 +35,12 @@ recapture improve evidence but cannot provide an atomic snapshot or eliminate
 later races. Future message rendering/validation and actual host acceptance
 remain separate deliveries. Helpers never execute policy scripts or change Git
 state/configuration/identity, and never authorize an operation.
+
+Readable navigation loops are bounded graph reuse rather than incomplete policy
+evidence. Retaining reverse edges, scope uses and directory associations binds
+the complete observed graph without reading the same file again; directory
+adoption may widen a prior narrow crawl before final edge reconciliation. Missing
+or unsafe evidence and exhausted budgets still stop routing. Prose-only adoption
+keeps fixture/code examples as hashed semantic evidence without promoting their
+literal strings into live policy requirements. packaging/policy.md owns the exact
+supported formats, lexical limits and continued freshness gates.

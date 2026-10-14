@@ -173,7 +173,7 @@ test('local intended/deleted/directory paths, adopted links and exact whitespace
     }
 });
 
-test('bounded evidence handles absence, unsafe types, invalid encoding/controls, cycles and real byte limits', async () => {
+test('bounded evidence handles absence, unsafe types, invalid encoding/controls and real byte limits', async () => {
     const f = await fixture();
     try {
         for (const [name, bytes] of [
@@ -184,7 +184,7 @@ test('bounded evidence handles absence, unsafe types, invalid encoding/controls,
             await writeFile(path.join(f.root, name), bytes);
         await writeFile(path.join(f.root, 'cycle.md'), '[self](cycle.md)\n');
         await mkdir(path.join(f.root, 'directory.md'));
-        for (const name of ['bad-utf.md', 'control.md', 'oversized.md', 'cycle.md', 'directory.md', 'absent.md']) {
+        for (const name of ['bad-utf.md', 'control.md', 'oversized.md', 'directory.md', 'absent.md']) {
             const scan = await scanPolicy({
                 ...f,
                 context: { ...f.context, additionalCandidatePaths: [path.join(f.root, name)] },
@@ -226,7 +226,8 @@ test('bounded evidence handles absence, unsafe types, invalid encoding/controls,
         await totalCap.read(source, 'test', 'cap');
         assert.equal(totalCap.issues.length, 1);
         const hops = new EvidenceSearch();
-        await hops.read(path.join(f.root, 'cycle.md'), 'test', 'cap', true, LIMITS.referenceHops);
+        await writeFile(path.join(f.root, 'hop.md'), '[new](unread.md)');
+        await hops.read(path.join(f.root, 'hop.md'), 'test', 'cap', true, LIMITS.referenceHops);
         assert.ok(hops.issues.length);
         const depth = new EvidenceSearch();
         await depth.docs(f.root, LIMITS.directoryLevels + 1);

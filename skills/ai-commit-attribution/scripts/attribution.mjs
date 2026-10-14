@@ -440,13 +440,164 @@ var init_policy_contract = __esm({
   }
 });
 
+// src/policy-markdown.ts
+import path4 from "node:path";
+function fenceToken(line) {
+  const match = /^( *)(`{3,}|~{3,})([^\r\n]*)/.exec(line);
+  if (!match) return;
+  const [, spaces = "", run2 = "", tail = ""] = match;
+  if (run2.startsWith("`") && tail.includes("`")) return;
+  return { indentation: spaces.length, marker: run2[0] ?? "", length: run2.length, tail };
+}
+function proseEvidence(locator, sourceKind) {
+  if (sourceKind === "message-hook" || sourceKind === "git-configuration") return false;
+  const extension = path4.extname(locator).toLowerCase();
+  if (["", ".md", ".markdown", ".txt"].includes(extension)) return true;
+  return sourceKind === "commit-template" && !/^(?:\.(?:jsonc?|jsonl|ya?ml|[cm]?[jt]sx?|sh|bash|zsh|fish|ps1|psm1|psd1|bat|cmd|py|rb|pl|php|go|rs|java|[ch](?:pp|xx)?|cs|swift|kt|lua|sql|toml|ini|cfg|conf|config|xml|html?|css|scss|less|svg))$/.test(
+    extension
+  );
+}
+function markdownReferenceTargets(source) {
+  if (source.startsWith("#!")) return [];
+  let fence;
+  let comment = false;
+  let listIndent = 0;
+  let inlineEnd = 0;
+  let offset = 0;
+  const lines = source.split(/(?<=\n)/).map((original) => {
+    const start = offset;
+    offset += original.length;
+    const line = original.replace(/^(?: {0,3}>[ \t]?)+/, "");
+    const lineStart = start + original.length - line.length;
+    const listPrefix = /^( {0,3})(?:[-+*]|\d+[.)])([ \t]+)/.exec(line)?.[0];
+    const bareFence = fenceToken(line);
+    const listFence = listPrefix ? fenceToken(line.slice(listPrefix.length)) : void 0;
+    const fenceStart = Boolean(bareFence || listFence && listFence.indentation <= 3);
+    return { original, line, lineStart, fenceStart };
+  });
+  const next = /* @__PURE__ */ new Map();
+  const last = /* @__PURE__ */ new Map();
+  for (let lineIndex = lines.length - 1; lineIndex >= 0; lineIndex--) {
+    const { line, lineStart, fenceStart } = lines[lineIndex] ?? { line: "", lineStart: 0, fenceStart: false };
+    const boundary = !line.trim() || fenceStart;
+    if (boundary) last.clear();
+    for (const run2 of [...line.matchAll(/`+/g)].reverse()) {
+      const index = lineStart + run2.index;
+      const following = last.get(run2[0].length);
+      if (following !== void 0) next.set(index, following);
+      last.set(run2[0].length, { index, line: lineIndex });
+    }
+    if (boundary) last.clear();
+  }
+  const size = 2 ** Math.ceil(Math.log2(Math.max(1, lines.length)));
+  const smallest = new Float64Array(size * 2).fill(Number.POSITIVE_INFINITY);
+  const largest = new Float64Array(size * 2);
+  for (const [i, { line }] of lines.entries()) {
+    const indentation = line.startsWith("	") ? Number.POSITIVE_INFINITY : /^ +/.exec(line)?.[0].length ?? 0;
+    if (indentation >= 4) smallest[size + i] = largest[size + i] = indentation;
+  }
+  for (let i = size - 1; i > 0; i--) {
+    smallest[i] = Math.min(
+      smallest[i * 2] ?? Number.POSITIVE_INFINITY,
+      smallest[i * 2 + 1] ?? Number.POSITIVE_INFINITY
+    );
+    largest[i] = Math.max(largest[i * 2] ?? 0, largest[i * 2 + 1] ?? 0);
+  }
+  const hasIndentedBlock = (from, to, indent) => {
+    let minimum = Number.POSITIVE_INFINITY;
+    let maximum = 0;
+    for (let left = size + from, right = size + to; left < right; left >>= 1, right >>= 1) {
+      if (left % 2) {
+        minimum = Math.min(minimum, smallest[left] ?? Number.POSITIVE_INFINITY);
+        maximum = Math.max(maximum, largest[left] ?? 0);
+        left++;
+      }
+      if (right % 2) {
+        right--;
+        minimum = Math.min(minimum, smallest[right] ?? Number.POSITIVE_INFINITY);
+        maximum = Math.max(maximum, largest[right] ?? 0);
+      }
+    }
+    return maximum >= indent + 4 || indent > 4 && minimum < indent;
+  };
+  const prose = [];
+  for (const [lineIndex, { original, line, lineStart }] of lines.entries()) {
+    const list2 = !comment && !fence && inlineEnd <= lineStart ? /^( {0,3})(?:[-+*]|\d+[.)])([ \t]+)/.exec(line) : null;
+    const indent = list2?.[0].length ?? listIndent;
+    const content = list2 ? line.slice(list2[0].length) : indent && line.startsWith(" ".repeat(indent)) ? line.slice(indent) : line;
+    const token = fenceToken(content);
+    const marker = token && token.indentation <= 3 ? token : void 0;
+    if (fence) {
+      if (marker && marker.marker === fence.marker && marker.length >= fence.length && !marker.tail.trim())
+        fence = void 0;
+      prose.push(original.replace(/[^\r\n]/g, " "));
+      continue;
+    }
+    if (!comment && inlineEnd <= lineStart && marker) {
+      if (list2) listIndent = list2[0].length;
+      fence = { marker: marker.marker, length: marker.length };
+      prose.push(original.replace(/[^\r\n]/g, " "));
+      continue;
+    }
+    if (!comment && inlineEnd <= lineStart && /^(?: {4}|\t)/.test(content)) {
+      prose.push(original.replace(/[^\r\n]/g, " "));
+      continue;
+    }
+    let output = "";
+    for (let i = 0; i < line.length; ) {
+      if (lineStart + i < inlineEnd) {
+        output += /[\r\n]/.test(line[i] ?? "") ? line[i] : " ";
+        i++;
+      } else if (comment) {
+        if (line.startsWith("-->", i)) {
+          output += "   ";
+          i += 3;
+          comment = false;
+        } else {
+          output += /[\r\n]/.test(line[i] ?? "") ? line[i] : " ";
+          i++;
+        }
+      } else if (line.startsWith("<!--", i)) {
+        output += "    ";
+        i += 4;
+        comment = true;
+      } else if (line[i] === "`") {
+        let end = i + 1;
+        while (line[end] === "`") end++;
+        const closing = next.get(lineStart + i);
+        if (closing !== void 0 && !hasIndentedBlock(lineIndex + 1, closing.line + 1, indent)) {
+          inlineEnd = closing.index + end - i;
+          const stop = Math.min(line.length, inlineEnd - lineStart);
+          output += line.slice(i, stop).replace(/[^\r\n]/g, " ");
+          i = stop;
+        } else {
+          output += line.slice(i, end);
+          i = end;
+        }
+      } else {
+        output += line[i];
+        i++;
+      }
+    }
+    if (list2) listIndent = list2[0].length;
+    else if (output.trim() && !/^[ \t]/.test(line)) listIndent = 0;
+    prose.push(output);
+  }
+  return [...prose.join("").matchAll(/\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)].map((match) => match[1] ?? "");
+}
+var init_policy_markdown = __esm({
+  "src/policy-markdown.ts"() {
+    "use strict";
+  }
+});
+
 // src/safe-git.ts
 import { execFile } from "node:child_process";
 import { lstat as lstat2, realpath as realpath3 } from "node:fs/promises";
-import path4 from "node:path";
+import path5 from "node:path";
 function inside(root, target) {
-  const relative = path4.relative(root, target);
-  return relative === "" || !relative.startsWith(`..${path4.sep}`) && relative !== ".." && !path4.isAbsolute(relative);
+  const relative = path5.relative(root, target);
+  return relative === "" || !relative.startsWith(`..${path5.sep}`) && relative !== ".." && !path5.isAbsolute(relative);
 }
 async function resolveTrustedGit(excluded, environment = process.env) {
   const windowsRoot = (name) => {
@@ -455,7 +606,7 @@ async function resolveTrustedGit(excluded, environment = process.env) {
       throw new ObservationError("Conflicting Windows host installation root environment keys.");
     return values[0];
   };
-  const candidates = process.platform === "win32" ? [windowsRoot("programfiles"), windowsRoot("programfiles(x86)")].filter((item) => !!item && path4.isAbsolute(item)).map((base) => path4.join(base, "Git/cmd/git.exe")) : ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"];
+  const candidates = process.platform === "win32" ? [windowsRoot("programfiles"), windowsRoot("programfiles(x86)")].filter((item) => !!item && path5.isAbsolute(item)).map((base) => path5.join(base, "Git/cmd/git.exe")) : ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"];
   for (const candidate of candidates) {
     try {
       const actual = await realpath3(candidate);
@@ -510,9 +661,9 @@ function readOnlyArguments(command, args) {
       return args.length === prefix.length + 2 && sameArgs(args.slice(0, prefix.length), prefix) && objectId(args[prefix.length]) && args.at(-1) === "--";
     }
     case "config": {
-      if (sameArgs(args.slice(0, 2), ["--no-includes", "--file"]) && path4.isAbsolute(args[2] ?? ""))
+      if (sameArgs(args.slice(0, 2), ["--no-includes", "--file"]) && path5.isAbsolute(args[2] ?? ""))
         return sameArgs(args.slice(3), ["--get-regexp", "^includeIf\\..*\\.path$"]) || sameArgs(args.slice(3), ["--bool", "--get", "extensions.worktreeConfig"]);
-      return args.length === 6 && sameArgs(args.slice(0, 3), ["--no-includes", "--null", "--file"]) && path4.isAbsolute(args[3] ?? "") && args[4] === "--get-all" && ["core.hooksPath", "commit.template", "include.path"].includes(args[5] ?? "");
+      return args.length === 6 && sameArgs(args.slice(0, 3), ["--no-includes", "--null", "--file"]) && path5.isAbsolute(args[3] ?? "") && args[4] === "--get-all" && ["core.hooksPath", "commit.template", "include.path"].includes(args[5] ?? "");
     }
     default:
       return false;
@@ -532,7 +683,7 @@ var init_safe_git = __esm({
       environment;
       started = performance.now();
       constructor(executable, directory, environment = process.env) {
-        if (!path4.isAbsolute(executable)) throw new ObservationError("Git executable must be trusted and absolute.");
+        if (!path5.isAbsolute(executable)) throw new ObservationError("Git executable must be trusted and absolute.");
         this.executable = executable;
         this.directory = directory;
         this.environment = gitEnvironment(environment);
@@ -604,7 +755,7 @@ var init_safe_git = __esm({
 // src/policy-scope.ts
 import { createHash } from "node:crypto";
 import { lstat as lstat3, opendir, realpath as realpath4 } from "node:fs/promises";
-import path5 from "node:path";
+import path6 from "node:path";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (isRecord(value))
@@ -617,20 +768,20 @@ function sameObserved(left, right) {
   return left.dev === right.dev && left.ino === right.ino && left.mode === right.mode && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
 async function inspectPath(file) {
-  const absolute2 = path5.resolve(file);
+  const absolute2 = path6.resolve(file);
   let initial;
   try {
     initial = await lstat3(absolute2);
   } catch (error) {
     if (errorCode(error) !== "ENOENT") throw error;
   }
-  const root = path5.parse(absolute2).root;
-  const parts = path5.relative(root, absolute2).split(path5.sep).filter(Boolean);
+  const root = path6.parse(absolute2).root;
+  const parts = path6.relative(root, absolute2).split(path6.sep).filter(Boolean);
   const observed = [];
   let missing;
   let current = root;
   for (let index = -1; index < parts.length; index++) {
-    if (index >= 0) current = path5.join(current, parts[index] ?? "");
+    if (index >= 0) current = path6.join(current, parts[index] ?? "");
     const locator = index === -1 && current.startsWith("\\\\?\\") && current.length === 7 && current[5] === ":" ? current.slice(4) : current;
     let info;
     try {
@@ -702,7 +853,7 @@ async function expand(directory, relative, traversal, depth = 0) {
   if (traversal.observed.has(relative)) return;
   if (traversal.observed.size >= LIMITS.paths || depth > LIMITS.directoryLevels)
     throw new ObservationError("Directory/path enumeration budget exceeded.");
-  const target = path5.join(directory, relative);
+  const target = path6.join(directory, relative);
   const info = await inspectPath(target);
   traversal.observed.set(relative, info);
   if (info?.isDirectory()) {
@@ -738,7 +889,7 @@ async function captureScope(operation, context) {
   if (invocation.worktreePath) git.environment.GIT_WORK_TREE = await physical(invocation.worktreePath);
   const top = await physical(await git.text("rev-parse", ["--show-toplevel"]));
   const gitDirectory = await physical(await git.text("rev-parse", ["--absolute-git-dir"]));
-  const commonGitDir = await physical(path5.resolve(effective2, await git.text("rev-parse", ["--git-common-dir"])));
+  const commonGitDir = await physical(path6.resolve(effective2, await git.text("rev-parse", ["--git-common-dir"])));
   if (top !== operation.repository || top !== operation.worktree || commonGitDir !== operation.commonGitDir || invocation.repositoryPath && await physical(invocation.repositoryPath) !== top || invocation.worktreePath && await physical(invocation.worktreePath) !== top || invocation.gitDirectory && await physical(invocation.gitDirectory) !== gitDirectory)
     throw new InputError("Explicit operation/invocation scope differs from physical Git identity.");
   const format = await git.text("rev-parse", ["--show-object-format"]);
@@ -760,7 +911,7 @@ async function captureScope(operation, context) {
   } else {
     if (!symbolic.startsWith("refs/heads/") || operation.kind !== "commit" || operation.targets.length)
       throw new ObservationError("Missing HEAD is not a supported unborn commit operation.");
-    const refPath = path5.join(commonGitDir, symbolic);
+    const refPath = path6.join(commonGitDir, symbolic);
     const ref = await fileState(refPath);
     if (!isRecord(ref) || ref.type !== "absent")
       throw new ObservationError("HEAD branch reference exists but cannot resolve.");
@@ -847,7 +998,7 @@ async function captureScope(operation, context) {
       ].map((name) => `${dir}/${name}`)
     )
   ];
-  for (const name of names) metadata[name] = await fileState(path5.join(gitDirectory, name), LIMITS.fileBytes);
+  for (const name of names) metadata[name] = await fileState(path6.join(gitDirectory, name), LIMITS.fileBytes);
   const present = (name) => isRecord(metadata[name]) && metadata[name].type !== "absent";
   if (present("MERGE_HEAD") && operation.kind !== "merge" || present("CHERRY_PICK_HEAD") && operation.kind !== "cherry-pick" || context.phase === "edit-message" && (operation.kind === "merge" && !present("MERGE_HEAD") || operation.kind === "cherry-pick" && !present("CHERRY_PICK_HEAD") || operation.kind === "rebase" && !present("REBASE_HEAD") && !present("rebase-merge/onto") && !present("rebase-apply/onto")))
     throw new ObservationError("Operation kind and active Git metadata are inconsistent or unsupported.");
@@ -866,7 +1017,7 @@ async function captureScope(operation, context) {
   const activeObjects = [];
   for (const name of objectMetadata) {
     if (!present(name)) continue;
-    const ids = (await readRegularFile(path5.join(gitDirectory, name), { maximumBytes: LIMITS.fileBytes, physicalPath: true })).toString("utf8").trim().split(/\s+/);
+    const ids = (await readRegularFile(path6.join(gitDirectory, name), { maximumBytes: LIMITS.fileBytes, physicalPath: true })).toString("utf8").trim().split(/\s+/);
     for (const id of ids) {
       if (!objectPattern.test(id))
         throw new ObservationError("Operation metadata contains invalid object identities.");
@@ -900,7 +1051,7 @@ async function captureScope(operation, context) {
   ]) {
     if (!present(name)) continue;
     const contents = new TextDecoder("utf-8", { fatal: true }).decode(
-      await readRegularFile(path5.join(gitDirectory, name), {
+      await readRegularFile(path6.join(gitDirectory, name), {
         maximumBytes: LIMITS.fileBytes,
         physicalPath: true
       })
@@ -980,9 +1131,9 @@ async function captureScope(operation, context) {
       }
     }
   }
-  const index = await fileState(path5.join(gitDirectory, "index"));
+  const index = await fileState(path6.join(gitDirectory, "index"));
   const shared = await git.text("rev-parse", ["--shared-index-path"]);
-  const splitIndex = shared ? await fileState(path5.resolve(effective2, shared)) : { type: "absent" };
+  const splitIndex = shared ? await fileState(path6.resolve(effective2, shared)) : { type: "absent" };
   const entries = await git.run("ls-files", ["--stage", "-z"]);
   const applicable = [...operation.paths];
   if (context.selection === "index" || operation.kind === "merge")
@@ -998,7 +1149,7 @@ async function captureScope(operation, context) {
     throw new ObservationError("Planned/specified selection needs explicit intended paths.");
   const traversal = { entries: 0, observed: /* @__PURE__ */ new Map(), inventory: [] };
   for (const relative of unique(applicable)) {
-    const target = path5.resolve(top, relative);
+    const target = path6.resolve(top, relative);
     if (!inside(top, target) || relative.split("/").some((part) => part === ".git"))
       throw new InputError("Selected path escapes operation worktree or selects Git metadata.");
     await expand(top, relative, traversal);
@@ -1008,15 +1159,15 @@ async function captureScope(operation, context) {
   const states = [];
   let bytes = 0;
   for (const relative of paths) {
-    const absolute2 = path5.join(top, relative);
+    const absolute2 = path6.join(top, relative);
     const state = await fileState(absolute2, LIMITS.bytes - bytes, traversal.observed.get(relative) ?? null);
     if (isRecord(state) && typeof state.size === "number") bytes += state.size;
     states.push({ path: relative, state });
-    let parent = isRecord(state) && state.type === "directory" ? absolute2 : path5.dirname(absolute2);
+    let parent = isRecord(state) && state.type === "directory" ? absolute2 : path6.dirname(absolute2);
     while (parent !== top && inside(top, parent)) {
-      if (await inspectPath(path5.join(parent, ".git")))
+      if (await inspectPath(path6.join(parent, ".git")))
         throw new InputError("Selected path belongs to a nested repository.");
-      parent = path5.dirname(parent);
+      parent = path6.dirname(parent);
     }
   }
   const gitStateDigest = digest({
@@ -1071,13 +1222,14 @@ var init_policy_scope = __esm({
 
 // src/policy-evidence.ts
 import { lstat as lstat4, opendir as opendir2 } from "node:fs/promises";
-import path6 from "node:path";
+import path7 from "node:path";
 var EvidenceSearch;
 var init_policy_evidence = __esm({
   "src/policy-evidence.ts"() {
     "use strict";
     init_file_evidence();
     init_policy_contract();
+    init_policy_markdown();
     init_policy_scope();
     init_records();
     init_safe_git();
@@ -1087,8 +1239,11 @@ var init_policy_evidence = __esm({
       issues = [];
       fingerprints = [];
       seen = /* @__PURE__ */ new Set();
+      proseSeen = /* @__PURE__ */ new Set();
       scopeUses = /* @__PURE__ */ new Map();
       directories = /* @__PURE__ */ new Map();
+      activeDirectories = /* @__PURE__ */ new Map();
+      directoryUses = [];
       repository;
       limitations = [];
       files = 0;
@@ -1112,10 +1267,6 @@ var init_policy_evidence = __esm({
         return entries.sort((a, b) => ordinal(a.name, b.name));
       }
       async read(locator, sourceKind, scopeBasis, required = false, depth = 0, stack = [], display) {
-        if (stack.includes(locator)) {
-          this.issue("reference-cycle", locator, "Adopted evidence reference cycle.");
-          return;
-        }
         const uses = this.scopeUses.get(locator) ?? /* @__PURE__ */ new Set();
         uses.add(scopeBasis);
         this.scopeUses.set(locator, uses);
@@ -1130,6 +1281,8 @@ var init_policy_evidence = __esm({
               const issue2 = this.issues.find((item) => item.id === digest(["missing-reference", locator]));
               if (issue2) issue2.detail = detail;
             }
+            if (cached && !this.proseSeen.has(locator) && cached.sourceKind !== "message-hook" && cached.sourceKind !== "git-configuration" && !this.checkedLocations.some((item) => item.locator === locator && item.status === "failed") && proseEvidence(locator, sourceKind))
+              await this.references(cached, cached.text, depth, stack);
             return cached;
           }
           this.seen.add(locator);
@@ -1181,59 +1334,8 @@ var init_policy_evidence = __esm({
           });
           this.candidates.push(candidate);
           this.checkedLocations.push({ locator, status: "present" });
-          if (display !== void 0) return candidate;
-          for (const match of decoded.matchAll(/\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
-            const link = match[1];
-            if (!link || link.startsWith("#")) continue;
-            this.referenceHops = Math.max(this.referenceHops, depth + 1);
-            if (depth >= LIMITS.referenceHops) {
-              this.issue("reference-budget", locator, "Adopted reference hop budget exceeded.");
-              break;
-            }
-            if (/^https?:\/\//i.test(link)) {
-              this.limitations.push(`Unfetched network evidence locator: ${link}`);
-              continue;
-            }
-            if (/^[a-z][a-z0-9+.-]*:/i.test(link) && !/^[a-z]:[/\\]/i.test(link)) {
-              this.issue("unsupported-reference", locator, "Unsupported adopted evidence locator scheme.");
-              continue;
-            }
-            let decodedLink;
-            try {
-              decodedLink = decodeURIComponent(link.split("#")[0] ?? "");
-              checkRaw(decodedLink);
-            } catch {
-              this.issue("invalid-reference", locator, "Adopted reference has invalid encoding or controls.");
-              continue;
-            }
-            const target = path6.resolve(path6.dirname(locator), decodedLink);
-            const targetInfo = await inspectPath(target);
-            if (targetInfo?.isDirectory()) {
-              if (!this.repository || !inside(this.repository, target))
-                this.issue(
-                  "external-directory-reference",
-                  target,
-                  "External directory navigation is unresolved; only exact external file targets may be read."
-                );
-              else {
-                await this.docs(target, 0, depth + 1, [...stack, locator], true);
-                candidate.referenceIds.push(
-                  ...this.candidates.filter((item) => inside(target, item.locator)).map((item) => item.id)
-                );
-              }
-              continue;
-            }
-            const child = await this.read(
-              target,
-              "adopted-reference",
-              `Explicit link from ${locator}`,
-              true,
-              depth + 1,
-              [...stack, locator]
-            );
-            if (child) candidate.referenceIds.push(child.id);
-          }
-          candidate.referenceIds = unique(candidate.referenceIds);
+          if (display !== void 0 || !proseEvidence(locator, sourceKind)) return candidate;
+          await this.references(candidate, decoded, depth, stack);
           return candidate;
         } catch (error) {
           this.checkedLocations.push({ locator, status: "failed" });
@@ -1245,11 +1347,70 @@ var init_policy_evidence = __esm({
           return;
         }
       }
+      async references(candidate, decoded, depth, stack) {
+        this.proseSeen.add(candidate.locator);
+        const locator = candidate.locator;
+        for (const link of markdownReferenceTargets(decoded)) {
+          if (!link || link.startsWith("#")) continue;
+          this.referenceHops = Math.max(this.referenceHops, depth + 1);
+          if (/^https?:\/\//i.test(link)) {
+            if (depth >= LIMITS.referenceHops) {
+              this.issue("reference-budget", locator, "Adopted reference hop budget exceeded.");
+              break;
+            }
+            this.limitations.push(`Unfetched network evidence locator: ${link}`);
+            continue;
+          }
+          if (/^[a-z][a-z0-9+.-]*:/i.test(link) && !/^[a-z]:[/\\]/i.test(link)) {
+            this.issue("unsupported-reference", locator, "Unsupported adopted evidence locator scheme.");
+            continue;
+          }
+          let decodedLink;
+          try {
+            decodedLink = decodeURIComponent(link.split("#")[0] ?? "");
+            checkRaw(decodedLink);
+          } catch {
+            this.issue("invalid-reference", locator, "Adopted reference has invalid encoding or controls.");
+            continue;
+          }
+          const target = path7.resolve(path7.dirname(locator), decodedLink);
+          const targetInfo = await inspectPath(target);
+          const observed = targetInfo?.isDirectory() ? this.directories.get(target) === "adopted" || this.activeDirectories.get(target) === "adopted" : this.seen.has(target);
+          if (depth >= LIMITS.referenceHops && !observed) {
+            this.issue("reference-budget", locator, "Adopted reference hop budget exceeded.");
+            break;
+          }
+          if (targetInfo?.isDirectory()) {
+            if (!this.repository || !inside(this.repository, target))
+              this.issue(
+                "external-directory-reference",
+                target,
+                "External directory navigation is unresolved; only exact external file targets may be read."
+              );
+            else {
+              this.directoryUses.push({ sourceCandidateId: candidate.id, directory: target });
+              await this.docs(target, 0, depth + 1, [...stack, locator], true);
+            }
+            continue;
+          }
+          const child = await this.read(
+            target,
+            "adopted-reference",
+            `Explicit link from ${locator}`,
+            true,
+            depth + 1,
+            [...stack, locator]
+          );
+          if (child) candidate.referenceIds.push(child.id);
+        }
+        candidate.referenceIds = unique(candidate.referenceIds);
+      }
       async docs(directory, depth = 0, referenceDepth = 0, stack = [], required = false) {
+        let entered = false;
+        const previous = this.activeDirectories.get(directory);
         try {
           this.count();
           if (depth > LIMITS.directoryLevels) throw new ObservationError("Policy directory level budget exceeded.");
-          if (stack.includes(directory)) throw new ObservationError("Adopted directory reference cycle.");
           const info = await inspectPath(directory);
           if (!info) {
             if (required) throw new ObservationError("Observed/adopted directory disappeared before discovery.");
@@ -1260,6 +1421,9 @@ var init_policy_evidence = __esm({
           const mode = referenceDepth > 0 ? "adopted" : "narrow";
           const completed = this.directories.get(directory);
           if (completed === "adopted" || completed === mode) return;
+          if (previous === "adopted" || previous === mode) return;
+          this.activeDirectories.set(directory, mode);
+          entered = true;
           const entries = await this.directoryEntries(directory);
           this.checkedLocations.push({ locator: directory, status: "present" });
           this.fingerprints.push({
@@ -1280,14 +1444,14 @@ var init_policy_evidence = __esm({
               "coverage"
             ].includes(entry.name))
               continue;
-            const target = path6.join(directory, entry.name);
+            const target = path7.join(directory, entry.name);
             if (entry.isSymbolicLink()) {
               this.issue("unsafe-directory-entry", target, "Policy discovery encountered a linked path.");
               continue;
             }
             if (entry.isDirectory())
               await this.docs(target, depth + 1, referenceDepth, [...stack, directory], true);
-            else if (/\.(?:md|txt|ya?ml|json)$/i.test(entry.name) && (referenceDepth > 0 || /readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) || directory.endsWith(`${path6.sep}.github${path6.sep}workflows`)))
+            else if (/\.(?:md|markdown|txt|ya?ml|json)$/i.test(entry.name) && (referenceDepth > 0 || /readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) || directory.endsWith(`${path7.sep}.github${path7.sep}workflows`)))
               await this.read(
                 target,
                 "repository-document",
@@ -1300,7 +1464,7 @@ var init_policy_evidence = __esm({
           const after = await inspectPath(directory);
           if (!after || info.dev !== after.dev || info.ino !== after.ino || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs)
             throw new ObservationError("Policy directory changed/disappeared during discovery.");
-          this.directories.set(directory, mode);
+          if (this.directories.get(directory) !== "adopted") this.directories.set(directory, mode);
         } catch {
           this.checkedLocations.push({ locator: directory, status: "failed" });
           this.issue(
@@ -1308,6 +1472,11 @@ var init_policy_evidence = __esm({
             directory,
             "Directory discovery failed or exceeded its enumeration/level budget."
           );
+        } finally {
+          if (entered) {
+            if (previous) this.activeDirectories.set(directory, previous);
+            else this.activeDirectories.delete(directory);
+          }
         }
       }
       async configuration(scope) {
@@ -1374,7 +1543,7 @@ var init_policy_evidence = __esm({
                     );
                     continue;
                   }
-                  const target = path6.resolve(path6.dirname(file), value);
+                  const target = path7.resolve(path7.dirname(file), value);
                   const child = await this.read(
                     target,
                     "git-configuration",
@@ -1395,20 +1564,20 @@ var init_policy_evidence = __esm({
           }
           active.delete(file);
         };
-        await inspect(path6.join(scope.commonGitDir, "config"));
+        await inspect(path7.join(scope.commonGitDir, "config"));
         const worktreeConfig = await scope.git.text(
           "config",
           [
             "--no-includes",
             "--file",
-            path6.join(scope.commonGitDir, "config"),
+            path7.join(scope.commonGitDir, "config"),
             "--bool",
             "--get",
             "extensions.worktreeConfig"
           ],
           true
         );
-        if (worktreeConfig === "true") await inspect(path6.join(scope.gitDirectory, "config.worktree"));
+        if (worktreeConfig === "true") await inspect(path7.join(scope.gitDirectory, "config.worktree"));
         const hookSetting = settings.get("core.hooksPath");
         if (hookSetting?.startsWith("~") || settings.get("commit.template")?.startsWith("~")) {
           this.issue(
@@ -1418,17 +1587,17 @@ var init_policy_evidence = __esm({
           );
           return;
         }
-        const hooks = hookSetting ? path6.resolve(scope.worktree, hookSetting) : path6.join(scope.commonGitDir, "hooks");
+        const hooks = hookSetting ? path7.resolve(scope.worktree, hookSetting) : path7.join(scope.commonGitDir, "hooks");
         for (const name of ["prepare-commit-msg", "commit-msg"])
           await this.read(
-            path6.join(hooks, name),
+            path7.join(hooks, name),
             "message-hook",
             "Effective message-related hook definition, read as data"
           );
         const template = settings.get("commit.template");
         if (template)
           await this.read(
-            path6.resolve(scope.git.directory, template),
+            path7.resolve(scope.git.directory, template),
             "commit-template",
             "Effective explicitly configured commit template",
             true
@@ -1445,14 +1614,14 @@ var init_policy_evidence = __esm({
             break;
           }
           dirs.add(current);
-          const parent = path6.dirname(current);
+          const parent = path7.dirname(current);
           if (parent === current) break;
           current = parent;
         }
         for (const relative of scope.paths) {
-          let parent = path6.dirname(path6.join(operation.worktree, relative));
-          const state = await inspectPath(path6.join(operation.worktree, relative));
-          if (state?.isDirectory()) parent = path6.join(operation.worktree, relative);
+          let parent = path7.dirname(path7.join(operation.worktree, relative));
+          const state = await inspectPath(path7.join(operation.worktree, relative));
+          if (state?.isDirectory()) parent = path7.join(operation.worktree, relative);
           let depth = 0;
           while (inside(operation.worktree, parent)) {
             if (++depth > LIMITS.directoryLevels) {
@@ -1461,13 +1630,13 @@ var init_policy_evidence = __esm({
             }
             dirs.add(parent);
             if (parent === operation.worktree) break;
-            parent = path6.dirname(parent);
+            parent = path7.dirname(parent);
           }
         }
         for (const directory of [...dirs].sort(ordinal))
           for (const name of ["AGENTS.md", "CLAUDE.md"])
             await this.read(
-              path6.join(directory, name),
+              path7.join(directory, name),
               "applicable-instruction",
               "Exact ancestor/local instruction of worktree or selected/intended path"
             );
@@ -1475,7 +1644,7 @@ var init_policy_evidence = __esm({
           for (const entry of await this.directoryEntries(operation.worktree)) {
             if (/^(?:README|CONTRIBUTING)(?:[._-].*)?$/i.test(entry.name))
               await this.read(
-                path6.join(operation.worktree, entry.name),
+                path7.join(operation.worktree, entry.name),
                 "contribution-entry",
                 "Root contribution/navigation entry"
               );
@@ -1485,23 +1654,36 @@ var init_policy_evidence = __esm({
         }
         for (const name of ["README.md", "CONTRIBUTING.md"])
           await this.read(
-            path6.join(operation.worktree, name),
+            path7.join(operation.worktree, name),
             "contribution-entry",
             "Expected root contribution/navigation entry"
           );
-        await this.docs(path6.join(operation.worktree, "docs"));
-        await this.docs(path6.join(operation.worktree, ".github/workflows"));
+        await this.docs(path7.join(operation.worktree, "docs"));
+        await this.docs(path7.join(operation.worktree, ".github/workflows"));
         await this.configuration(scope);
         for (const locator of context.additionalCandidatePaths ?? [])
           await this.read(locator, "explicit-candidate", "Exact candidate supplied by caller", true);
+        this.completeDirectoryReferences();
+      }
+      completeDirectoryReferences() {
+        for (const { sourceCandidateId, directory } of this.directoryUses) {
+          const candidate = this.candidates.find((item) => item.id === sourceCandidateId);
+          if (candidate)
+            candidate.referenceIds = unique([
+              ...candidate.referenceIds,
+              ...this.candidates.filter((item) => inside(directory, item.locator)).map((item) => item.id)
+            ]);
+        }
       }
       bindingDigest() {
+        this.completeDirectoryReferences();
         this.candidates.sort((a, b) => ordinal(a.id, b.id));
         this.checkedLocations.sort((a, b) => ordinal(a.locator, b.locator) || ordinal(a.status, b.status));
         this.issues.sort((a, b) => ordinal(a.id, b.id));
         return digest({
           profile: LIMITS,
           enumerationLimit: LIMITS.entries,
+          directoryUses: unique(this.directoryUses.map((use) => JSON.stringify(use))),
           scopeUses: [...this.scopeUses].sort(([a], [b]) => ordinal(a, b)).map(([locator, uses]) => ({ locator, uses: unique([...uses]) })),
           candidates: this.candidates,
           checkedLocations: this.checkedLocations,
@@ -1782,7 +1964,7 @@ var init_message_assessment = __esm({
 // src/message-output.ts
 import { constants as constants2 } from "node:fs";
 import { lstat as lstat5, open as open2, unlink } from "node:fs/promises";
-import path7 from "node:path";
+import path8 from "node:path";
 async function writeNewMessage(file, bytes, binding, consumed, signal) {
   const cancelled = () => {
     if (signal?.aborted) throw new Error("Output publication cancelled.");
@@ -1790,13 +1972,13 @@ async function writeNewMessage(file, bytes, binding, consumed, signal) {
   cancelled();
   checkRaw(file);
   if (!file) throw new InputError("Explicit output path is empty.");
-  const destination = path7.resolve(file);
-  if (consumed.some((input) => samePhysicalPath(path7.resolve(input), destination)) || inside(binding.gitDirectory, destination) || inside(binding.commonGitDir, destination) || destination.split(path7.sep).some((part) => part.toLowerCase() === ".git"))
+  const destination = path8.resolve(file);
+  if (consumed.some((input) => samePhysicalPath(path8.resolve(input), destination)) || inside(binding.gitDirectory, destination) || inside(binding.commonGitDir, destination) || destination.split(path8.sep).some((part) => part.toLowerCase() === ".git"))
     throw new InputError("Output aliases a consumed input or protected Git metadata.");
   let parent;
   try {
     if (await inspectPath(destination)) throw new Error("exists");
-    parent = await physical(path7.dirname(destination));
+    parent = await physical(path8.dirname(destination));
     if (!(await lstat5(parent)).isDirectory()) throw new Error("parent");
   } catch {
     throw new InputError("Output requires an absent leaf and an existing safe physical parent directory.");
@@ -1867,7 +2049,7 @@ var init_message_output = __esm({
 import { execFile as execFile2 } from "node:child_process";
 import { mkdir, mkdtemp, realpath as realpath5, rm } from "node:fs/promises";
 import os from "node:os";
-import path8 from "node:path";
+import path9 from "node:path";
 async function runTrailers(message, options) {
   if (message.length > LIMITS.inputBytes) throw new InputError("Message byte budget exceeded.");
   options.additions?.forEach(checkRaw);
@@ -1875,10 +2057,10 @@ async function runTrailers(message, options) {
   const parent = await physical(await realpath5(os.tmpdir()));
   if (options.excluded.some((root) => inside(root, parent)))
     throw new Error("Trailer temporary directory is inside an excluded scope.");
-  const directory = await mkdtemp(path8.join(parent, "attribution-trailer-"));
+  const directory = await mkdtemp(path9.join(parent, "attribution-trailer-"));
   try {
     await physical(directory);
-    const home = path8.join(directory, "home");
+    const home = path9.join(directory, "home");
     await mkdir(home);
     const environment = {
       ...gitEnvironment(options.environment),
@@ -1928,7 +2110,7 @@ async function runTrailers(message, options) {
   }
 }
 async function removeTemporary(directory, parent) {
-  if (path8.dirname(directory) !== parent || !path8.basename(directory).startsWith("attribution-trailer-"))
+  if (path9.dirname(directory) !== parent || !path9.basename(directory).startsWith("attribution-trailer-"))
     throw new Error("Unsafe trailer temporary cleanup.");
   await rm(directory, { recursive: true, force: true });
 }
