@@ -16,9 +16,13 @@ payloads and unchanged peers on failure; distribution.test.ts executes installed
 summary business paths from outside dependencies with Git-state preservation.
 policy-routing.test.ts, policy-safety.test.ts and policy-operations.test.ts cover
 live scope/freshness, semantic routing, bounded evidence/config redaction and
-real operation/worktree/promisor/executable sentinels. policy-distribution.test.ts
-executes installed scan and route paths outside dependencies, corrupts the
-registry to prove bypass and uses a real import sentinel for default summary.
+real operation/worktree/promisor/executable sentinels.
+safe-git-environment.test.ts covers Windows copied bootstrap root-key casing,
+ambiguous duplicate rejection and actual Git Bash source/installed message paths
+using dynamically derived host and fixture paths.
+policy-distribution.test.ts executes installed scan and route paths outside
+dependencies, corrupts the registry to prove bypass and uses a real import
+sentinel for default summary.
 policy-review-fixes.test.ts covers amended/merged affected scope, adopted/cached
 references, bounded empty-directory and byte traversal, absence/races, exact
 Windows extended-path locators and rejected Git write modes, including installed

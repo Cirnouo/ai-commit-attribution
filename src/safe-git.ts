@@ -11,9 +11,17 @@ export function inside(root: string, target: string): boolean {
 }
 /** Host installation roots, independent of cwd/PATH. Environment here is the host bootstrap environment, never repository data. */
 export async function resolveTrustedGit(excluded: readonly string[], environment = process.env): Promise<string> {
+    const windowsRoot = (name: string) => {
+        const values = Object.entries(environment)
+            .filter(([key]) => key.toLowerCase() === name)
+            .map(([, value]) => value);
+        if (new Set(values).size > 1)
+            throw new ObservationError('Conflicting Windows host installation root environment keys.');
+        return values[0];
+    };
     const candidates =
         process.platform === 'win32'
-            ? [environment.ProgramFiles, environment['ProgramFiles(x86)']]
+            ? [windowsRoot('programfiles'), windowsRoot('programfiles(x86)')]
                   .filter((item): item is string => !!item && path.isAbsolute(item))
                   .map((base) => path.join(base, 'Git/cmd/git.exe'))
             : ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git'];

@@ -449,7 +449,13 @@ function inside(root, target) {
   return relative === "" || !relative.startsWith(`..${path4.sep}`) && relative !== ".." && !path4.isAbsolute(relative);
 }
 async function resolveTrustedGit(excluded, environment = process.env) {
-  const candidates = process.platform === "win32" ? [environment.ProgramFiles, environment["ProgramFiles(x86)"]].filter((item) => !!item && path4.isAbsolute(item)).map((base) => path4.join(base, "Git/cmd/git.exe")) : ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"];
+  const windowsRoot = (name) => {
+    const values = Object.entries(environment).filter(([key]) => key.toLowerCase() === name).map(([, value]) => value);
+    if (new Set(values).size > 1)
+      throw new ObservationError("Conflicting Windows host installation root environment keys.");
+    return values[0];
+  };
+  const candidates = process.platform === "win32" ? [windowsRoot("programfiles"), windowsRoot("programfiles(x86)")].filter((item) => !!item && path4.isAbsolute(item)).map((base) => path4.join(base, "Git/cmd/git.exe")) : ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"];
   for (const candidate of candidates) {
     try {
       const actual = await realpath3(candidate);
