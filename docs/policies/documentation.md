@@ -12,6 +12,42 @@ setup and submission navigation. Runtime Skill instructions own the installed
 Agent workflow, not repository contributor governance. Source tests, root tools
 and policies do not enter the installed Skill.
 
+## Portable content and public evidence
+
+Maintain this project for contributors working on different computers and in
+different environments. This rule covers tracked source, configuration,
+instructions, examples, test fixtures, packaging inputs, generated output and
+public verification evidence. Changes must not depend on one maintainer's
+machine, private workspace, conversation or execution receipt.
+
+Use repository-relative resources, explicit operation scope and supported host
+home/configuration roots as appropriate. Derive runtime and temporary fixture
+locations in the executing environment. Examples and committed fixture data use
+clearly synthetic identities and generic paths. Do not embed personal usernames,
+machine-specific absolute paths, device identifiers, credentials or unrelated
+private data. Review generated output as well as its maintained inputs; a build
+does not make private content suitable for distribution.
+
+Intentionally designated public project contact channels, public GitHub
+identifiers and immutable public source references may remain. Preserve legally
+required third-party notices. These public project records do not authorize
+publishing other private contact details or local machine information.
+
+Public acceptance records must stand alone: provide portable test or scenario
+IDs, prerequisites, necessary commands and fixture inputs so another maintainer
+can reproduce the check from source using their own explicit runtime. Report
+the date, public source commit/version, platform, observed result and limits.
+Distinguish automated checks from optional native-host exercises; an unexecuted
+path stays unverified. Private receipt paths or inaccessible scripts cannot be
+required steps, policy authorities or substitutes for reproducible instructions.
+
+Keep detailed machine-specific execution receipts outside the repository and
+discoverable Skill roots. Publish only the relevant portable observations after
+reviewing the actual content for unnecessary private data. Text searches and
+automated checks can assist that review; they do not prove that all private data
+has been excluded. This section owns these portability and public-evidence rules;
+task-specific guides link here instead of maintaining another copy.
+
 ## Instruction progressive disclosure
 
 This adopts [Agent Skills progressive disclosure](https://agentskills.io/skill-creation/best-practices#structure-large-skills-with-progressive-disclosure).
@@ -83,7 +119,8 @@ names require trustworthy runtime evidence or a decision, never a guessed host.
 
 Research each host independently, including applicable versioned implementation;
 another host, directory/installer table or prior conversation is not proof.
-The future host evidence record owns each consumer/interface, defaults,
+The installed [host evidence](../../skills/ai-commit-attribution/references/hosts.md)
+owns each consumer/interface, defaults,
 precedence/path base, adopted field or omission, necessity/date/version/direct
 primary source and unsupported/unverified behavior. Distinguish documented
 support, inspected implementation, static checks, real host smoke and actual UI

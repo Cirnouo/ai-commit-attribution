@@ -3,6 +3,8 @@
 Focused fixes, documentation improvements and reproducible reports are welcome.
 Follow [AGENTS.md](AGENTS.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
 Report vulnerabilities privately through [SECURITY.md](SECURITY.md).
+Before preparing tracked changes or public verification evidence, read
+[portable content and public evidence](docs/policies/documentation.md#portable-content-and-public-evidence).
 
 ## Prepare a checkout
 
@@ -50,11 +52,14 @@ as history and do not acquire today's PR template.
 
 Update relevant documentation. Before editing CHANGELOG.md, verify the latest
 published stable baseline under [release policy](docs/policies/releases.md).
-Current single-maintainer governance requires no extra approving reviewer, but
-PRs must satisfy the strict latest checks and independent task review.
+Contributors prepare focused changes and verification evidence; reviewers assess
+the change independently; maintainers coordinate integration. These roles can
+be shared across contributors and environments. The current repository ruleset
+requires no extra approving reviewer. PRs still must satisfy the strict latest
+checks and independent task review.
 
-Ordinary freeform Issues remain available. Do not expose secrets or private
-paths in reports. Before creating or editing a typed Bug/Feature Issue, read the
+Ordinary freeform Issues remain available. Before creating or editing a typed
+Bug/Feature Issue, read the
 [current forms](.github/ISSUE_TEMPLATE/README.md) and
 [typed Issue policy](docs/policies/commits-and-scope.md#typed-issue-submissions).
 Preserve generated optional headings, answer required fields and select the
