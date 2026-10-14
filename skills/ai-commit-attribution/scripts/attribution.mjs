@@ -101,10 +101,10 @@ async function parseOperation(value) {
   );
   const targets = list(data.targets, (item) => {
     const target = record(item, ["role", "objectId"]);
-    const objectId = text(target.objectId);
-    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(objectId))
+    const objectId2 = text(target.objectId);
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(objectId2))
       throw new InputError("Invalid input scope: unresolved target object.");
-    return { role: text(target.role), objectId };
+    return { role: text(target.role), objectId: objectId2 };
   }).sort((a, b) => ordinal(a.role, b.role) || ordinal(a.objectId, b.objectId));
   if (new Set(targets.map((target) => target.role)).size !== targets.length)
     throw new InputError("Invalid input scope: duplicate target role.");
@@ -454,6 +454,9 @@ function sameFile(expected, actual) {
 function unchanged(expected, actual) {
   return sameFile(expected, actual) && expected.size === actual.size && expected.mtimeNs === actual.mtimeNs && expected.ctimeNs === actual.ctimeNs;
 }
+function samePhysicalPath(expected, actual) {
+  return path.relative(path.toNamespacedPath(path.resolve(expected)), path.toNamespacedPath(actual)) === "";
+}
 async function readRegularFile(file, io = {}) {
   const inspect = io.lstat ?? ((name) => lstat(name, { bigint: true }));
   const acquire = io.open ?? (async (name, flags) => {
@@ -484,12 +487,12 @@ async function readRegularFile(file, io = {}) {
       throw new Error("Evidence byte budget exceeded.");
     if (io.singleLink && before.nlink !== 1n) throw new Error("Output evidence must have a single link.");
     if (!unchanged(before, await inspect(file))) throw new Error("Evidence file identity or metadata changed.");
-    if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== "")
+    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
       throw new Error("Evidence path must be physical and contain no links.");
     const bytes = await handle.readFile(io.maximumBytes);
     if (!unchanged(before, await handle.stat()) || !unchanged(before, await inspect(file)) || BigInt(bytes.length) !== before.size)
       throw new Error("Evidence file identity or metadata changed.");
-    if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== "")
+    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
       throw new Error("Evidence path changed during descriptor read.");
     return bytes;
   } finally {
@@ -511,7 +514,8 @@ var LIMITS = Object.freeze({
   candidates: 256,
   ancestors: 64,
   directoryLevels: 16,
-  referenceHops: 8
+  referenceHops: 8,
+  entries: 4096
 });
 function object(value, keys) {
   if (!isRecord(value) || Object.keys(value).some((key) => !keys.includes(key)))
@@ -530,7 +534,8 @@ function strings(value) {
   return unique(result);
 }
 function absolute(value) {
-  const result = text(value);
+  text(value);
+  const result = value;
   if (!path3.isAbsolute(result)) throw new InputError("Policy locator must be absolute.");
   return result;
 }
@@ -617,14 +622,13 @@ var LIMITATIONS = [
 ];
 
 // src/policy-evidence.ts
-init_errors();
-import { lstat as lstat4, readdir as readdir2 } from "node:fs/promises";
+import { lstat as lstat4, opendir as opendir2 } from "node:fs/promises";
 import path6 from "node:path";
 
 // src/policy-scope.ts
 init_errors();
 import { createHash } from "node:crypto";
-import { lstat as lstat3, readdir, realpath as realpath4 } from "node:fs/promises";
+import { lstat as lstat3, opendir, realpath as realpath4 } from "node:fs/promises";
 import path5 from "node:path";
 init_records();
 
@@ -669,7 +673,41 @@ function gitEnvironment(environment = process.env) {
     LC_ALL: "C"
   };
 }
-var COMMANDS = /* @__PURE__ */ new Set(["rev-parse", "symbolic-ref", "ls-files", "diff", "diff-tree", "cat-file", "config"]);
+var sameArgs = (actual, expected) => actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+var objectId = (value) => value !== void 0 && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value);
+function readOnlyArguments(command, args) {
+  switch (command) {
+    case "symbolic-ref":
+      return sameArgs(args, ["--quiet", "HEAD"]);
+    case "rev-parse":
+      return args.length === 1 && [
+        "--show-toplevel",
+        "--absolute-git-dir",
+        "--git-common-dir",
+        "--show-object-format",
+        "--shared-index-path"
+      ].includes(args[0] ?? "") || sameArgs(args, ["--verify", "--quiet", "HEAD"]) || args.length === 2 && args[0] === "--verify" && /^[a-f0-9]{4,64}\^\{commit\}$/.test(args[1] ?? "");
+    case "rev-list":
+      return args.length === 2 && args[0] === "--max-count=10001" && /^(?:[a-f0-9]{40}|[a-f0-9]{64})\.\.(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(args[1] ?? "");
+    case "ls-files":
+      return sameArgs(args, ["--stage", "-z"]) || sameArgs(args, ["--cached", "-z"]);
+    case "cat-file":
+      return args.length === 2 && (["-t", "-p"].includes(args[0] ?? "") && objectId(args[1]) || args[0] === "-e" && /^(?:[a-f0-9]{40}|[a-f0-9]{64})\^\{commit\}$/.test(args[1] ?? ""));
+    case "diff":
+      return sameArgs(args, ["--cached", "--name-only", "-z", "--no-ext-diff", "--no-textconv", "--"]) || args.length === 7 && sameArgs(args.slice(0, 4), ["--name-only", "-z", "--no-ext-diff", "--no-textconv"]) && objectId(args[4]) && objectId(args[5]) && args[6] === "--";
+    case "diff-tree": {
+      const prefix = args.includes("-m") ? ["--root", "-m", "--no-commit-id", "--name-only", "-r", "-z", "--no-ext-diff", "--no-textconv"] : ["--root", "--no-commit-id", "--name-only", "-r", "-z", "--no-ext-diff", "--no-textconv"];
+      return args.length === prefix.length + 2 && sameArgs(args.slice(0, prefix.length), prefix) && objectId(args[prefix.length]) && args.at(-1) === "--";
+    }
+    case "config": {
+      if (sameArgs(args.slice(0, 2), ["--no-includes", "--file"]) && path4.isAbsolute(args[2] ?? ""))
+        return sameArgs(args.slice(3), ["--get-regexp", "^includeIf\\..*\\.path$"]) || sameArgs(args.slice(3), ["--bool", "--get", "extensions.worktreeConfig"]);
+      return args.length === 6 && sameArgs(args.slice(0, 3), ["--no-includes", "--null", "--file"]) && path4.isAbsolute(args[3] ?? "") && args[4] === "--get-all" && ["core.hooksPath", "commit.template", "include.path"].includes(args[5] ?? "");
+    }
+    default:
+      return false;
+  }
+}
 var SafeGit = class {
   executable;
   directory;
@@ -714,33 +752,7 @@ var SafeGit = class {
     await this.#execute(["--no-lazy-fetch", "--version"]);
   }
   async run(command, args, allowMissing = false) {
-    if (!COMMANDS.has(command))
-      throw new ObservationError("Git command is outside the read-only observation allowlist.");
-    if (command === "config") {
-      const queryKeys = [
-        "core.hooksPath",
-        "commit.template",
-        "include.path",
-        "extensions.worktreeConfig",
-        "^includeIf\\..*\\.path$"
-      ];
-      const options = args.filter((_, index) => index !== args.indexOf("--file") + 1);
-      if (!args.includes("--no-includes") || !args.includes("--file") || !args.some((value) => ["--get", "--get-all", "--get-regexp"].includes(value)) || options.some(
-        (value) => ![
-          "--no-includes",
-          "--null",
-          "--file",
-          "--get",
-          "--get-all",
-          "--get-regexp",
-          "--bool",
-          ...queryKeys
-        ].includes(value)
-      ))
-        throw new ObservationError("Git configuration query is outside the policy-locator read allowlist.");
-    }
-    if (args.some((value) => /^--(?:output|ext-diff|textconv|filters)(?:=|$)/.test(value)))
-      throw new ObservationError("Git execution/write option is prohibited.");
+    if (!readOnlyArguments(command, args)) throw new ObservationError("Unsupported read-only Git argv.");
     return this.#execute(
       [
         "--no-lazy-fetch",
@@ -765,7 +777,7 @@ var SafeGit = class {
     );
   }
   async text(command, args, allowMissing = false) {
-    return new TextDecoder("utf-8", { fatal: true }).decode(await this.run(command, args, allowMissing)).trim();
+    return new TextDecoder("utf-8", { fatal: true }).decode(await this.run(command, args, allowMissing)).replace(/\r?\n$/, "");
   }
 };
 
@@ -780,39 +792,79 @@ function canonical(value) {
 }
 var digest = (value) => createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
 var byteDigest = (value) => createHash("sha256").update(value).digest("hex");
+function sameObserved(left, right) {
+  return left.dev === right.dev && left.ino === right.ino && left.mode === right.mode && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
+}
+async function inspectPath(file) {
+  const absolute2 = path5.resolve(file);
+  let initial;
+  try {
+    initial = await lstat3(absolute2);
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") throw error;
+  }
+  const root = path5.parse(absolute2).root;
+  const parts = path5.relative(root, absolute2).split(path5.sep).filter(Boolean);
+  const observed = [];
+  let missing;
+  let current = root;
+  for (let index = -1; index < parts.length; index++) {
+    if (index >= 0) current = path5.join(current, parts[index] ?? "");
+    const locator = index === -1 && current.startsWith("\\\\?\\") && current.length === 7 && current[5] === ":" ? current.slice(4) : current;
+    let info;
+    try {
+      info = await lstat3(locator);
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") throw error;
+      if (initial) throw new ObservationError("Observed present path disappeared during component checks.");
+      missing = current;
+      break;
+    }
+    if (info.isSymbolicLink() || index < parts.length - 1 && !info.isDirectory())
+      throw new ObservationError("Observed path has a linked or non-directory ancestor/component.");
+    observed.push({ locator, info });
+  }
+  for (const item of observed) {
+    const after = await lstat3(item.locator);
+    if (after.isSymbolicLink() || item.info.dev !== after.dev || item.info.ino !== after.ino || item.info.mode !== after.mode)
+      throw new ObservationError("Observed path component identity changed.");
+  }
+  if (!initial) {
+    if (!missing) throw new ObservationError("Initially absent path appeared during component checks.");
+    try {
+      await lstat3(missing);
+    } catch (error) {
+      if (errorCode(error) === "ENOENT") return void 0;
+      throw error;
+    }
+    throw new ObservationError("Initially absent path component appeared during checks.");
+  }
+  const final = observed.at(-1);
+  if (!final || final.locator !== absolute2 || !sameObserved(initial, final.info))
+    throw new ObservationError("Observed path identity changed during component checks.");
+  return initial;
+}
 async function physical(file) {
+  if (!await inspectPath(file)) throw new ObservationError("Observed physical path is missing.");
   const actual = await realpath4(file);
-  if (path5.relative(path5.resolve(file), actual) !== "")
+  if (!samePhysicalPath(file, actual))
     throw new ObservationError("Observed path contains a link or is not physical.");
   return actual;
 }
-async function fileState(file, maximumBytes = LIMITS.bytes) {
-  try {
-    const info = await lstat3(file);
-    if (info.isSymbolicLink()) throw new ObservationError("Observed path is a symbolic link/reparse point.");
-    await physical(file);
-    if (info.isDirectory()) return { type: "directory" };
-    if (!info.isFile()) throw new ObservationError("Observed path has an unsupported file type.");
-    const bytes = await readRegularFile(file, { physicalPath: true, maximumBytes });
-    return { type: "file", size: bytes.length, sha256: byteDigest(bytes), executable: (info.mode & 73) !== 0 };
-  } catch (error) {
-    if (errorCode(error) === "ENOENT") {
-      let ancestor = path5.dirname(file);
-      for (; ; ) {
-        try {
-          await physical(ancestor);
-          break;
-        } catch (problem) {
-          if (errorCode(problem) !== "ENOENT") throw problem;
-        }
-        const parent = path5.dirname(ancestor);
-        if (parent === ancestor) throw error;
-        ancestor = parent;
-      }
-      return { type: "absent" };
-    }
-    throw error;
-  }
+async function fileState(file, maximumBytes = LIMITS.bytes, expected) {
+  const info = await inspectPath(file);
+  if (expected === null && info) throw new ObservationError("Observed absent path appeared after traversal.");
+  if (expected && (!info || !sameObserved(expected, info)))
+    throw new ObservationError("Observed path changed after traversal.");
+  if (!info) return { type: "absent" };
+  await physical(file);
+  if (info.isDirectory()) return { type: "directory" };
+  if (!info.isFile()) throw new ObservationError("Observed path has an unsupported file type.");
+  const bytes = await readRegularFile(file, { physicalPath: true, maximumBytes });
+  const after = await inspectPath(file);
+  if (!after || !sameObserved(info, after))
+    throw new ObservationError("Observed present file changed/disappeared during read.");
+  return { type: "file", size: bytes.length, sha256: byteDigest(bytes), executable: (info.mode & 73) !== 0 };
 }
 function nulPaths(bytes) {
   const values = new TextDecoder("utf-8", { fatal: true }).decode(bytes).split("\0").filter(Boolean);
@@ -820,18 +872,35 @@ function nulPaths(bytes) {
   if (values.length > LIMITS.paths) throw new ObservationError("Operation path budget exceeded.");
   return unique(values);
 }
-async function expand(directory, relative, output, depth = 0) {
-  if (output.length >= LIMITS.paths || depth > LIMITS.directoryLevels)
+async function expand(directory, relative, traversal, depth = 0) {
+  const count = () => {
+    if (++traversal.entries > LIMITS.entries)
+      throw new ObservationError("Scope traversal enumeration/visit budget exceeded.");
+  };
+  count();
+  if (traversal.observed.has(relative)) return;
+  if (traversal.observed.size >= LIMITS.paths || depth > LIMITS.directoryLevels)
     throw new ObservationError("Directory/path enumeration budget exceeded.");
   const target = path5.join(directory, relative);
-  const state = await fileState(target);
-  if (isRecord(state) && state.type === "directory") {
-    for (const child of (await readdir(target)).sort(ordinal)) {
-      checkRaw(child);
-      if ([".git", "node_modules", ".pnpm", "vendor"].includes(child)) continue;
-      await expand(directory, `${relative}/${child}`, output, depth + 1);
+  const info = await inspectPath(target);
+  traversal.observed.set(relative, info);
+  if (info?.isDirectory()) {
+    const children = [];
+    for await (const child of await opendir(target)) {
+      count();
+      checkRaw(child.name);
+      children.push(child.name);
     }
-  } else output.push(relative);
+    children.sort(ordinal);
+    traversal.inventory.push({ directory: relative, children });
+    for (const child of children) {
+      if ([".git", "node_modules", ".pnpm", "vendor"].includes(child)) continue;
+      await expand(directory, `${relative}/${child}`, traversal, depth + 1);
+    }
+    const after = await inspectPath(target);
+    if (!after || !sameObserved(info, after))
+      throw new ObservationError("Directory changed during scope traversal.");
+  } else if (info && !info.isFile()) throw new ObservationError("Unsupported scope path type.");
 }
 async function captureScope(operation, context) {
   if (operation.paths.length > LIMITS.paths) throw new ObservationError("Operation path budget exceeded.");
@@ -877,7 +946,13 @@ async function captureScope(operation, context) {
     head = { state: "unborn", symbolic, ref };
   }
   const targets = [];
-  const coverage = [];
+  const coverage = /* @__PURE__ */ new Set();
+  const cover = (...paths2) => {
+    for (const file of paths2) {
+      coverage.add(file);
+      if (coverage.size > LIMITS.paths) throw new ObservationError("Affected operation path budget exceeded.");
+    }
+  };
   for (const target of operation.targets) {
     if (!objectPattern.test(target.objectId))
       throw new InputError("Target object format differs from repository format.");
@@ -887,10 +962,11 @@ async function captureScope(operation, context) {
     if (type !== "commit") throw new ObservationError("Operation target must resolve to an available commit.");
     const commit = await git.text("cat-file", ["-p", target.objectId]);
     targets.push({ ...target, commit });
-    coverage.push(
+    cover(
       ...nulPaths(
         await git.run("diff-tree", [
           "--root",
+          "-m",
           "--no-commit-id",
           "--name-only",
           "-r",
@@ -898,6 +974,24 @@ async function captureScope(operation, context) {
           "--no-ext-diff",
           "--no-textconv",
           target.objectId,
+          "--"
+        ])
+      )
+    );
+  }
+  if (operation.kind === "amend" && resolved && !operation.targets.some((target) => target.objectId === resolved)) {
+    cover(
+      ...nulPaths(
+        await git.run("diff-tree", [
+          "--root",
+          "-m",
+          "--no-commit-id",
+          "--name-only",
+          "-r",
+          "-z",
+          "--no-ext-diff",
+          "--no-textconv",
+          resolved,
           "--"
         ])
       )
@@ -959,7 +1053,7 @@ async function captureScope(operation, context) {
         throw new ObservationError("Supplied targets omit the actual merge/cherry-pick source.");
       await git.run("cat-file", ["-e", `${id}^{commit}`]);
       activeObjects.push({ locator: name, objectId: id });
-      coverage.push(
+      cover(
         ...nulPaths(
           await git.run("diff-tree", [
             "--root",
@@ -999,7 +1093,7 @@ async function captureScope(operation, context) {
       if (!objectPattern.test(id))
         throw new ObservationError("Sequencer source cannot resolve to a supported commit.");
       activeObjects.push({ locator: name, objectId: id });
-      coverage.push(
+      cover(
         ...nulPaths(
           await git.run("diff-tree", [
             "--root",
@@ -1020,7 +1114,7 @@ async function captureScope(operation, context) {
     const base = operation.targets.find((target) => target.role === "base");
     const last = operation.targets.find((target) => target.role === "head" || target.role === "source");
     if (!base || !last) throw new ObservationError("Squash requires resolved base and head/source target roles.");
-    coverage.push(
+    cover(
       ...nulPaths(
         await git.run("diff", [
           "--name-only",
@@ -1034,12 +1128,43 @@ async function captureScope(operation, context) {
       )
     );
   }
+  if (operation.kind === "merge") {
+    if (!resolved) throw new ObservationError("Merge coverage requires an available current HEAD.");
+    const sources = unique([
+      ...activeObjects.filter((item) => item.locator === "MERGE_HEAD").map((item) => item.objectId),
+      ...operation.targets.filter((target) => target.role.startsWith("source")).map((target) => target.objectId)
+    ]);
+    if (!sources.length) throw new ObservationError("Merge coverage requires actual source targets.");
+    for (const source of sources) {
+      const commits = (await git.text("rev-list", ["--max-count=10001", `${resolved}..${source}`])).split("\n").filter(Boolean);
+      if (commits.length > LIMITS.paths) throw new ObservationError("Merge range object budget exceeded.");
+      for (const id of commits) {
+        if (!objectPattern.test(id)) throw new ObservationError("Merge range has an invalid commit identity.");
+        cover(
+          ...nulPaths(
+            await git.run("diff-tree", [
+              "--root",
+              "-m",
+              "--no-commit-id",
+              "--name-only",
+              "-r",
+              "-z",
+              "--no-ext-diff",
+              "--no-textconv",
+              id,
+              "--"
+            ])
+          )
+        );
+      }
+    }
+  }
   const index = await fileState(path5.join(gitDirectory, "index"));
   const shared = await git.text("rev-parse", ["--shared-index-path"]);
   const splitIndex = shared ? await fileState(path5.resolve(effective2, shared)) : { type: "absent" };
   const entries = await git.run("ls-files", ["--stage", "-z"]);
   const applicable = [...operation.paths];
-  if (context.selection === "index")
+  if (context.selection === "index" || operation.kind === "merge")
     applicable.push(
       ...nulPaths(
         await git.run("diff", ["--cached", "--name-only", "-z", "--no-ext-diff", "--no-textconv", "--"])
@@ -1047,29 +1172,28 @@ async function captureScope(operation, context) {
     );
   if (context.selection === "all-tracked")
     applicable.push(...nulPaths(await git.run("ls-files", ["--cached", "-z"])));
-  if (context.selection === "operation-targets" || !["commit", "amend"].includes(operation.kind))
-    applicable.push(...coverage);
+  if (context.selection === "operation-targets" || operation.kind !== "commit") applicable.push(...coverage);
   if (["planned-paths", "specified-paths"].includes(context.selection) && !operation.paths.length)
     throw new ObservationError("Planned/specified selection needs explicit intended paths.");
-  const expanded = [];
+  const traversal = { entries: 0, observed: /* @__PURE__ */ new Map(), inventory: [] };
   for (const relative of unique(applicable)) {
     const target = path5.resolve(top, relative);
     if (!inside(top, target) || relative.split("/").some((part) => part === ".git"))
       throw new InputError("Selected path escapes operation worktree or selects Git metadata.");
-    await expand(top, relative, expanded);
+    await expand(top, relative, traversal);
   }
-  const paths = unique([...applicable, ...expanded]);
+  const paths = unique([...applicable, ...traversal.observed.keys()]);
   if (paths.length > LIMITS.paths) throw new ObservationError("Operation path budget exceeded.");
   const states = [];
   let bytes = 0;
   for (const relative of paths) {
     const absolute2 = path5.join(top, relative);
-    const state = await fileState(absolute2, LIMITS.bytes - bytes);
+    const state = await fileState(absolute2, LIMITS.bytes - bytes, traversal.observed.get(relative) ?? null);
     if (isRecord(state) && typeof state.size === "number") bytes += state.size;
     states.push({ path: relative, state });
     let parent = isRecord(state) && state.type === "directory" ? absolute2 : path5.dirname(absolute2);
     while (parent !== top && inside(top, parent)) {
-      if (isRecord(await fileState(path5.join(parent, ".git"))) && (await fileState(path5.join(parent, ".git"))).type !== "absent")
+      if (await inspectPath(path5.join(parent, ".git")))
         throw new InputError("Selected path belongs to a nested repository.");
       parent = path5.dirname(parent);
     }
@@ -1084,7 +1208,7 @@ async function captureScope(operation, context) {
     entries: byteDigest(entries),
     metadata
   });
-  const pathStateDigest = digest({ paths: states });
+  const pathStateDigest = digest({ paths: states, traversal: traversal.inventory, enumerationLimit: LIMITS.entries });
   const invocationDigest = digest(context.invocation);
   const scopeDigest = digest({
     version: 1,
@@ -1099,6 +1223,7 @@ async function captureScope(operation, context) {
   });
   return {
     git,
+    enumerationEntries: traversal.entries,
     worktree: top,
     gitDirectory,
     commonGitDir,
@@ -1118,6 +1243,9 @@ var EvidenceSearch = class {
   issues = [];
   fingerprints = [];
   seen = /* @__PURE__ */ new Set();
+  scopeUses = /* @__PURE__ */ new Map();
+  directories = /* @__PURE__ */ new Set();
+  repository;
   limitations = [];
   files = 0;
   bytes = 0;
@@ -1128,40 +1256,47 @@ var EvidenceSearch = class {
     if (!this.issues.some((item) => item.id === id)) this.issues.push({ id, code, locator, detail });
   }
   count() {
-    if (++this.entries > 4096) throw new ObservationError("Evidence enumeration budget exceeded.");
+    if (++this.entries > LIMITS.entries) throw new ObservationError("Evidence enumeration budget exceeded.");
+  }
+  async directoryEntries(directory) {
+    const entries = [];
+    for await (const entry of await opendir2(directory)) {
+      this.count();
+      checkRaw(entry.name);
+      entries.push(entry);
+    }
+    return entries.sort((a, b) => ordinal(a.name, b.name));
   }
   async read(locator, sourceKind, scopeBasis, required = false, depth = 0, stack = [], display) {
     if (stack.includes(locator)) {
       this.issue("reference-cycle", locator, "Adopted evidence reference cycle.");
       return;
     }
-    if (this.seen.has(locator)) return this.candidates.find((item) => item.locator === locator);
-    this.seen.add(locator);
+    const uses = this.scopeUses.get(locator) ?? /* @__PURE__ */ new Set();
+    uses.add(scopeBasis);
+    this.scopeUses.set(locator, uses);
     try {
       this.count();
-      let info;
-      try {
-        info = await lstat4(locator);
-      } catch (error) {
-        if (errorCode(error) !== "ENOENT") throw error;
-        this.checkedLocations.push({ locator, status: "absent" });
-        let parent = path6.dirname(locator);
-        for (; ; ) {
-          try {
-            await physical(parent);
-            break;
-          } catch (problem) {
-            if (errorCode(problem) !== "ENOENT") throw problem;
-          }
-          const next = path6.dirname(parent);
-          if (next === parent) throw error;
-          parent = next;
+      if (this.seen.has(locator)) {
+        const cached = this.candidates.find((item) => item.locator === locator);
+        if (cached) cached.scopeBasis = unique([...uses]).join("; ");
+        if (required && this.checkedLocations.some((item) => item.locator === locator && item.status === "absent")) {
+          const detail = `An explicitly referenced policy/configuration target is missing. Scope: ${unique([...uses]).join("; ")}`;
+          this.issue("missing-reference", locator, detail);
+          const issue = this.issues.find((item) => item.id === digest(["missing-reference", locator]));
+          if (issue) issue.detail = detail;
         }
+        return cached;
+      }
+      this.seen.add(locator);
+      const info = await inspectPath(locator);
+      if (!info) {
+        this.checkedLocations.push({ locator, status: "absent" });
         if (required)
           this.issue(
             "missing-reference",
             locator,
-            "An explicitly referenced policy/configuration target is missing."
+            `An explicitly referenced policy/configuration target is missing. Scope: ${unique([...uses]).join("; ")}`
           );
         return;
       }
@@ -1228,12 +1363,22 @@ var EvidenceSearch = class {
           continue;
         }
         const target = path6.resolve(path6.dirname(locator), decodedLink);
-        let targetInfo;
-        try {
-          targetInfo = await lstat4(target);
-        } catch {
+        const targetInfo = await inspectPath(target);
+        if (targetInfo?.isDirectory()) {
+          if (!this.repository || !inside(this.repository, target))
+            this.issue(
+              "external-directory-reference",
+              target,
+              "External directory navigation is unresolved; only exact external file targets may be read."
+            );
+          else {
+            await this.docs(target, 0, depth + 1, [...stack, locator], true);
+            candidate.referenceIds.push(
+              ...this.candidates.filter((item) => inside(target, item.locator)).map((item) => item.id)
+            );
+          }
+          continue;
         }
-        if (targetInfo?.isDirectory() && !targetInfo.isSymbolicLink()) continue;
         const child = await this.read(
           target,
           "adopted-reference",
@@ -1256,15 +1401,29 @@ var EvidenceSearch = class {
       return;
     }
   }
-  async docs(directory, depth = 0) {
+  async docs(directory, depth = 0, referenceDepth = 0, stack = [], required = false) {
     try {
+      this.count();
       if (depth > LIMITS.directoryLevels) throw new ObservationError("Policy directory level budget exceeded.");
-      await physical(directory);
-      for (const entry of (await readdir2(directory, { withFileTypes: true })).sort(
-        (a, b) => ordinal(a.name, b.name)
-      )) {
-        this.count();
-        checkRaw(entry.name);
+      if (stack.includes(directory)) throw new ObservationError("Adopted directory reference cycle.");
+      const info = await inspectPath(directory);
+      if (!info) {
+        if (required) throw new ObservationError("Observed/adopted directory disappeared before discovery.");
+        this.checkedLocations.push({ locator: directory, status: "absent" });
+        return;
+      }
+      if (!info.isDirectory()) throw new ObservationError("Policy discovery root must be a physical directory.");
+      if (this.directories.has(directory)) return;
+      this.directories.add(directory);
+      const entries = await this.directoryEntries(directory);
+      this.checkedLocations.push({ locator: directory, status: "present" });
+      this.fingerprints.push({
+        directory,
+        dev: info.dev,
+        ino: info.ino,
+        entries: entries.map((entry) => entry.name)
+      });
+      for (const entry of entries) {
         if ([
           ".git",
           "node_modules",
@@ -1281,18 +1440,28 @@ var EvidenceSearch = class {
           this.issue("unsafe-directory-entry", target, "Policy discovery encountered a linked path.");
           continue;
         }
-        if (entry.isDirectory()) await this.docs(target, depth + 1);
-        else if (/\.(?:md|txt|ya?ml|json)$/i.test(entry.name) && (/readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) || directory.endsWith(`${path6.sep}.github${path6.sep}workflows`)))
-          await this.read(target, "repository-document", "Bounded contribution/policy document discovery");
+        if (entry.isDirectory())
+          await this.docs(target, depth + 1, referenceDepth, [...stack, directory], true);
+        else if (/\.(?:md|txt|ya?ml|json)$/i.test(entry.name) && (referenceDepth > 0 || /readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) || directory.endsWith(`${path6.sep}.github${path6.sep}workflows`)))
+          await this.read(
+            target,
+            "repository-document",
+            `Bounded contribution/policy document discovery under ${directory}`,
+            false,
+            referenceDepth,
+            [...stack, directory]
+          );
       }
-    } catch (error) {
-      if (errorCode(error) === "ENOENT") this.checkedLocations.push({ locator: directory, status: "absent" });
-      else
-        this.issue(
-          "directory-observation",
-          directory,
-          "Directory discovery failed or exceeded its enumeration/level budget."
-        );
+      const after = await inspectPath(directory);
+      if (!after || info.dev !== after.dev || info.ino !== after.ino || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs)
+        throw new ObservationError("Policy directory changed/disappeared during discovery.");
+    } catch {
+      this.checkedLocations.push({ locator: directory, status: "failed" });
+      this.issue(
+        "directory-observation",
+        directory,
+        "Directory discovery failed or exceeded its enumeration/level budget."
+      );
     }
   }
   async configuration(scope) {
@@ -1420,6 +1589,7 @@ var EvidenceSearch = class {
       );
   }
   async discover(operation, context, scope) {
+    this.repository = operation.worktree;
     const dirs = /* @__PURE__ */ new Set();
     let current = operation.worktree;
     let steps = 0;
@@ -1435,7 +1605,7 @@ var EvidenceSearch = class {
     }
     for (const relative of scope.paths) {
       let parent = path6.dirname(path6.join(operation.worktree, relative));
-      const state = await lstat4(path6.join(operation.worktree, relative)).catch(() => void 0);
+      const state = await inspectPath(path6.join(operation.worktree, relative));
       if (state?.isDirectory()) parent = path6.join(operation.worktree, relative);
       let depth = 0;
       while (inside(operation.worktree, parent)) {
@@ -1456,11 +1626,10 @@ var EvidenceSearch = class {
           "Exact ancestor/local instruction of worktree or selected/intended path"
         );
     try {
-      for (const entry of (await readdir2(operation.worktree)).sort(ordinal)) {
-        this.count();
-        if (/^(?:README|CONTRIBUTING)(?:[._-].*)?$/i.test(entry))
+      for (const entry of await this.directoryEntries(operation.worktree)) {
+        if (/^(?:README|CONTRIBUTING)(?:[._-].*)?$/i.test(entry.name))
           await this.read(
-            path6.join(operation.worktree, entry),
+            path6.join(operation.worktree, entry.name),
             "contribution-entry",
             "Root contribution/navigation entry"
           );
@@ -1486,7 +1655,8 @@ var EvidenceSearch = class {
     this.issues.sort((a, b) => ordinal(a.id, b.id));
     return digest({
       profile: LIMITS,
-      enumerationLimit: 4096,
+      enumerationLimit: LIMITS.entries,
+      scopeUses: [...this.scopeUses].sort(([a], [b]) => ordinal(a, b)).map(([locator, uses]) => ({ locator, uses: unique([...uses]) })),
       candidates: this.candidates,
       checkedLocations: this.checkedLocations,
       issues: this.issues,
@@ -1507,6 +1677,7 @@ async function scanPolicy(input) {
   let gitStateDigest = digest(null), pathStateDigest = digest(null), invocationDigest = digest(context.invocation);
   try {
     const scope = await captureScope(operation, context);
+    search.entries = scope.enumerationEntries;
     ({ gitDirectory, scopeDigest, gitStateDigest, pathStateDigest, invocationDigest } = scope);
     await search.discover(operation, context, scope);
   } catch (error) {

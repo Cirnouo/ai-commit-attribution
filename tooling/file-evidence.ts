@@ -20,6 +20,10 @@ function unchanged(expected: BigIntStats, actual: BigIntStats) {
         expected.ctimeNs === actual.ctimeNs
     );
 }
+/** Windows realpath omits the extended-length prefix; compare equivalent namespaces without trimming a filename. */
+export function samePhysicalPath(expected: string, actual: string): boolean {
+    return path.relative(path.toNamespacedPath(path.resolve(expected)), path.toNamespacedPath(actual)) === '';
+}
 
 /** Regular-file evidence I/O, shared by release and review fingerprint verification. */
 export async function readRegularFile(
@@ -68,7 +72,7 @@ export async function readRegularFile(
             throw new Error('Evidence byte budget exceeded.');
         if (io.singleLink && before.nlink !== 1n) throw new Error('Output evidence must have a single link.');
         if (!unchanged(before, await inspect(file))) throw new Error('Evidence file identity or metadata changed.');
-        if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== '')
+        if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
             throw new Error('Evidence path must be physical and contain no links.');
         const bytes = await handle.readFile(io.maximumBytes);
         if (
@@ -77,7 +81,7 @@ export async function readRegularFile(
             BigInt(bytes.length) !== before.size
         )
             throw new Error('Evidence file identity or metadata changed.');
-        if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== '')
+        if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
             throw new Error('Evidence path changed during descriptor read.');
         return bytes;
     } finally {

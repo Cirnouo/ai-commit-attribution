@@ -47,7 +47,79 @@ export function gitEnvironment(environment = process.env): NodeJS.ProcessEnv {
         LC_ALL: 'C',
     };
 }
-const COMMANDS = new Set(['rev-parse', 'symbolic-ref', 'ls-files', 'diff', 'diff-tree', 'cat-file', 'config']);
+const sameArgs = (actual: readonly string[], expected: readonly string[]) =>
+    actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+const objectId = (value: string | undefined) => value !== undefined && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value);
+/** Only argv forms used by the observer are accepted, including query modes of commands that can also write. */
+function readOnlyArguments(command: string, args: string[]): boolean {
+    switch (command) {
+        case 'symbolic-ref':
+            return sameArgs(args, ['--quiet', 'HEAD']);
+        case 'rev-parse':
+            return (
+                (args.length === 1 &&
+                    [
+                        '--show-toplevel',
+                        '--absolute-git-dir',
+                        '--git-common-dir',
+                        '--show-object-format',
+                        '--shared-index-path',
+                    ].includes(args[0] ?? '')) ||
+                sameArgs(args, ['--verify', '--quiet', 'HEAD']) ||
+                (args.length === 2 && args[0] === '--verify' && /^[a-f0-9]{4,64}\^\{commit\}$/.test(args[1] ?? ''))
+            );
+        case 'rev-list':
+            return (
+                args.length === 2 &&
+                args[0] === '--max-count=10001' &&
+                /^(?:[a-f0-9]{40}|[a-f0-9]{64})\.\.(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(args[1] ?? '')
+            );
+        case 'ls-files':
+            return sameArgs(args, ['--stage', '-z']) || sameArgs(args, ['--cached', '-z']);
+        case 'cat-file':
+            return (
+                args.length === 2 &&
+                ((['-t', '-p'].includes(args[0] ?? '') && objectId(args[1])) ||
+                    (args[0] === '-e' && /^(?:[a-f0-9]{40}|[a-f0-9]{64})\^\{commit\}$/.test(args[1] ?? '')))
+            );
+        case 'diff':
+            return (
+                sameArgs(args, ['--cached', '--name-only', '-z', '--no-ext-diff', '--no-textconv', '--']) ||
+                (args.length === 7 &&
+                    sameArgs(args.slice(0, 4), ['--name-only', '-z', '--no-ext-diff', '--no-textconv']) &&
+                    objectId(args[4]) &&
+                    objectId(args[5]) &&
+                    args[6] === '--')
+            );
+        case 'diff-tree': {
+            const prefix = args.includes('-m')
+                ? ['--root', '-m', '--no-commit-id', '--name-only', '-r', '-z', '--no-ext-diff', '--no-textconv']
+                : ['--root', '--no-commit-id', '--name-only', '-r', '-z', '--no-ext-diff', '--no-textconv'];
+            return (
+                args.length === prefix.length + 2 &&
+                sameArgs(args.slice(0, prefix.length), prefix) &&
+                objectId(args[prefix.length]) &&
+                args.at(-1) === '--'
+            );
+        }
+        case 'config': {
+            if (sameArgs(args.slice(0, 2), ['--no-includes', '--file']) && path.isAbsolute(args[2] ?? ''))
+                return (
+                    sameArgs(args.slice(3), ['--get-regexp', '^includeIf\\..*\\.path$']) ||
+                    sameArgs(args.slice(3), ['--bool', '--get', 'extensions.worktreeConfig'])
+                );
+            return (
+                args.length === 6 &&
+                sameArgs(args.slice(0, 3), ['--no-includes', '--null', '--file']) &&
+                path.isAbsolute(args[3] ?? '') &&
+                args[4] === '--get-all' &&
+                ['core.hooksPath', 'commit.template', 'include.path'].includes(args[5] ?? '')
+            );
+        }
+        default:
+            return false;
+    }
+}
 export class SafeGit {
     readonly executable: string;
     readonly directory: string;
@@ -92,39 +164,7 @@ export class SafeGit {
         await this.#execute(['--no-lazy-fetch', '--version']);
     }
     async run(command: string, args: string[], allowMissing = false): Promise<Buffer> {
-        if (!COMMANDS.has(command))
-            throw new ObservationError('Git command is outside the read-only observation allowlist.');
-        if (command === 'config') {
-            const queryKeys = [
-                'core.hooksPath',
-                'commit.template',
-                'include.path',
-                'extensions.worktreeConfig',
-                '^includeIf\\..*\\.path$',
-            ];
-            const options = args.filter((_, index) => index !== args.indexOf('--file') + 1);
-            if (
-                !args.includes('--no-includes') ||
-                !args.includes('--file') ||
-                !args.some((value) => ['--get', '--get-all', '--get-regexp'].includes(value)) ||
-                options.some(
-                    (value) =>
-                        ![
-                            '--no-includes',
-                            '--null',
-                            '--file',
-                            '--get',
-                            '--get-all',
-                            '--get-regexp',
-                            '--bool',
-                            ...queryKeys,
-                        ].includes(value),
-                )
-            )
-                throw new ObservationError('Git configuration query is outside the policy-locator read allowlist.');
-        }
-        if (args.some((value) => /^--(?:output|ext-diff|textconv|filters)(?:=|$)/.test(value)))
-            throw new ObservationError('Git execution/write option is prohibited.');
+        if (!readOnlyArguments(command, args)) throw new ObservationError('Unsupported read-only Git argv.');
         return this.#execute(
             [
                 '--no-lazy-fetch',
@@ -149,6 +189,8 @@ export class SafeGit {
         );
     }
     async text(command: string, args: string[], allowMissing = false): Promise<string> {
-        return new TextDecoder('utf-8', { fatal: true }).decode(await this.run(command, args, allowMissing)).trim();
+        return new TextDecoder('utf-8', { fatal: true })
+            .decode(await this.run(command, args, allowMissing))
+            .replace(/\r?\n$/, '');
     }
 }

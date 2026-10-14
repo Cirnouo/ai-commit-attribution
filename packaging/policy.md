@@ -27,6 +27,8 @@ absolute effectiveDirectory. Optional repositoryPath, gitDirectory and worktreeP
 are physical absolute locators, validated against observed Git. Optional adapter
 names a supported wrapper contract. additionalCandidatePaths lists exact absolute
 external/local evidence files the caller has adopted, never directories to crawl.
+Absolute locators retain exact spelling, including filename whitespace. Path
+records from Git lose only their record terminator, never filename whitespace.
 
 ```text
 node <installed>/scripts/attribution.mjs policy scan --operation <operation.json> --context <context.json>
@@ -52,7 +54,10 @@ selection require a decision. No wrapper command is executed to discover intent.
 Capture binds physical worktree/per-worktree/shared Git identity, object format,
 HEAD/ref resolution, full index and split-index bytes, selected/intended raw path
 bytes/types and relevant known operation metadata. Target commit contents bind
-parents; replay/merge/squash coverage includes target paths. Directories expand
+parents; replay/merge/squash coverage includes target paths. Message-only amend
+includes the replaced commit's affected paths even with a clean index. Merge
+includes the source history not already in HEAD and actual staged resolution
+paths, rather than only the source tip's last change. Directories expand
 within limits, including unstaged/untracked/deleted/absent intended paths. A valid
 symbolic unborn branch with absent ref/index is supported for a commit with empty
 targets. Detached/corrupt/missing required objects require a decision without fetch.
@@ -65,6 +70,10 @@ local Markdown links, effective message hooks and explicit commit template, and
 exact additional candidates. Dependency/vendor/generated directories and unrelated
 sibling instruction files are excluded. Missing expected locations are recorded;
 missing adopted references and unsafe/unreadable known evidence are issues.
+A cached expected absence becomes a missing-reference issue when later adopted
+or explicitly supplied. Multiple applicable scope/reference uses remain bound.
+Adopted repository directory navigation is discovered within the same limits;
+external directory links require a decision and never authorize a descendant crawl.
 Network links are reported unfetched and never retrieved. The Agent must resolve
 known relevant external policy before selecting a branch; locator presence alone
 does not establish policy applicability or complete evidence.
@@ -75,11 +84,17 @@ precedence, conditional includes and unsupported path expansion require a decisi
 No home directory is enumerated. Symbolic links/reparse points and unsafe intermediate
 links are rejected; hard-linked input may be read with descriptor/path identity
 checks. Hook, template, workflow, configuration values and policy scripts are data.
+Ordinary absence requires an initially missing target with all existing ancestor
+components inspected by lstat without following links. A dangling component or
+disappearance after observed presence is an unsafe observation, not absence.
 
 Limits are versioned policy-scan-v1: 2 MiB JSON input, 10,000 operation paths,
 128 opened files, 256 KiB per evidence file, 4 MiB total evidence bytes,
 256 candidates, 64 ancestor steps, 16 directory levels, 8 reference hops and
-4,096 enumeration entries. Git calls have 10 seconds each and 30 seconds total,
+4,096 shared scope/evidence enumeration entries and visits, including empty
+directories and skipped entries. Traversal checks types without preliminary leaf
+hashing; selected raw leaf reads run once under a cumulative 4 MiB path-byte
+budget. Git calls have 10 seconds each and 30 seconds total,
 with bounded output. No scan is completed by truncating. File/type/read/encoding/
 control/race/budget issues require a decision. Document newlines are retained;
 single-line fields reject raw controls before normalization.
@@ -94,6 +109,8 @@ guard runs before repository observation. Every call uses absolute Git, structur
 argv, controlled stdin/environment, no shell, no optional locks, disabled fsmonitor,
 untracked cache/external diff and no lazy fetch/transport. It never executes hooks,
 filters, textconv, trailer commands, credentials or repository policy scripts.
+Exported runner calls accept only the exact reviewed read-only argv forms;
+symbolic-ref writing/deletion modes are rejected before launching Git.
 
 ## Artifacts, semantic decision and freshness
 

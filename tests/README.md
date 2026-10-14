@@ -19,6 +19,10 @@ live scope/freshness, semantic routing, bounded evidence/config redaction and
 real operation/worktree/promisor/executable sentinels. policy-distribution.test.ts
 executes installed scan and route paths outside dependencies, corrupts the
 registry to prove bypass and uses a real import sentinel for default summary.
+policy-review-fixes.test.ts covers amended/merged affected scope, adopted/cached
+references, bounded empty-directory and byte traversal, absence/races, exact
+Windows extended-path locators and rejected Git write modes, including installed
+business regressions and real read-boundary observation.
 Later message and real host acceptance are added with those features.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover

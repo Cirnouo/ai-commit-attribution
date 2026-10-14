@@ -14,6 +14,7 @@ export const LIMITS = Object.freeze({
     ancestors: 64,
     directoryLevels: 16,
     referenceHops: 8,
+    entries: 4096,
 });
 export type ScopeContext = {
     schemaVersion: 1;
@@ -110,7 +111,8 @@ export function strings(value: unknown): string[] {
     return unique(result);
 }
 function absolute(value: unknown): string {
-    const result = text(value);
+    text(value);
+    const result = value as string;
     if (!path.isAbsolute(result)) throw new InputError('Policy locator must be absolute.');
     return result;
 }

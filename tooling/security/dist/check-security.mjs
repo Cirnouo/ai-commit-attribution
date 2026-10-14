@@ -7887,6 +7887,9 @@ function sameFile(expected, actual) {
 function unchanged(expected, actual) {
   return sameFile(expected, actual) && expected.size === actual.size && expected.mtimeNs === actual.mtimeNs && expected.ctimeNs === actual.ctimeNs;
 }
+function samePhysicalPath(expected, actual) {
+  return path.relative(path.toNamespacedPath(path.resolve(expected)), path.toNamespacedPath(actual)) === "";
+}
 async function readRegularFile(file, io = {}) {
   const inspect = io.lstat ?? ((name) => lstat(name, { bigint: true }));
   const acquire = io.open ?? (async (name, flags) => {
@@ -7917,12 +7920,12 @@ async function readRegularFile(file, io = {}) {
       throw new Error("Evidence byte budget exceeded.");
     if (io.singleLink && before.nlink !== 1n) throw new Error("Output evidence must have a single link.");
     if (!unchanged(before, await inspect(file))) throw new Error("Evidence file identity or metadata changed.");
-    if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== "")
+    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
       throw new Error("Evidence path must be physical and contain no links.");
     const bytes = await handle.readFile(io.maximumBytes);
     if (!unchanged(before, await handle.stat()) || !unchanged(before, await inspect(file)) || BigInt(bytes.length) !== before.size)
       throw new Error("Evidence file identity or metadata changed.");
-    if (io.physicalPath && path.relative(path.resolve(file), await realpath(file)) !== "")
+    if (io.physicalPath && !samePhysicalPath(file, await realpath(file)))
       throw new Error("Evidence path changed during descriptor read.");
     return bytes;
   } finally {

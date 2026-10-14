@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { lstat, readdir, realpath } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
+import { lstat, opendir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { errorCode, isRecord } from '../tooling/errors.ts';
-import { readRegularFile } from '../tooling/file-evidence.ts';
+import { readRegularFile, samePhysicalPath } from '../tooling/file-evidence.ts';
 import type { ScopeContext } from './policy-contract.ts';
 import { LIMITS } from './policy-contract.ts';
 import type { Operation } from './records.ts';
@@ -25,40 +26,96 @@ export const digest = (value: unknown): string =>
         .update(JSON.stringify(canonical(value)))
         .digest('hex');
 export const byteDigest = (value: Buffer): string => createHash('sha256').update(value).digest('hex');
+function sameObserved(left: Stats, right: Stats): boolean {
+    return (
+        left.dev === right.dev &&
+        left.ino === right.ino &&
+        left.mode === right.mode &&
+        left.size === right.size &&
+        left.mtimeMs === right.mtimeMs &&
+        left.ctimeMs === right.ctimeMs
+    );
+}
+/** Initial absence is allowed only after every existing ancestor was lstat-checked without following links. */
+export async function inspectPath(file: string): Promise<Stats | undefined> {
+    const absolute = path.resolve(file);
+    let initial: Stats | undefined;
+    try {
+        initial = await lstat(absolute);
+    } catch (error) {
+        if (errorCode(error) !== 'ENOENT') throw error;
+    }
+    const root = path.parse(absolute).root;
+    const parts = path.relative(root, absolute).split(path.sep).filter(Boolean);
+    const observed: { locator: string; info: Stats }[] = [];
+    let missing: string | undefined;
+    let current = root;
+    for (let index = -1; index < parts.length; index++) {
+        if (index >= 0) current = path.join(current, parts[index] ?? '');
+        // Node on Windows reports EISDIR for lstat of an extended drive root; its ordinary root is identical.
+        const locator =
+            index === -1 && current.startsWith('\\\\?\\') && current.length === 7 && current[5] === ':'
+                ? current.slice(4)
+                : current;
+        let info: Stats;
+        try {
+            info = await lstat(locator);
+        } catch (error) {
+            if (errorCode(error) !== 'ENOENT') throw error;
+            if (initial) throw new ObservationError('Observed present path disappeared during component checks.');
+            missing = current;
+            break;
+        }
+        if (info.isSymbolicLink() || (index < parts.length - 1 && !info.isDirectory()))
+            throw new ObservationError('Observed path has a linked or non-directory ancestor/component.');
+        observed.push({ locator, info });
+    }
+    for (const item of observed) {
+        const after = await lstat(item.locator);
+        if (
+            after.isSymbolicLink() ||
+            item.info.dev !== after.dev ||
+            item.info.ino !== after.ino ||
+            item.info.mode !== after.mode
+        )
+            throw new ObservationError('Observed path component identity changed.');
+    }
+    if (!initial) {
+        if (!missing) throw new ObservationError('Initially absent path appeared during component checks.');
+        try {
+            await lstat(missing);
+        } catch (error) {
+            if (errorCode(error) === 'ENOENT') return undefined;
+            throw error;
+        }
+        throw new ObservationError('Initially absent path component appeared during checks.');
+    }
+    const final = observed.at(-1);
+    if (!final || final.locator !== absolute || !sameObserved(initial, final.info))
+        throw new ObservationError('Observed path identity changed during component checks.');
+    return initial;
+}
 export async function physical(file: string): Promise<string> {
+    if (!(await inspectPath(file))) throw new ObservationError('Observed physical path is missing.');
     const actual = await realpath(file);
-    if (path.relative(path.resolve(file), actual) !== '')
+    if (!samePhysicalPath(file, actual))
         throw new ObservationError('Observed path contains a link or is not physical.');
     return actual;
 }
-export async function fileState(file: string, maximumBytes = LIMITS.bytes): Promise<unknown> {
-    try {
-        const info = await lstat(file);
-        if (info.isSymbolicLink()) throw new ObservationError('Observed path is a symbolic link/reparse point.');
-        await physical(file);
-        if (info.isDirectory()) return { type: 'directory' };
-        if (!info.isFile()) throw new ObservationError('Observed path has an unsupported file type.');
-        const bytes = await readRegularFile(file, { physicalPath: true, maximumBytes });
-        return { type: 'file', size: bytes.length, sha256: byteDigest(bytes), executable: (info.mode & 0o111) !== 0 };
-    } catch (error) {
-        if (errorCode(error) === 'ENOENT') {
-            // Check all existing ancestors, including links hiding an absent leaf.
-            let ancestor = path.dirname(file);
-            for (;;) {
-                try {
-                    await physical(ancestor);
-                    break;
-                } catch (problem) {
-                    if (errorCode(problem) !== 'ENOENT') throw problem;
-                }
-                const parent = path.dirname(ancestor);
-                if (parent === ancestor) throw error;
-                ancestor = parent;
-            }
-            return { type: 'absent' };
-        }
-        throw error;
-    }
+export async function fileState(file: string, maximumBytes = LIMITS.bytes, expected?: Stats | null): Promise<unknown> {
+    const info = await inspectPath(file);
+    if (expected === null && info) throw new ObservationError('Observed absent path appeared after traversal.');
+    if (expected && (!info || !sameObserved(expected, info)))
+        throw new ObservationError('Observed path changed after traversal.');
+    if (!info) return { type: 'absent' };
+    await physical(file);
+    if (info.isDirectory()) return { type: 'directory' };
+    if (!info.isFile()) throw new ObservationError('Observed path has an unsupported file type.');
+    const bytes = await readRegularFile(file, { physicalPath: true, maximumBytes });
+    const after = await inspectPath(file);
+    if (!after || !sameObserved(info, after))
+        throw new ObservationError('Observed present file changed/disappeared during read.');
+    return { type: 'file', size: bytes.length, sha256: byteDigest(bytes), executable: (info.mode & 0o111) !== 0 };
 }
 function nulPaths(bytes: Buffer): string[] {
     const values = new TextDecoder('utf-8', { fatal: true }).decode(bytes).split('\0').filter(Boolean);
@@ -66,21 +123,44 @@ function nulPaths(bytes: Buffer): string[] {
     if (values.length > LIMITS.paths) throw new ObservationError('Operation path budget exceeded.');
     return unique(values);
 }
-async function expand(directory: string, relative: string, output: string[], depth = 0): Promise<void> {
-    if (output.length >= LIMITS.paths || depth > LIMITS.directoryLevels)
+async function expand(
+    directory: string,
+    relative: string,
+    traversal: { entries: number; observed: Map<string, Stats | undefined>; inventory: unknown[] },
+    depth = 0,
+): Promise<void> {
+    const count = () => {
+        if (++traversal.entries > LIMITS.entries)
+            throw new ObservationError('Scope traversal enumeration/visit budget exceeded.');
+    };
+    count();
+    if (traversal.observed.has(relative)) return;
+    if (traversal.observed.size >= LIMITS.paths || depth > LIMITS.directoryLevels)
         throw new ObservationError('Directory/path enumeration budget exceeded.');
     const target = path.join(directory, relative);
-    const state = await fileState(target);
-    if (isRecord(state) && state.type === 'directory') {
-        for (const child of (await readdir(target)).sort(ordinal)) {
-            checkRaw(child);
-            if (['.git', 'node_modules', '.pnpm', 'vendor'].includes(child)) continue;
-            await expand(directory, `${relative}/${child}`, output, depth + 1);
+    const info = await inspectPath(target);
+    traversal.observed.set(relative, info);
+    if (info?.isDirectory()) {
+        const children: string[] = [];
+        for await (const child of await opendir(target)) {
+            count();
+            checkRaw(child.name);
+            children.push(child.name);
         }
-    } else output.push(relative);
+        children.sort(ordinal);
+        traversal.inventory.push({ directory: relative, children });
+        for (const child of children) {
+            if (['.git', 'node_modules', '.pnpm', 'vendor'].includes(child)) continue;
+            await expand(directory, `${relative}/${child}`, traversal, depth + 1);
+        }
+        const after = await inspectPath(target);
+        if (!after || !sameObserved(info, after))
+            throw new ObservationError('Directory changed during scope traversal.');
+    } else if (info && !info.isFile()) throw new ObservationError('Unsupported scope path type.');
 }
 export type CapturedScope = {
     git: SafeGit;
+    enumerationEntries: number;
     worktree: string;
     gitDirectory: string;
     commonGitDir: string;
@@ -142,7 +222,13 @@ export async function captureScope(operation: Operation, context: ScopeContext):
         head = { state: 'unborn', symbolic, ref };
     }
     const targets = [];
-    const coverage: string[] = [];
+    const coverage = new Set<string>();
+    const cover = (...paths: string[]) => {
+        for (const file of paths) {
+            coverage.add(file);
+            if (coverage.size > LIMITS.paths) throw new ObservationError('Affected operation path budget exceeded.');
+        }
+    };
     for (const target of operation.targets) {
         if (!objectPattern.test(target.objectId))
             throw new InputError('Target object format differs from repository format.');
@@ -156,10 +242,11 @@ export async function captureScope(operation: Operation, context: ScopeContext):
         if (type !== 'commit') throw new ObservationError('Operation target must resolve to an available commit.');
         const commit = await git.text('cat-file', ['-p', target.objectId]);
         targets.push({ ...target, commit });
-        coverage.push(
+        cover(
             ...nulPaths(
                 await git.run('diff-tree', [
                     '--root',
+                    '-m',
                     '--no-commit-id',
                     '--name-only',
                     '-r',
@@ -167,6 +254,24 @@ export async function captureScope(operation: Operation, context: ScopeContext):
                     '--no-ext-diff',
                     '--no-textconv',
                     target.objectId,
+                    '--',
+                ]),
+            ),
+        );
+    }
+    if (operation.kind === 'amend' && resolved && !operation.targets.some((target) => target.objectId === resolved)) {
+        cover(
+            ...nulPaths(
+                await git.run('diff-tree', [
+                    '--root',
+                    '-m',
+                    '--no-commit-id',
+                    '--name-only',
+                    '-r',
+                    '-z',
+                    '--no-ext-diff',
+                    '--no-textconv',
+                    resolved,
                     '--',
                 ]),
             ),
@@ -246,7 +351,7 @@ export async function captureScope(operation: Operation, context: ScopeContext):
                 throw new ObservationError('Supplied targets omit the actual merge/cherry-pick source.');
             await git.run('cat-file', ['-e', `${id}^{commit}`]);
             activeObjects.push({ locator: name, objectId: id });
-            coverage.push(
+            cover(
                 ...nulPaths(
                     await git.run('diff-tree', [
                         '--root',
@@ -286,7 +391,7 @@ export async function captureScope(operation: Operation, context: ScopeContext):
             if (!objectPattern.test(id))
                 throw new ObservationError('Sequencer source cannot resolve to a supported commit.');
             activeObjects.push({ locator: name, objectId: id });
-            coverage.push(
+            cover(
                 ...nulPaths(
                     await git.run('diff-tree', [
                         '--root',
@@ -307,7 +412,7 @@ export async function captureScope(operation: Operation, context: ScopeContext):
         const base = operation.targets.find((target) => target.role === 'base');
         const last = operation.targets.find((target) => target.role === 'head' || target.role === 'source');
         if (!base || !last) throw new ObservationError('Squash requires resolved base and head/source target roles.');
-        coverage.push(
+        cover(
             ...nulPaths(
                 await git.run('diff', [
                     '--name-only',
@@ -321,12 +426,45 @@ export async function captureScope(operation: Operation, context: ScopeContext):
             ),
         );
     }
+    if (operation.kind === 'merge') {
+        if (!resolved) throw new ObservationError('Merge coverage requires an available current HEAD.');
+        const sources = unique([
+            ...activeObjects.filter((item) => item.locator === 'MERGE_HEAD').map((item) => item.objectId),
+            ...operation.targets.filter((target) => target.role.startsWith('source')).map((target) => target.objectId),
+        ]);
+        if (!sources.length) throw new ObservationError('Merge coverage requires actual source targets.');
+        for (const source of sources) {
+            const commits = (await git.text('rev-list', ['--max-count=10001', `${resolved}..${source}`]))
+                .split('\n')
+                .filter(Boolean);
+            if (commits.length > LIMITS.paths) throw new ObservationError('Merge range object budget exceeded.');
+            for (const id of commits) {
+                if (!objectPattern.test(id)) throw new ObservationError('Merge range has an invalid commit identity.');
+                cover(
+                    ...nulPaths(
+                        await git.run('diff-tree', [
+                            '--root',
+                            '-m',
+                            '--no-commit-id',
+                            '--name-only',
+                            '-r',
+                            '-z',
+                            '--no-ext-diff',
+                            '--no-textconv',
+                            id,
+                            '--',
+                        ]),
+                    ),
+                );
+            }
+        }
+    }
     const index = await fileState(path.join(gitDirectory, 'index'));
     const shared = await git.text('rev-parse', ['--shared-index-path']);
     const splitIndex = shared ? await fileState(path.resolve(effective, shared)) : { type: 'absent' };
     const entries = await git.run('ls-files', ['--stage', '-z']);
     const applicable = [...operation.paths];
-    if (context.selection === 'index')
+    if (context.selection === 'index' || operation.kind === 'merge')
         applicable.push(
             ...nulPaths(
                 await git.run('diff', ['--cached', '--name-only', '-z', '--no-ext-diff', '--no-textconv', '--']),
@@ -334,33 +472,29 @@ export async function captureScope(operation: Operation, context: ScopeContext):
         );
     if (context.selection === 'all-tracked')
         applicable.push(...nulPaths(await git.run('ls-files', ['--cached', '-z'])));
-    if (context.selection === 'operation-targets' || !['commit', 'amend'].includes(operation.kind))
-        applicable.push(...coverage);
+    if (context.selection === 'operation-targets' || operation.kind !== 'commit') applicable.push(...coverage);
     if (['planned-paths', 'specified-paths'].includes(context.selection) && !operation.paths.length)
         throw new ObservationError('Planned/specified selection needs explicit intended paths.');
-    const expanded: string[] = [];
+    const traversal = { entries: 0, observed: new Map<string, Stats | undefined>(), inventory: [] as unknown[] };
     for (const relative of unique(applicable)) {
         const target = path.resolve(top, relative);
         if (!inside(top, target) || relative.split('/').some((part) => part === '.git'))
             throw new InputError('Selected path escapes operation worktree or selects Git metadata.');
-        await expand(top, relative, expanded);
+        await expand(top, relative, traversal);
     }
-    const paths = unique([...applicable, ...expanded]);
+    const paths = unique([...applicable, ...traversal.observed.keys()]);
     if (paths.length > LIMITS.paths) throw new ObservationError('Operation path budget exceeded.');
     const states = [];
     let bytes = 0;
     for (const relative of paths) {
         const absolute = path.join(top, relative);
-        const state = await fileState(absolute, LIMITS.bytes - bytes);
+        const state = await fileState(absolute, LIMITS.bytes - bytes, traversal.observed.get(relative) ?? null);
         if (isRecord(state) && typeof state.size === 'number') bytes += state.size;
         states.push({ path: relative, state });
         // An existing nested repository changes instruction applicability; never borrow the outer scope.
         let parent = isRecord(state) && state.type === 'directory' ? absolute : path.dirname(absolute);
         while (parent !== top && inside(top, parent)) {
-            if (
-                isRecord(await fileState(path.join(parent, '.git'))) &&
-                ((await fileState(path.join(parent, '.git'))) as { type: string }).type !== 'absent'
-            )
+            if (await inspectPath(path.join(parent, '.git')))
                 throw new InputError('Selected path belongs to a nested repository.');
             parent = path.dirname(parent);
         }
@@ -375,7 +509,7 @@ export async function captureScope(operation: Operation, context: ScopeContext):
         entries: byteDigest(entries),
         metadata,
     });
-    const pathStateDigest = digest({ paths: states });
+    const pathStateDigest = digest({ paths: states, traversal: traversal.inventory, enumerationLimit: LIMITS.entries });
     const invocationDigest = digest(context.invocation);
     const scopeDigest = digest({
         version: 1,
@@ -390,6 +524,7 @@ export async function captureScope(operation: Operation, context: ScopeContext):
     });
     return {
         git,
+        enumerationEntries: traversal.entries,
         worktree: top,
         gitDirectory,
         commonGitDir,

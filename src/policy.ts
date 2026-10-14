@@ -16,6 +16,7 @@ export async function scanPolicy(input: { operation: unknown; context: unknown }
         invocationDigest = digest(context.invocation);
     try {
         const scope = await captureScope(operation, context);
+        search.entries = scope.enumerationEntries;
         ({ gitDirectory, scopeDigest, gitStateDigest, pathStateDigest, invocationDigest } = scope);
         await search.discover(operation, context, scope);
     } catch (error) {

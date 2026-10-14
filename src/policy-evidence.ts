@@ -1,12 +1,11 @@
-import type { Stats } from 'node:fs';
-import { lstat, readdir } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import { lstat, opendir } from 'node:fs/promises';
 import path from 'node:path';
-import { errorCode } from '../tooling/errors.ts';
 import { readRegularFile } from '../tooling/file-evidence.ts';
 import type { Candidate, Issue, ScopeContext } from './policy-contract.ts';
 import { LIMITS } from './policy-contract.ts';
 import type { CapturedScope } from './policy-scope.ts';
-import { byteDigest, digest, physical } from './policy-scope.ts';
+import { byteDigest, digest, inspectPath } from './policy-scope.ts';
 import type { Operation } from './records.ts';
 import { checkRaw, ordinal, unique } from './records.ts';
 import { inside, ObservationError } from './safe-git.ts';
@@ -17,6 +16,9 @@ export class EvidenceSearch {
     readonly issues: Issue[] = [];
     readonly fingerprints: unknown[] = [];
     readonly seen = new Set<string>();
+    readonly scopeUses = new Map<string, Set<string>>();
+    readonly directories = new Set<string>();
+    repository?: string;
     readonly limitations: string[] = [];
     files = 0;
     bytes = 0;
@@ -27,7 +29,16 @@ export class EvidenceSearch {
         if (!this.issues.some((item) => item.id === id)) this.issues.push({ id, code, locator, detail });
     }
     count(): void {
-        if (++this.entries > 4096) throw new ObservationError('Evidence enumeration budget exceeded.');
+        if (++this.entries > LIMITS.entries) throw new ObservationError('Evidence enumeration budget exceeded.');
+    }
+    async directoryEntries(directory: string): Promise<Dirent[]> {
+        const entries: Dirent[] = [];
+        for await (const entry of await opendir(directory)) {
+            this.count();
+            checkRaw(entry.name);
+            entries.push(entry);
+        }
+        return entries.sort((a, b) => ordinal(a.name, b.name));
     }
     async read(
         locator: string,
@@ -42,34 +53,34 @@ export class EvidenceSearch {
             this.issue('reference-cycle', locator, 'Adopted evidence reference cycle.');
             return;
         }
-        if (this.seen.has(locator)) return this.candidates.find((item) => item.locator === locator);
-        this.seen.add(locator);
+        const uses = this.scopeUses.get(locator) ?? new Set<string>();
+        uses.add(scopeBasis);
+        this.scopeUses.set(locator, uses);
         try {
             this.count();
-            let info: Stats;
-            try {
-                info = await lstat(locator);
-            } catch (error) {
-                if (errorCode(error) !== 'ENOENT') throw error;
-                this.checkedLocations.push({ locator, status: 'absent' });
-                // Verify existing path ancestors even for absent candidates.
-                let parent = path.dirname(locator);
-                for (;;) {
-                    try {
-                        await physical(parent);
-                        break;
-                    } catch (problem) {
-                        if (errorCode(problem) !== 'ENOENT') throw problem;
-                    }
-                    const next = path.dirname(parent);
-                    if (next === parent) throw error;
-                    parent = next;
+            if (this.seen.has(locator)) {
+                const cached = this.candidates.find((item) => item.locator === locator);
+                if (cached) cached.scopeBasis = unique([...uses]).join('; ');
+                if (
+                    required &&
+                    this.checkedLocations.some((item) => item.locator === locator && item.status === 'absent')
+                ) {
+                    const detail = `An explicitly referenced policy/configuration target is missing. Scope: ${unique([...uses]).join('; ')}`;
+                    this.issue('missing-reference', locator, detail);
+                    const issue = this.issues.find((item) => item.id === digest(['missing-reference', locator]));
+                    if (issue) issue.detail = detail;
                 }
+                return cached;
+            }
+            this.seen.add(locator);
+            const info = await inspectPath(locator);
+            if (!info) {
+                this.checkedLocations.push({ locator, status: 'absent' });
                 if (required)
                     this.issue(
                         'missing-reference',
                         locator,
-                        'An explicitly referenced policy/configuration target is missing.',
+                        `An explicitly referenced policy/configuration target is missing. Scope: ${unique([...uses]).join('; ')}`,
                     );
                 return;
             }
@@ -142,14 +153,22 @@ export class EvidenceSearch {
                     continue;
                 }
                 const target = path.resolve(path.dirname(locator), decodedLink);
-                // Navigation to directories is followed by bounded directory discovery, never read as a document.
-                let targetInfo: Stats | undefined;
-                try {
-                    targetInfo = await lstat(target);
-                } catch {
-                    /* Exact missing reference is recorded by read. */
+                const targetInfo = await inspectPath(target);
+                if (targetInfo?.isDirectory()) {
+                    if (!this.repository || !inside(this.repository, target))
+                        this.issue(
+                            'external-directory-reference',
+                            target,
+                            'External directory navigation is unresolved; only exact external file targets may be read.',
+                        );
+                    else {
+                        await this.docs(target, 0, depth + 1, [...stack, locator], true);
+                        candidate.referenceIds.push(
+                            ...this.candidates.filter((item) => inside(target, item.locator)).map((item) => item.id),
+                        );
+                    }
+                    continue;
                 }
-                if (targetInfo?.isDirectory() && !targetInfo.isSymbolicLink()) continue;
                 const child = await this.read(
                     target,
                     'adopted-reference',
@@ -174,15 +193,35 @@ export class EvidenceSearch {
             return;
         }
     }
-    async docs(directory: string, depth = 0): Promise<void> {
+    async docs(
+        directory: string,
+        depth = 0,
+        referenceDepth = 0,
+        stack: string[] = [],
+        required = false,
+    ): Promise<void> {
         try {
+            this.count();
             if (depth > LIMITS.directoryLevels) throw new ObservationError('Policy directory level budget exceeded.');
-            await physical(directory);
-            for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) =>
-                ordinal(a.name, b.name),
-            )) {
-                this.count();
-                checkRaw(entry.name);
+            if (stack.includes(directory)) throw new ObservationError('Adopted directory reference cycle.');
+            const info = await inspectPath(directory);
+            if (!info) {
+                if (required) throw new ObservationError('Observed/adopted directory disappeared before discovery.');
+                this.checkedLocations.push({ locator: directory, status: 'absent' });
+                return;
+            }
+            if (!info.isDirectory()) throw new ObservationError('Policy discovery root must be a physical directory.');
+            if (this.directories.has(directory)) return;
+            this.directories.add(directory);
+            const entries = await this.directoryEntries(directory);
+            this.checkedLocations.push({ locator: directory, status: 'present' });
+            this.fingerprints.push({
+                directory,
+                dev: info.dev,
+                ino: info.ino,
+                entries: entries.map((entry) => entry.name),
+            });
+            for (const entry of entries) {
                 if (
                     [
                         '.git',
@@ -201,22 +240,39 @@ export class EvidenceSearch {
                     this.issue('unsafe-directory-entry', target, 'Policy discovery encountered a linked path.');
                     continue;
                 }
-                if (entry.isDirectory()) await this.docs(target, depth + 1);
+                if (entry.isDirectory())
+                    await this.docs(target, depth + 1, referenceDepth, [...stack, directory], true);
                 else if (
                     /\.(?:md|txt|ya?ml|json)$/i.test(entry.name) &&
-                    (/readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) ||
+                    (referenceDepth > 0 ||
+                        /readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) ||
                         directory.endsWith(`${path.sep}.github${path.sep}workflows`))
                 )
-                    await this.read(target, 'repository-document', 'Bounded contribution/policy document discovery');
+                    await this.read(
+                        target,
+                        'repository-document',
+                        `Bounded contribution/policy document discovery under ${directory}`,
+                        false,
+                        referenceDepth,
+                        [...stack, directory],
+                    );
             }
-        } catch (error) {
-            if (errorCode(error) === 'ENOENT') this.checkedLocations.push({ locator: directory, status: 'absent' });
-            else
-                this.issue(
-                    'directory-observation',
-                    directory,
-                    'Directory discovery failed or exceeded its enumeration/level budget.',
-                );
+            const after = await inspectPath(directory);
+            if (
+                !after ||
+                info.dev !== after.dev ||
+                info.ino !== after.ino ||
+                info.mtimeMs !== after.mtimeMs ||
+                info.ctimeMs !== after.ctimeMs
+            )
+                throw new ObservationError('Policy directory changed/disappeared during discovery.');
+        } catch {
+            this.checkedLocations.push({ locator: directory, status: 'failed' });
+            this.issue(
+                'directory-observation',
+                directory,
+                'Directory discovery failed or exceeded its enumeration/level budget.',
+            );
         }
     }
     async configuration(scope: CapturedScope): Promise<void> {
@@ -344,6 +400,7 @@ export class EvidenceSearch {
             );
     }
     async discover(operation: Operation, context: ScopeContext, scope: CapturedScope): Promise<void> {
+        this.repository = operation.worktree;
         const dirs = new Set<string>();
         let current = operation.worktree;
         let steps = 0;
@@ -359,7 +416,7 @@ export class EvidenceSearch {
         }
         for (const relative of scope.paths) {
             let parent = path.dirname(path.join(operation.worktree, relative));
-            const state = await lstat(path.join(operation.worktree, relative)).catch(() => undefined);
+            const state = await inspectPath(path.join(operation.worktree, relative));
             if (state?.isDirectory()) parent = path.join(operation.worktree, relative);
             let depth = 0;
             while (inside(operation.worktree, parent)) {
@@ -380,11 +437,10 @@ export class EvidenceSearch {
                     'Exact ancestor/local instruction of worktree or selected/intended path',
                 );
         try {
-            for (const entry of (await readdir(operation.worktree)).sort(ordinal)) {
-                this.count();
-                if (/^(?:README|CONTRIBUTING)(?:[._-].*)?$/i.test(entry))
+            for (const entry of await this.directoryEntries(operation.worktree)) {
+                if (/^(?:README|CONTRIBUTING)(?:[._-].*)?$/i.test(entry.name))
                     await this.read(
-                        path.join(operation.worktree, entry),
+                        path.join(operation.worktree, entry.name),
                         'contribution-entry',
                         'Root contribution/navigation entry',
                     );
@@ -410,7 +466,10 @@ export class EvidenceSearch {
         this.issues.sort((a, b) => ordinal(a.id, b.id));
         return digest({
             profile: LIMITS,
-            enumerationLimit: 4096,
+            enumerationLimit: LIMITS.entries,
+            scopeUses: [...this.scopeUses]
+                .sort(([a], [b]) => ordinal(a, b))
+                .map(([locator, uses]) => ({ locator, uses: unique([...uses]) })),
             candidates: this.candidates,
             checkedLocations: this.checkedLocations,
             issues: this.issues,
