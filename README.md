@@ -3,10 +3,10 @@
 <p align="center">Record AI assistance in Git commits, following your repository's policy.</p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img alt="Status: 0.1.0 unreleased" src="https://img.shields.io/badge/status-0.1.0%20unreleased-gray?style=flat"></a>
-  <a href="#requirements"><img alt="Node: 24.x, at least 24.21.0" src="https://img.shields.io/badge/Node-24.x%20%E2%89%A5%2024.21.0-gray?style=flat"></a>
+  <a href="CHANGELOG.md"><img alt="Status: 0.1.0 unreleased" src="https://img.shields.io/badge/status-0.1.0%20unreleased-fe7d37?style=flat"></a>
+  <a href="#requirements"><img alt="Node: 24.x, at least 24.21.0" src="https://img.shields.io/badge/Node-24.x%20%E2%89%A5%2024.21.0-brightgreen?style=flat"></a>
   <a href="https://github.com/Cirnouo/ai-commit-attribution/actions/workflows/ci.yaml"><img alt="CI status on main" src="https://img.shields.io/github/actions/workflow/status/Cirnouo/ai-commit-attribution/ci.yaml?branch=main&amp;style=flat&amp;label=CI"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-gray?style=flat"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=flat"></a>
   <a href="https://skills.sh/Cirnouo/ai-commit-attribution"><img alt="skills.sh installs" src="https://skills.sh/b/Cirnouo/ai-commit-attribution"></a>
 </p>
 
