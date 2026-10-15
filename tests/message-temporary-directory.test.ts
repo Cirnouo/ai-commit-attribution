@@ -59,11 +59,11 @@ export async function lstat(file,...args){
             `import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 registerHooks({resolve(s,c,n){
- if(s==='node:fs/promises'&&c.parentURL?.endsWith('/src/policy-scope.ts'))return {url:${JSON.stringify(pathToFileURL(wrapper).href)},shortCircuit:true};
+ if(s==='node:fs/promises'&&c.parentURL?.endsWith('/src/runtime-support.ts'))return {url:${JSON.stringify(pathToFileURL(wrapper).href)},shortCircuit:true};
  if(s==='node:os'&&c.parentURL?.endsWith('/src/message-trailers.ts'))return {url:${JSON.stringify(pathToFileURL(osWrapper).href)},shortCircuit:true};
  return n(s,c);
 }});
-const scope=await import(${JSON.stringify(new URL('../src/policy-scope.ts', import.meta.url).href)});
+const scope=await import(${JSON.stringify(new URL('../src/runtime-support.ts', import.meta.url).href)});
 const {runTrailers}=await import(${JSON.stringify(new URL('../src/message-trailers.ts', import.meta.url).href)});
 const target=process.env.OBSERVED_DIRECTORY;
 const input=Buffer.from('Subject\\n\\nBody stays.\\n\\nCo-authored-by: Human <human@example.invalid>\\nReviewed-by: Reviewer\\n');

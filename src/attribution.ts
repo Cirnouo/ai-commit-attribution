@@ -1,8 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { isMainModule } from '../tooling/cli-entry.ts';
 import { readRegularFile } from '../tooling/file-evidence.ts';
+import { INPUT_BYTES } from './input-contract.ts';
 import { checkFreshRouting, scanPolicy } from './policy.ts';
-import { LIMITS } from './policy-contract.ts';
 import { checkRaw, InputError } from './records.ts';
 
 export function parseArguments(args: readonly string[]): { input: string; operation: string } {
@@ -34,7 +34,7 @@ async function jsonFile(file: string | URL): Promise<unknown> {
     try {
         bytes = await readRegularFile(typeof file === 'string' ? file : fileURLToPath(file), {
             physicalPath: true,
-            maximumBytes: LIMITS.inputBytes,
+            maximumBytes: INPUT_BYTES,
         });
     } catch {
         throw new InputError('Invalid input: cannot safely read the explicit JSON resource.');
@@ -110,7 +110,7 @@ export async function run(args: readonly string[]) {
         const operation = await jsonFile(operationFile),
             context = await jsonFile(contextFile),
             decision = await jsonFile(decisionFile);
-        const message = await readRegularFile(messageFile, { physicalPath: true, maximumBytes: LIMITS.inputBytes });
+        const message = await readRegularFile(messageFile, { physicalPath: true, maximumBytes: INPUT_BYTES });
         // Unused default paths remain opaque. No stat, decode, registry lookup or summary occurs before actual routing.
         const consumedPaths = [...options].filter(([flag]) => flag !== '--output').map(([, value]) => value);
         const { processMessage } = await import('./message.ts');

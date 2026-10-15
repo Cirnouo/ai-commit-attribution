@@ -3,8 +3,8 @@ import { lstat, open, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { readRegularFile, samePhysicalPath } from '../tooling/file-evidence.ts';
 import type { Binding } from './policy-contract.ts';
-import { inspectPath, physical } from './policy-scope.ts';
 import { checkRaw, InputError } from './records.ts';
+import { inspectPath, physical } from './runtime-support.ts';
 import { inside } from './safe-git.ts';
 
 /** Create only an absent new leaf; peer paths and any uncertain partial artifact remain untouched. */

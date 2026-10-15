@@ -1,12 +1,12 @@
+import { INPUT_BYTES } from './input-contract.ts';
 import { parseAssessment } from './message-assessment.ts';
 import type { MessageRecord, MessageResult } from './message-contract.ts';
 import { writeNewMessage } from './message-output.ts';
 import { decodeMessage, messageLayout, preflightAssisted, reconcileSpans, runTrailers } from './message-trailers.ts';
 import { checkFreshRouting } from './policy.ts';
 import type { Issue } from './policy-contract.ts';
-import { LIMITS } from './policy-contract.ts';
-import { byteDigest, digest } from './policy-scope.ts';
 import { checkRaw, InputError, identity, parseRegistry, unique } from './records.ts';
+import { byteDigest, digest } from './runtime-support.ts';
 
 type MessageInput = {
     mode: 'render' | 'validate';
@@ -47,7 +47,7 @@ export async function processMessage(
     if (!['render', 'validate'].includes(input.mode) || (input.mode === 'validate' && input.output !== undefined))
         throw new InputError('Invalid message command or validate output option.');
     checkRaw(input.output);
-    if (input.message.length > LIMITS.inputBytes) throw new InputError('Message byte budget exceeded.');
+    if (input.message.length > INPUT_BYTES) throw new InputError('Message byte budget exceeded.');
     const message = decodeMessage(input.message);
     const route = await checkFreshRouting(input);
     const result: MessageResult = {

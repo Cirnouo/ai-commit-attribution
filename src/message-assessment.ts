@@ -1,8 +1,9 @@
+import { object, strings } from './input-contract.ts';
 import type { MessageAssessment, MessageRecord, Summary } from './message-contract.ts';
 import type { FreshRoutingResult } from './policy-contract.ts';
-import { object, parseBinding, strings } from './policy-contract.ts';
-import { digest } from './policy-scope.ts';
+import { parseBinding } from './policy-contract.ts';
 import { checkRaw, InputError, parseOperation, text, unique } from './records.ts';
+import { digest } from './runtime-support.ts';
 
 const exact = (value: unknown): string => {
     text(value);

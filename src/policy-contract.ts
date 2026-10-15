@@ -1,11 +1,13 @@
 import path from 'node:path';
-import { isRecord } from '../tooling/errors.ts';
+import { INPUT_BYTES, object, strings } from './input-contract.ts';
 import type { Operation } from './records.ts';
-import { checkRaw, InputError, text, unique } from './records.ts';
+import { checkRaw, InputError, text } from './records.ts';
+
+export { object, strings } from './input-contract.ts';
 
 export const LIMITS = Object.freeze({
     profile: 'policy-scan-v1' as const,
-    inputBytes: 2 * 1024 * 1024,
+    inputBytes: INPUT_BYTES,
     paths: 10_000,
     files: 128,
     fileBytes: 256 * 1024,
@@ -94,22 +96,6 @@ export type PolicyRouteCheck = {
     exitCode: number;
 };
 export type FreshRoutingResult = PolicyRouteCheck & { freshScan: PolicyScan };
-export function object(value: unknown, keys: readonly string[]): Record<string, unknown> {
-    if (!isRecord(value) || Object.keys(value).some((key) => !keys.includes(key)))
-        throw new InputError('Invalid policy input shape or unknown member.');
-    return value;
-}
-export function strings(value: unknown): string[] {
-    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string'))
-        throw new InputError('Invalid policy string list.');
-    value.forEach(checkRaw);
-    const result = value.map((item) => {
-        text(item);
-        return item as string;
-    });
-    if (new Set(result).size !== result.length) throw new InputError('Duplicate policy identifier.');
-    return unique(result);
-}
 function absolute(value: unknown): string {
     text(value);
     const result = value as string;

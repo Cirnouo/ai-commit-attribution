@@ -2,10 +2,10 @@ import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { INPUT_BYTES } from './input-contract.ts';
 import type { MessageRecord } from './message-contract.ts';
-import { LIMITS } from './policy-contract.ts';
-import { byteDigest, digest, physical, physicalDirectory } from './policy-scope.ts';
 import { checkRaw, InputError } from './records.ts';
+import { byteDigest, digest, physical, physicalDirectory } from './runtime-support.ts';
 import { gitEnvironment, inside, resolveTrustedGit } from './safe-git.ts';
 
 /** Non-repository trailer processing. SafeGit's observation-only allowlist stays separate. */
@@ -18,7 +18,7 @@ export async function runTrailers(
         signal?: AbortSignal;
     },
 ): Promise<Buffer> {
-    if (message.length > LIMITS.inputBytes) throw new InputError('Message byte budget exceeded.');
+    if (message.length > INPUT_BYTES) throw new InputError('Message byte budget exceeded.');
     options.additions?.forEach(checkRaw);
     const executable = await resolveTrustedGit(options.excluded, options.environment);
     const parent = await physicalDirectory(await realpath(os.tmpdir()));
@@ -57,7 +57,7 @@ export async function runTrailers(
                     windowsHide: true,
                     encoding: 'buffer',
                     timeout: 10_000,
-                    maxBuffer: LIMITS.inputBytes * 2,
+                    maxBuffer: INPUT_BYTES * 2,
                     ...(options.signal ? { signal: options.signal } : {}),
                 },
                 (error, stdout) => {

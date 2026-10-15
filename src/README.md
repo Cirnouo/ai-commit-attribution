@@ -6,10 +6,13 @@ stable identity tuples. attribution.ts exposes summarize and policy scan, and
 locates its installed registry from import.meta.url. Source requires no runtime packages.
 
 The maintained installed contracts are packaging/records.md and packaging/policy.md.
-policy-contract.ts owns strict scan/context/decision/route shapes and limits.
-policy-scope.ts owns deterministic binding serialization and live Git/path
-observation through safe-git.ts. policy-evidence.ts owns bounded discovery and
-safe evidence; policy.ts joins Agent semantic decisions to a fresh capture.
+input-contract.ts owns the shared 2 MiB input bound and strict object/string-list
+validation. runtime-support.ts owns deterministic evidence serialization and safe
+physical path observation. policy-contract.ts owns strict scan/context/decision/route
+shapes and scan limits. policy-scope.ts owns live Git/scope observation through
+safe-git.ts and re-exports the shared observation helpers for existing consumers.
+policy-evidence.ts owns bounded discovery and safe evidence; policy.ts joins Agent
+semantic decisions to a fresh capture.
 policy-markdown.ts owns the finite prose format profile and bounded lexical
 inline-link extraction without reading files or interpreting policy meaning.
 checkFreshRouting retains its exact freshScan for internal downstream evidence

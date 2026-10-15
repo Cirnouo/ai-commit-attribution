@@ -313,8 +313,7 @@ var init_records = __esm({
   }
 });
 
-// src/policy-contract.ts
-import path3 from "node:path";
+// src/input-contract.ts
 function object(value, keys) {
   if (!isRecord(value) || Object.keys(value).some((key) => !keys.includes(key)))
     throw new InputError("Invalid policy input shape or unknown member.");
@@ -331,6 +330,18 @@ function strings(value) {
   if (new Set(result).size !== result.length) throw new InputError("Duplicate policy identifier.");
   return unique(result);
 }
+var INPUT_BYTES;
+var init_input_contract = __esm({
+  "src/input-contract.ts"() {
+    "use strict";
+    init_errors();
+    init_records();
+    INPUT_BYTES = 2 * 1024 * 1024;
+  }
+});
+
+// src/policy-contract.ts
+import path3 from "node:path";
 function absolute(value) {
   text(value);
   const result = value;
@@ -416,11 +427,12 @@ var LIMITS, LIMITATIONS;
 var init_policy_contract = __esm({
   "src/policy-contract.ts"() {
     "use strict";
-    init_errors();
+    init_input_contract();
     init_records();
+    init_input_contract();
     LIMITS = Object.freeze({
       profile: "policy-scan-v1",
-      inputBytes: 2 * 1024 * 1024,
+      inputBytes: INPUT_BYTES,
       paths: 1e4,
       files: 128,
       fileBytes: 256 * 1024,
@@ -752,9 +764,9 @@ var init_safe_git = __esm({
   }
 });
 
-// src/policy-scope.ts
+// src/runtime-support.ts
 import { createHash } from "node:crypto";
-import { lstat as lstat3, opendir, realpath as realpath4 } from "node:fs/promises";
+import { lstat as lstat3, realpath as realpath4 } from "node:fs/promises";
 import path6 from "node:path";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -839,6 +851,22 @@ async function physicalDirectory(file) {
     throw new ObservationError("Observed directory contains a link or is not physical.");
   return actual;
 }
+var digest, byteDigest;
+var init_runtime_support = __esm({
+  "src/runtime-support.ts"() {
+    "use strict";
+    init_errors();
+    init_file_evidence();
+    init_records();
+    init_safe_git();
+    digest = (value) => createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
+    byteDigest = (value) => createHash("sha256").update(value).digest("hex");
+  }
+});
+
+// src/policy-scope.ts
+import { lstat as lstat4, opendir } from "node:fs/promises";
+import path7 from "node:path";
 async function fileState(file, maximumBytes = LIMITS.bytes, expected) {
   const info = await inspectPath(file);
   if (expected === null && info) throw new ObservationError("Observed absent path appeared after traversal.");
@@ -869,7 +897,7 @@ async function expand(directory, relative, traversal, depth = 0) {
   if (traversal.observed.has(relative)) return;
   if (traversal.observed.size >= LIMITS.paths || depth > LIMITS.directoryLevels)
     throw new ObservationError("Directory/path enumeration budget exceeded.");
-  const target = path6.join(directory, relative);
+  const target = path7.join(directory, relative);
   const info = await inspectPath(target);
   traversal.observed.set(relative, info);
   if (info?.isDirectory()) {
@@ -896,7 +924,7 @@ async function captureScope(operation, context) {
   if (invocation.kind === "wrapper-adapter" && !["explicit-scope-v1"].includes(invocation.adapter ?? ""))
     throw new ObservationError("Unsupported wrapper adapter; actual input semantics require a decision.");
   const effective2 = await physical(invocation.effectiveDirectory);
-  if (!(await lstat3(effective2)).isDirectory())
+  if (!(await lstat4(effective2)).isDirectory())
     throw new InputError("Invocation effectiveDirectory must be a physical directory.");
   const executable = await resolveTrustedGit([operation.repository, operation.worktree, operation.commonGitDir]);
   const git = new SafeGit(executable, effective2);
@@ -905,7 +933,7 @@ async function captureScope(operation, context) {
   if (invocation.worktreePath) git.environment.GIT_WORK_TREE = await physical(invocation.worktreePath);
   const top = await physical(await git.text("rev-parse", ["--show-toplevel"]));
   const gitDirectory = await physical(await git.text("rev-parse", ["--absolute-git-dir"]));
-  const commonGitDir = await physical(path6.resolve(effective2, await git.text("rev-parse", ["--git-common-dir"])));
+  const commonGitDir = await physical(path7.resolve(effective2, await git.text("rev-parse", ["--git-common-dir"])));
   if (top !== operation.repository || top !== operation.worktree || commonGitDir !== operation.commonGitDir || invocation.repositoryPath && await physical(invocation.repositoryPath) !== top || invocation.worktreePath && await physical(invocation.worktreePath) !== top || invocation.gitDirectory && await physical(invocation.gitDirectory) !== gitDirectory)
     throw new InputError("Explicit operation/invocation scope differs from physical Git identity.");
   const format = await git.text("rev-parse", ["--show-object-format"]);
@@ -927,7 +955,7 @@ async function captureScope(operation, context) {
   } else {
     if (!symbolic.startsWith("refs/heads/") || operation.kind !== "commit" || operation.targets.length)
       throw new ObservationError("Missing HEAD is not a supported unborn commit operation.");
-    const refPath = path6.join(commonGitDir, symbolic);
+    const refPath = path7.join(commonGitDir, symbolic);
     const ref = await fileState(refPath);
     if (!isRecord(ref) || ref.type !== "absent")
       throw new ObservationError("HEAD branch reference exists but cannot resolve.");
@@ -1014,7 +1042,7 @@ async function captureScope(operation, context) {
       ].map((name) => `${dir}/${name}`)
     )
   ];
-  for (const name of names) metadata[name] = await fileState(path6.join(gitDirectory, name), LIMITS.fileBytes);
+  for (const name of names) metadata[name] = await fileState(path7.join(gitDirectory, name), LIMITS.fileBytes);
   const present = (name) => isRecord(metadata[name]) && metadata[name].type !== "absent";
   if (present("MERGE_HEAD") && operation.kind !== "merge" || present("CHERRY_PICK_HEAD") && operation.kind !== "cherry-pick" || context.phase === "edit-message" && (operation.kind === "merge" && !present("MERGE_HEAD") || operation.kind === "cherry-pick" && !present("CHERRY_PICK_HEAD") || operation.kind === "rebase" && !present("REBASE_HEAD") && !present("rebase-merge/onto") && !present("rebase-apply/onto")))
     throw new ObservationError("Operation kind and active Git metadata are inconsistent or unsupported.");
@@ -1033,7 +1061,7 @@ async function captureScope(operation, context) {
   const activeObjects = [];
   for (const name of objectMetadata) {
     if (!present(name)) continue;
-    const ids = (await readRegularFile(path6.join(gitDirectory, name), { maximumBytes: LIMITS.fileBytes, physicalPath: true })).toString("utf8").trim().split(/\s+/);
+    const ids = (await readRegularFile(path7.join(gitDirectory, name), { maximumBytes: LIMITS.fileBytes, physicalPath: true })).toString("utf8").trim().split(/\s+/);
     for (const id of ids) {
       if (!objectPattern.test(id))
         throw new ObservationError("Operation metadata contains invalid object identities.");
@@ -1067,7 +1095,7 @@ async function captureScope(operation, context) {
   ]) {
     if (!present(name)) continue;
     const contents = new TextDecoder("utf-8", { fatal: true }).decode(
-      await readRegularFile(path6.join(gitDirectory, name), {
+      await readRegularFile(path7.join(gitDirectory, name), {
         maximumBytes: LIMITS.fileBytes,
         physicalPath: true
       })
@@ -1147,9 +1175,9 @@ async function captureScope(operation, context) {
       }
     }
   }
-  const index = await fileState(path6.join(gitDirectory, "index"));
+  const index = await fileState(path7.join(gitDirectory, "index"));
   const shared = await git.text("rev-parse", ["--shared-index-path"]);
-  const splitIndex = shared ? await fileState(path6.resolve(effective2, shared)) : { type: "absent" };
+  const splitIndex = shared ? await fileState(path7.resolve(effective2, shared)) : { type: "absent" };
   const entries = await git.run("ls-files", ["--stage", "-z"]);
   const applicable = [...operation.paths];
   if (context.selection === "index" || operation.kind === "merge")
@@ -1165,7 +1193,7 @@ async function captureScope(operation, context) {
     throw new ObservationError("Planned/specified selection needs explicit intended paths.");
   const traversal = { entries: 0, observed: /* @__PURE__ */ new Map(), inventory: [] };
   for (const relative of unique(applicable)) {
-    const target = path6.resolve(top, relative);
+    const target = path7.resolve(top, relative);
     if (!inside(top, target) || relative.split("/").some((part) => part === ".git"))
       throw new InputError("Selected path escapes operation worktree or selects Git metadata.");
     await expand(top, relative, traversal);
@@ -1175,15 +1203,15 @@ async function captureScope(operation, context) {
   const states = [];
   let bytes = 0;
   for (const relative of paths) {
-    const absolute2 = path6.join(top, relative);
+    const absolute2 = path7.join(top, relative);
     const state = await fileState(absolute2, LIMITS.bytes - bytes, traversal.observed.get(relative) ?? null);
     if (isRecord(state) && typeof state.size === "number") bytes += state.size;
     states.push({ path: relative, state });
-    let parent = isRecord(state) && state.type === "directory" ? absolute2 : path6.dirname(absolute2);
+    let parent = isRecord(state) && state.type === "directory" ? absolute2 : path7.dirname(absolute2);
     while (parent !== top && inside(top, parent)) {
-      if (await inspectPath(path6.join(parent, ".git")))
+      if (await inspectPath(path7.join(parent, ".git")))
         throw new InputError("Selected path belongs to a nested repository.");
-      parent = path6.dirname(parent);
+      parent = path7.dirname(parent);
     }
   }
   const gitStateDigest = digest({
@@ -1222,7 +1250,6 @@ async function captureScope(operation, context) {
     scopeDigest
   };
 }
-var digest, byteDigest;
 var init_policy_scope = __esm({
   "src/policy-scope.ts"() {
     "use strict";
@@ -1230,15 +1257,15 @@ var init_policy_scope = __esm({
     init_file_evidence();
     init_policy_contract();
     init_records();
+    init_runtime_support();
     init_safe_git();
-    digest = (value) => createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
-    byteDigest = (value) => createHash("sha256").update(value).digest("hex");
+    init_runtime_support();
   }
 });
 
 // src/policy-evidence.ts
-import { lstat as lstat4, opendir as opendir2 } from "node:fs/promises";
-import path7 from "node:path";
+import { lstat as lstat5, opendir as opendir2 } from "node:fs/promises";
+import path8 from "node:path";
 var EvidenceSearch;
 var init_policy_evidence = __esm({
   "src/policy-evidence.ts"() {
@@ -1321,7 +1348,7 @@ var init_policy_evidence = __esm({
             physicalPath: true,
             maximumBytes: Math.min(LIMITS.fileBytes, LIMITS.bytes - this.bytes)
           });
-          const after = await lstat4(locator);
+          const after = await lstat5(locator);
           if (info.dev !== after.dev || info.ino !== after.ino || info.size !== after.size || info.mtimeMs !== after.mtimeMs || info.ctimeMs !== after.ctimeMs)
             throw new ObservationError("Evidence identity changed across bounded observation.");
           this.bytes += bytes.length;
@@ -1389,7 +1416,7 @@ var init_policy_evidence = __esm({
             this.issue("invalid-reference", locator, "Adopted reference has invalid encoding or controls.");
             continue;
           }
-          const target = path7.resolve(path7.dirname(locator), decodedLink);
+          const target = path8.resolve(path8.dirname(locator), decodedLink);
           const targetInfo = await inspectPath(target);
           const observed = targetInfo?.isDirectory() ? this.directories.get(target) === "adopted" || this.activeDirectories.get(target) === "adopted" : this.seen.has(target);
           if (depth >= LIMITS.referenceHops && !observed) {
@@ -1460,14 +1487,14 @@ var init_policy_evidence = __esm({
               "coverage"
             ].includes(entry.name))
               continue;
-            const target = path7.join(directory, entry.name);
+            const target = path8.join(directory, entry.name);
             if (entry.isSymbolicLink()) {
               this.issue("unsafe-directory-entry", target, "Policy discovery encountered a linked path.");
               continue;
             }
             if (entry.isDirectory())
               await this.docs(target, depth + 1, referenceDepth, [...stack, directory], true);
-            else if (/\.(?:md|markdown|txt|ya?ml|json)$/i.test(entry.name) && (referenceDepth > 0 || /readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) || directory.endsWith(`${path7.sep}.github${path7.sep}workflows`)))
+            else if (/\.(?:md|markdown|txt|ya?ml|json)$/i.test(entry.name) && (referenceDepth > 0 || /readme|contribut|commit|policy|attribution|disclos|(^|[._-])ai([._-]|$)/i.test(entry.name) || directory.endsWith(`${path8.sep}.github${path8.sep}workflows`)))
               await this.read(
                 target,
                 "repository-document",
@@ -1559,7 +1586,7 @@ var init_policy_evidence = __esm({
                     );
                     continue;
                   }
-                  const target = path7.resolve(path7.dirname(file), value);
+                  const target = path8.resolve(path8.dirname(file), value);
                   const child = await this.read(
                     target,
                     "git-configuration",
@@ -1580,20 +1607,20 @@ var init_policy_evidence = __esm({
           }
           active.delete(file);
         };
-        await inspect(path7.join(scope.commonGitDir, "config"));
+        await inspect(path8.join(scope.commonGitDir, "config"));
         const worktreeConfig = await scope.git.text(
           "config",
           [
             "--no-includes",
             "--file",
-            path7.join(scope.commonGitDir, "config"),
+            path8.join(scope.commonGitDir, "config"),
             "--bool",
             "--get",
             "extensions.worktreeConfig"
           ],
           true
         );
-        if (worktreeConfig === "true") await inspect(path7.join(scope.gitDirectory, "config.worktree"));
+        if (worktreeConfig === "true") await inspect(path8.join(scope.gitDirectory, "config.worktree"));
         const hookSetting = settings.get("core.hooksPath");
         if (hookSetting?.startsWith("~") || settings.get("commit.template")?.startsWith("~")) {
           this.issue(
@@ -1603,17 +1630,17 @@ var init_policy_evidence = __esm({
           );
           return;
         }
-        const hooks = hookSetting ? path7.resolve(scope.worktree, hookSetting) : path7.join(scope.commonGitDir, "hooks");
+        const hooks = hookSetting ? path8.resolve(scope.worktree, hookSetting) : path8.join(scope.commonGitDir, "hooks");
         for (const name of ["prepare-commit-msg", "commit-msg"])
           await this.read(
-            path7.join(hooks, name),
+            path8.join(hooks, name),
             "message-hook",
             "Effective message-related hook definition, read as data"
           );
         const template = settings.get("commit.template");
         if (template)
           await this.read(
-            path7.resolve(scope.git.directory, template),
+            path8.resolve(scope.git.directory, template),
             "commit-template",
             "Effective explicitly configured commit template",
             true
@@ -1630,14 +1657,14 @@ var init_policy_evidence = __esm({
             break;
           }
           dirs.add(current);
-          const parent = path7.dirname(current);
+          const parent = path8.dirname(current);
           if (parent === current) break;
           current = parent;
         }
         for (const relative of scope.paths) {
-          let parent = path7.dirname(path7.join(operation.worktree, relative));
-          const state = await inspectPath(path7.join(operation.worktree, relative));
-          if (state?.isDirectory()) parent = path7.join(operation.worktree, relative);
+          let parent = path8.dirname(path8.join(operation.worktree, relative));
+          const state = await inspectPath(path8.join(operation.worktree, relative));
+          if (state?.isDirectory()) parent = path8.join(operation.worktree, relative);
           let depth = 0;
           while (inside(operation.worktree, parent)) {
             if (++depth > LIMITS.directoryLevels) {
@@ -1646,13 +1673,13 @@ var init_policy_evidence = __esm({
             }
             dirs.add(parent);
             if (parent === operation.worktree) break;
-            parent = path7.dirname(parent);
+            parent = path8.dirname(parent);
           }
         }
         for (const directory of [...dirs].sort(ordinal))
           for (const name of ["AGENTS.md", "CLAUDE.md"])
             await this.read(
-              path7.join(directory, name),
+              path8.join(directory, name),
               "applicable-instruction",
               "Exact ancestor/local instruction of worktree or selected/intended path"
             );
@@ -1660,7 +1687,7 @@ var init_policy_evidence = __esm({
           for (const entry of await this.directoryEntries(operation.worktree)) {
             if (/^(?:README|CONTRIBUTING)(?:[._-].*)?$/i.test(entry.name))
               await this.read(
-                path7.join(operation.worktree, entry.name),
+                path8.join(operation.worktree, entry.name),
                 "contribution-entry",
                 "Root contribution/navigation entry"
               );
@@ -1670,12 +1697,12 @@ var init_policy_evidence = __esm({
         }
         for (const name of ["README.md", "CONTRIBUTING.md"])
           await this.read(
-            path7.join(operation.worktree, name),
+            path8.join(operation.worktree, name),
             "contribution-entry",
             "Expected root contribution/navigation entry"
           );
-        await this.docs(path7.join(operation.worktree, "docs"));
-        await this.docs(path7.join(operation.worktree, ".github/workflows"));
+        await this.docs(path8.join(operation.worktree, "docs"));
+        await this.docs(path8.join(operation.worktree, ".github/workflows"));
         await this.configuration(scope);
         for (const locator of context.additionalCandidatePaths ?? [])
           await this.read(locator, "explicit-candidate", "Exact candidate supplied by caller", true);
@@ -1967,9 +1994,10 @@ var exact;
 var init_message_assessment = __esm({
   "src/message-assessment.ts"() {
     "use strict";
+    init_input_contract();
     init_policy_contract();
-    init_policy_scope();
     init_records();
+    init_runtime_support();
     exact = (value) => {
       text(value);
       return value;
@@ -1979,8 +2007,8 @@ var init_message_assessment = __esm({
 
 // src/message-output.ts
 import { constants as constants2 } from "node:fs";
-import { lstat as lstat5, open as open2, unlink } from "node:fs/promises";
-import path8 from "node:path";
+import { lstat as lstat6, open as open2, unlink } from "node:fs/promises";
+import path9 from "node:path";
 async function writeNewMessage(file, bytes, binding, consumed, signal) {
   const cancelled = () => {
     if (signal?.aborted) throw new Error("Output publication cancelled.");
@@ -1988,18 +2016,18 @@ async function writeNewMessage(file, bytes, binding, consumed, signal) {
   cancelled();
   checkRaw(file);
   if (!file) throw new InputError("Explicit output path is empty.");
-  const destination = path8.resolve(file);
-  if (consumed.some((input) => samePhysicalPath(path8.resolve(input), destination)) || inside(binding.gitDirectory, destination) || inside(binding.commonGitDir, destination) || destination.split(path8.sep).some((part) => part.toLowerCase() === ".git"))
+  const destination = path9.resolve(file);
+  if (consumed.some((input) => samePhysicalPath(path9.resolve(input), destination)) || inside(binding.gitDirectory, destination) || inside(binding.commonGitDir, destination) || destination.split(path9.sep).some((part) => part.toLowerCase() === ".git"))
     throw new InputError("Output aliases a consumed input or protected Git metadata.");
   let parent;
   try {
     if (await inspectPath(destination)) throw new Error("exists");
-    parent = await physical(path8.dirname(destination));
-    if (!(await lstat5(parent)).isDirectory()) throw new Error("parent");
+    parent = await physical(path9.dirname(destination));
+    if (!(await lstat6(parent)).isDirectory()) throw new Error("parent");
   } catch {
     throw new InputError("Output requires an absent leaf and an existing safe physical parent directory.");
   }
-  const before = await lstat5(parent, { bigint: true });
+  const before = await lstat6(parent, { bigint: true });
   const same = (a, b) => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode;
   const unchanged2 = (a, b) => same(a, b) && a.nlink === b.nlink && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
   cancelled();
@@ -2013,16 +2041,16 @@ async function writeNewMessage(file, bytes, binding, consumed, signal) {
   let complete = false;
   try {
     owned = await handle.stat({ bigint: true });
-    if (!owned.isFile() || owned.nlink !== 1n || !same(owned, await lstat5(destination, { bigint: true })) || !same(before, await lstat5(parent, { bigint: true })) || !await physical(parent))
+    if (!owned.isFile() || owned.nlink !== 1n || !same(owned, await lstat6(destination, { bigint: true })) || !same(before, await lstat6(parent, { bigint: true })) || !await physical(parent))
       throw new Error("Output identity changed during exclusive creation.");
     await handle.writeFile(bytes);
     await handle.sync();
     cancelled();
     const after = await handle.stat({ bigint: true });
-    if (!same(owned, after) || after.nlink !== 1n || after.size !== BigInt(bytes.length) || !unchanged2(after, await lstat5(destination, { bigint: true })) || !same(before, await lstat5(parent, { bigint: true })))
+    if (!same(owned, after) || after.nlink !== 1n || after.size !== BigInt(bytes.length) || !unchanged2(after, await lstat6(destination, { bigint: true })) || !same(before, await lstat6(parent, { bigint: true })))
       throw new Error("Output identity or length changed during writing.");
     await physical(destination);
-    if (!(await readRegularFile(destination, { physicalPath: true, singleLink: true, maximumBytes: bytes.length })).equals(bytes) || !unchanged2(after, await handle.stat({ bigint: true })) || !unchanged2(after, await lstat5(destination, { bigint: true })))
+    if (!(await readRegularFile(destination, { physicalPath: true, singleLink: true, maximumBytes: bytes.length })).equals(bytes) || !unchanged2(after, await handle.stat({ bigint: true })) || !unchanged2(after, await lstat6(destination, { bigint: true })))
       throw new Error("Output bytes changed during publication.");
     cleanupState = after;
     cancelled();
@@ -2036,14 +2064,14 @@ async function writeNewMessage(file, bytes, binding, consumed, signal) {
       });
     if (!complete && cleanupState) {
       try {
-        const current = await lstat5(destination, { bigint: true });
-        if (current.isFile() && current.nlink === 1n && unchanged2(cleanupState, current) && same(before, await lstat5(parent, { bigint: true }))) {
+        const current = await lstat6(destination, { bigint: true });
+        if (current.isFile() && current.nlink === 1n && unchanged2(cleanupState, current) && same(before, await lstat6(parent, { bigint: true }))) {
           const actual = await readRegularFile(destination, {
             physicalPath: true,
             singleLink: true,
             maximumBytes: bytes.length
           });
-          const final = await lstat5(destination, { bigint: true });
+          const final = await lstat6(destination, { bigint: true });
           if (actual.equals(bytes) && unchanged2(cleanupState, final)) await unlink(destination);
         }
       } catch {
@@ -2055,8 +2083,8 @@ var init_message_output = __esm({
   "src/message-output.ts"() {
     "use strict";
     init_file_evidence();
-    init_policy_scope();
     init_records();
+    init_runtime_support();
     init_safe_git();
   }
 });
@@ -2065,18 +2093,18 @@ var init_message_output = __esm({
 import { execFile as execFile2 } from "node:child_process";
 import { mkdir, mkdtemp, realpath as realpath5, rm } from "node:fs/promises";
 import os from "node:os";
-import path9 from "node:path";
+import path10 from "node:path";
 async function runTrailers(message, options) {
-  if (message.length > LIMITS.inputBytes) throw new InputError("Message byte budget exceeded.");
+  if (message.length > INPUT_BYTES) throw new InputError("Message byte budget exceeded.");
   options.additions?.forEach(checkRaw);
   const executable = await resolveTrustedGit(options.excluded, options.environment);
   const parent = await physicalDirectory(await realpath5(os.tmpdir()));
   if (options.excluded.some((root) => inside(root, parent)))
     throw new Error("Trailer temporary directory is inside an excluded scope.");
-  const directory = await mkdtemp(path9.join(parent, "attribution-trailer-"));
+  const directory = await mkdtemp(path10.join(parent, "attribution-trailer-"));
   try {
     await physical(directory);
-    const home = path9.join(directory, "home");
+    const home = path10.join(directory, "home");
     await mkdir(home);
     const environment = {
       ...gitEnvironment(options.environment),
@@ -2106,7 +2134,7 @@ async function runTrailers(message, options) {
           windowsHide: true,
           encoding: "buffer",
           timeout: 1e4,
-          maxBuffer: LIMITS.inputBytes * 2,
+          maxBuffer: INPUT_BYTES * 2,
           ...options.signal ? { signal: options.signal } : {}
         },
         (error, stdout) => {
@@ -2126,7 +2154,7 @@ async function runTrailers(message, options) {
   }
 }
 async function removeTemporary(directory, parent) {
-  if (path9.dirname(directory) !== parent || !path9.basename(directory).startsWith("attribution-trailer-"))
+  if (path10.dirname(directory) !== parent || !path10.basename(directory).startsWith("attribution-trailer-"))
     throw new Error("Unsafe trailer temporary cleanup.");
   await rm(directory, { recursive: true, force: true });
 }
@@ -2238,9 +2266,9 @@ function reconcileSpans(message, layout, removed, additions) {
 var init_message_trailers = __esm({
   "src/message-trailers.ts"() {
     "use strict";
-    init_policy_contract();
-    init_policy_scope();
+    init_input_contract();
     init_records();
+    init_runtime_support();
     init_safe_git();
   }
 });
@@ -2456,7 +2484,7 @@ async function processMessage(input, loadDefault) {
   if (!["render", "validate"].includes(input.mode) || input.mode === "validate" && input.output !== void 0)
     throw new InputError("Invalid message command or validate output option.");
   checkRaw(input.output);
-  if (input.message.length > LIMITS.inputBytes) throw new InputError("Message byte budget exceeded.");
+  if (input.message.length > INPUT_BYTES) throw new InputError("Message byte budget exceeded.");
   const message = decodeMessage(input.message);
   const route = await checkFreshRouting(input);
   const result = {
@@ -2734,13 +2762,13 @@ var issue;
 var init_message = __esm({
   "src/message.ts"() {
     "use strict";
+    init_input_contract();
     init_message_assessment();
     init_message_output();
     init_message_trailers();
     init_policy();
-    init_policy_contract();
-    init_policy_scope();
     init_records();
+    init_runtime_support();
     issue = (id, code, detail) => ({ id, code, detail });
   }
 });
@@ -2757,8 +2785,8 @@ function isMainModule(metadata) {
 
 // src/attribution.ts
 init_file_evidence();
+init_input_contract();
 init_policy();
-init_policy_contract();
 init_records();
 function parseArguments(args) {
   const values = [...args];
@@ -2783,7 +2811,7 @@ async function jsonFile(file) {
   try {
     bytes = await readRegularFile(typeof file === "string" ? file : fileURLToPath(file), {
       physicalPath: true,
-      maximumBytes: LIMITS.inputBytes
+      maximumBytes: INPUT_BYTES
     });
   } catch {
     throw new InputError("Invalid input: cannot safely read the explicit JSON resource.");
@@ -2833,7 +2861,7 @@ async function run(args) {
     if (!messageFile || !operationFile || !contextFile || !decisionFile)
       throw new InputError("Message commands require explicit message, operation, context and decision files.");
     const operation2 = await jsonFile(operationFile), context = await jsonFile(contextFile), decision = await jsonFile(decisionFile);
-    const message = await readRegularFile(messageFile, { physicalPath: true, maximumBytes: LIMITS.inputBytes });
+    const message = await readRegularFile(messageFile, { physicalPath: true, maximumBytes: INPUT_BYTES });
     const consumedPaths = [...options2].filter(([flag]) => flag !== "--output").map(([, value]) => value);
     const { processMessage: processMessage2 } = await Promise.resolve().then(() => (init_message(), message_exports));
     const output = options2.get("--output");
