@@ -497,22 +497,26 @@ test('legal Unicode unborn branch names are accepted', async (t) => {
     assert.equal((await observePreparation(f.operation, plan())).observedHead, null);
 });
 
-test('raw tab, newline, nonUTF8 and backslash paths retain complete byte identity', {
+test('POSIX tab, newline and backslash filenames retain complete byte identity', {
     skip: process.platform === 'win32',
 }, async (t) => {
     const f = await fixture(t);
-    for (const name of [
-        Buffer.from('tab\tname'),
-        Buffer.from('line\nname'),
-        Buffer.from([0x66, 0xff]),
-        Buffer.from('back\\slash'),
-    ]) {
+    const names = [Buffer.from('back\\slash'), Buffer.from('line\nname'), Buffer.from('tab\tname')];
+    for (const name of names) {
         await writeFile(Buffer.concat([Buffer.from(`${f.directory}/`), name]), 'raw path');
     }
     f.git(['add', '--all']);
+    const staged = Buffer.concat(
+        names.map((name) =>
+            Buffer.concat([Buffer.from('100644 28ec5107160d05ea96eed05f5aff1a0db4f27f99 0\t'), name, Buffer.from([0])]),
+        ),
+    );
+    assert.deepEqual(f.git(['ls-files', '--stage', '-z']), staged);
     const prepared = await observePreparation(f.operation, plan());
     f.git(['commit', '--quiet', '-m', 'Raw paths']);
-    assert.equal((await observeResult(f.directory, f.head())).tree, prepared.expectedTree);
+    const result = await observeResult(f.directory, f.head());
+    assert.equal(result.tree, prepared.expectedTree);
+    assert.equal(result.indexManifestSha256, prepared.indexManifestSha256);
 });
 
 test('raw commit parser ignores signature continuation parent text and preserves final message bytes', async (t) => {
@@ -630,4 +634,63 @@ test('whole-index witness binds file mode, path, symlink and deletion changes', 
         (await observePreparation(f.operation, plan([f.head()]))).expectedTree,
         '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
     );
+});
+
+test('nonUTF8 Git index and object paths retain exact bytes across storage formats', async (t) => {
+    // Known vectors use three mode-100644 leaves containing "raw path", in the explicit byte order below.
+    // Manifest v1 framing binds count 3, raw path lengths 4/2/2, leaf modes and the storage-width blob IDs.
+    const vectors = [
+        {
+            format: 'sha1',
+            blob: '28ec5107160d05ea96eed05f5aff1a0db4f27f99',
+            tree: 'bd947e25388568cf94e70291da3c256680d346a5',
+            manifest: 'cdfd21b2fb44f7dfa113ae9f6da0d948dd122c738634af503adb9e718cdfe186',
+        },
+        {
+            format: 'sha256',
+            blob: 'bf9fb7e02aa74f47f43469371d35912560254f8cd2399f7be944c76e72157980',
+            tree: '033519a321394aa9970596e059b4054862f1b720d916f963d274635ac537ada4',
+            manifest: 'da2f6525eca43ce71a86ef26c28901e92fd7fcc22a343b9121087c116f077260',
+        },
+    ];
+    for (const vector of vectors)
+        await t.test(vector.format, async (child) => {
+            const f = await fixture(child, vector.format);
+            // Explicit raw order distinguishes both invalid byte spellings from UTF-8 U+FFFD.
+            const names = [Buffer.from([0x66, 0xef, 0xbf, 0xbd]), Buffer.from([0x66, 0xfe]), Buffer.from([0x66, 0xff])];
+            const blob = f.git(['hash-object', '-w', '--stdin'], 'raw path').toString().trim();
+            assert.equal(blob, vector.blob);
+            // NUL-framed index metadata needs no host filesystem representation for these names.
+            f.git(
+                ['update-index', '-z', '--index-info'],
+                Buffer.concat(
+                    names.map((name) => Buffer.concat([Buffer.from(`100644 ${blob}\t`), name, Buffer.from([0])])),
+                ),
+            );
+            const staged = Buffer.concat(
+                names.map((name) => Buffer.concat([Buffer.from(`100644 ${vector.blob} 0\t`), name, Buffer.from([0])])),
+            );
+            assert.deepEqual(f.git(['ls-files', '--stage', '-z']), staged);
+            const tree = f.git(['write-tree']).toString().trim();
+            assert.equal(tree, vector.tree);
+            const indexFile = path.join(f.directory, '.git', 'index'),
+                index = await readFile(indexFile);
+            const prepared = await observePreparation(f.operation, plan());
+            assert.equal(prepared.expectedTree, vector.tree);
+            assert.equal(prepared.indexManifestSha256, vector.manifest);
+            assert.deepEqual(await readFile(indexFile), index);
+            const leaves = Buffer.concat(
+                names.map((name) =>
+                    Buffer.concat([Buffer.from(`100644 blob ${vector.blob}\t`), name, Buffer.from([0])]),
+                ),
+            );
+            assert.deepEqual(f.git(['ls-tree', '-z', tree]), leaves);
+            const sha = f.git(['commit-tree', tree], Buffer.from('Raw paths\n')).toString().trim(),
+                result = await observeResult(f.directory, sha);
+            assert.equal(result.tree, vector.tree);
+            assert.equal(result.indexManifestSha256, vector.manifest);
+            assert.deepEqual(result.parents, []);
+            assert.deepEqual(result.message, Buffer.from('Raw paths\n'));
+            assert.deepEqual(await readFile(indexFile), index);
+        });
 });
