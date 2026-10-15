@@ -2,6 +2,15 @@
 
 Status: accepted for schema-1 message rendering and validation.
 
+Status update 2026-10-15: [0004](0004-agent-policy-discovery.md) supersedes only
+the scanner ownership, scan/candidate associations, binding and stale-routing
+requirements below. MessageAssessment and message results now use schema 2;
+assessment sources explicitly identify a message record or declared
+automatic-signing reference. Isolated trailer interpretation, byte preservation,
+exclusive routing, exact signature migration and scoped exception safeguards
+remain applicable. Read the historical schema-1 account below in that context;
+it is not current schema-2 acceptance evidence.
+
 The same fresh policy scan owns scope/evidence and candidate identity. Message
 commands call its routing check before a lazy default-data boundary. Exclusive
 repository-policy results remain unverified exit-10 handoffs; an unusable ledger,
