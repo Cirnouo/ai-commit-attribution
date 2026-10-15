@@ -768,6 +768,9 @@ function sameObserved(left, right) {
   return left.dev === right.dev && left.ino === right.ino && left.mode === right.mode && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
 async function inspectPath(file) {
+  return inspectPathIdentity(file, false);
+}
+async function inspectPathIdentity(file, directoryIdentity) {
   const absolute2 = path6.resolve(file);
   let initial;
   try {
@@ -812,7 +815,8 @@ async function inspectPath(file) {
     throw new ObservationError("Initially absent path component appeared during checks.");
   }
   const final = observed.at(-1);
-  if (!final || final.locator !== absolute2 || !sameObserved(initial, final.info))
+  const unchanged2 = final && (directoryIdentity ? initial.isDirectory() && final.info.isDirectory() && initial.dev === final.info.dev && initial.ino === final.info.ino && initial.mode === final.info.mode : sameObserved(initial, final.info));
+  if (!final || final.locator !== absolute2 || !unchanged2)
     throw new ObservationError("Observed path identity changed during component checks.");
   return initial;
 }
@@ -821,6 +825,14 @@ async function physical(file) {
   const actual = await realpath4(file);
   if (!samePhysicalPath(file, actual))
     throw new ObservationError("Observed path contains a link or is not physical.");
+  return actual;
+}
+async function physicalDirectory(file) {
+  const info = await inspectPathIdentity(file, true);
+  if (!info?.isDirectory()) throw new ObservationError("Observed physical directory is missing or not a directory.");
+  const actual = await realpath4(file);
+  if (!samePhysicalPath(file, actual))
+    throw new ObservationError("Observed directory contains a link or is not physical.");
   return actual;
 }
 async function fileState(file, maximumBytes = LIMITS.bytes, expected) {
@@ -2054,7 +2066,7 @@ async function runTrailers(message, options) {
   if (message.length > LIMITS.inputBytes) throw new InputError("Message byte budget exceeded.");
   options.additions?.forEach(checkRaw);
   const executable = await resolveTrustedGit(options.excluded, options.environment);
-  const parent = await physical(await realpath5(os.tmpdir()));
+  const parent = await physicalDirectory(await realpath5(os.tmpdir()));
   if (options.excluded.some((root) => inside(root, parent)))
     throw new Error("Trailer temporary directory is inside an excluded scope.");
   const directory = await mkdtemp(path9.join(parent, "attribution-trailer-"));

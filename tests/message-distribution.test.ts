@@ -146,6 +146,54 @@ test('installed render/validate execute actual default, policy, invalid, gap and
         const expected = `${candidate}Assisted-by: Codex App:gpt-6.1-sol (high)\r\n`;
         assert.equal(JSON.parse(success.stdout).message.preview, expected);
         assert.equal(JSON.parse(success.stdout).participationEvidence.status, 'complete-against-declared-input');
+        const trailerParent = path.join(directory, 'shared-trailer-parent');
+        await mkdir(trailerParent);
+        const observation = path.join(directory, 'trailer-observations');
+        const fsWrapper = `export * from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import {setTimeout} from 'node:timers/promises';
+let injected=false;
+export async function lstat(file,...args){
+ const before=await fs.lstat(file,...args);
+ if(!injected&&file===${JSON.stringify(trailerParent)}){
+  injected=true;await setTimeout(25);await fs.mkdtemp(path.join(file,'unrelated-child-'));
+  const after=await fs.lstat(file);
+  assert.equal(before.dev,after.dev);assert.equal(before.ino,after.ino);assert.equal(before.mode,after.mode);
+  assert.ok(before.size!==after.size||before.mtimeMs!==after.mtimeMs||before.ctimeMs!==after.ctimeMs);
+  await fs.writeFile(${JSON.stringify(observation)},'real child mutation observed');
+ }
+ return before;
+}`;
+        const osWrapper = `import os from 'node:os';export default {...os,tmpdir:()=>${JSON.stringify(trailerParent)}};`;
+        const preload = path.join(directory, 'trailer-boundary.mjs');
+        await writeFile(
+            preload,
+            `import {registerHooks} from 'node:module';
+registerHooks({resolve(s,c,n){
+ if(c.parentURL===${JSON.stringify(pathToFileURL(entry).href)}){
+  if(s==='node:fs/promises')return {url:${JSON.stringify(`data:text/javascript,${encodeURIComponent(fsWrapper)}`)},shortCircuit:true};
+  if(s==='node:os')return {url:${JSON.stringify(`data:text/javascript,${encodeURIComponent(osWrapper)}`)},shortCircuit:true};
+ }
+ return n(s,c);
+}});
+`,
+        );
+        const busyParent = spawnSync(
+            process.execPath,
+            ['--import', pathToFileURL(preload).href, entry, 'render', ...args],
+            {
+                cwd: directory,
+                env,
+                encoding: 'utf8',
+                windowsHide: true,
+            },
+        );
+        assert.equal(busyParent.status, 0, busyParent.stderr + busyParent.stdout);
+        assert.equal(JSON.parse(busyParent.stdout).message.preview, expected);
+        assert.equal(await readFile(observation, 'utf8'), 'real child mutation observed');
+        assert.deepEqual(await snapshot(), before);
         const output = path.join(directory, 'new-message.txt');
         const written = run(['render', ...args, '--output', output]);
         assert.equal(written.status, 0, written.stderr);

@@ -21,3 +21,5 @@ current signature/migration/exception joins. message-trailers.ts runs isolated
 Git interpretation and reconciles owned byte spans. message-output.ts creates
 only safe absent new files. packaging/messages.md owns the installed contract.
 The observation-only SafeGit argv allowlist does not include trailer processing.
+Only the shared trailer temporary parent uses physical directory identity checks;
+private trailer directories and policy/file evidence keep strict metadata freshness.

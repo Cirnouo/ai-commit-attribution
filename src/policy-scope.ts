@@ -38,6 +38,9 @@ function sameObserved(left: Stats, right: Stats): boolean {
 }
 /** Initial absence is allowed only after every existing ancestor was lstat-checked without following links. */
 export async function inspectPath(file: string): Promise<Stats | undefined> {
+    return inspectPathIdentity(file, false);
+}
+async function inspectPathIdentity(file: string, directoryIdentity: boolean): Promise<Stats | undefined> {
     const absolute = path.resolve(file);
     let initial: Stats | undefined;
     try {
@@ -91,7 +94,16 @@ export async function inspectPath(file: string): Promise<Stats | undefined> {
         throw new ObservationError('Initially absent path component appeared during checks.');
     }
     const final = observed.at(-1);
-    if (!final || final.locator !== absolute || !sameObserved(initial, final.info))
+    const unchanged =
+        final &&
+        (directoryIdentity
+            ? initial.isDirectory() &&
+              final.info.isDirectory() &&
+              initial.dev === final.info.dev &&
+              initial.ino === final.info.ino &&
+              initial.mode === final.info.mode
+            : sameObserved(initial, final.info));
+    if (!final || final.locator !== absolute || !unchanged)
         throw new ObservationError('Observed path identity changed during component checks.');
     return initial;
 }
@@ -100,6 +112,15 @@ export async function physical(file: string): Promise<string> {
     const actual = await realpath(file);
     if (!samePhysicalPath(file, actual))
         throw new ObservationError('Observed path contains a link or is not physical.');
+    return actual;
+}
+/** Shared temporary parents need stable physical directory identity, not stable child metadata. */
+export async function physicalDirectory(file: string): Promise<string> {
+    const info = await inspectPathIdentity(file, true);
+    if (!info?.isDirectory()) throw new ObservationError('Observed physical directory is missing or not a directory.');
+    const actual = await realpath(file);
+    if (!samePhysicalPath(file, actual))
+        throw new ObservationError('Observed directory contains a link or is not physical.');
     return actual;
 }
 export async function fileState(file: string, maximumBytes = LIMITS.bytes, expected?: Stats | null): Promise<unknown> {
