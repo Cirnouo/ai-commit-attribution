@@ -74,14 +74,23 @@ these boundaries at error severity. The Conventional Commits parser, original
 message, other commitlint rules and Git topology checks remain authoritative
 for their existing responsibilities.
 
-This repository configures GitHub squash merging with `PR_TITLE` + `PR_BODY`:
-the PR title becomes the commit title with GitHub's generated PR number retained,
-and the PR description becomes the commit body. This is a
+Each PR represents one logical change and produces one logical squash commit.
+The PR and commit explain the same What and Why, plus useful How, semantically;
+their formatting need not match. PR Markdown has no commit prose width, manual
+wrapping, or footer-boundary requirement. Tests, review notes, screenshots,
+tables, links and other PR-only evidence can remain on the PR within the current
+template sections or deeper headings.
+
+This repository configures GitHub squash merging with `PR_TITLE` + `BLANK`:
+the PR title becomes the suggested commit title with GitHub's generated PR number
+retained, and the suggested commit body is empty. This is a
 [configured GitHub feature](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/configuring-commit-squashing-for-pull-requests).
 It is repository configuration, not a universal default or a Conventional
 Commits rule.
 
-Topic commits and raw PR titles use the header above. A raw PR title must not
+Topic commits and raw PR titles use the header above. A raw PR title is a single
+line: CR, LF, U+2028 and U+2029 are rejected without trimming or normalizing it.
+A raw PR title must not
 end in its own `(#<current-PR-number>)`; GitHub appends that suffix when squashing.
 The final squash header uses `<type>(<scope>)!: <subject> (#<current-PR-number>)`,
 with `!` only for a breaking change. The final GitHub-generated trailing suffix
@@ -91,15 +100,15 @@ check the actual merge message before merging.
 Other authored `#number` or `(#number)` references in topic commit subjects,
 raw PR titles, and descriptions may identify Issues or other PRs, including a
 PR that introduced a regression. These references are distinct from the final
-generated current-PR suffix and remain in the predicted squash message.
+generated current-PR suffix. Preserve applicable references in the curated
+squash message.
 
 The 100-character header limit includes the generated suffix. For example,
 ` (#123)` uses seven characters, leaving at most 93 characters for the raw title.
 PR checks validate the raw title and the predicted header with its actual PR
-number plus the original PR description. Keep description lines within the same
-plain-body limit, retaining the same exemption for complete, final, single-line
-structured trailers in the description and predicted squash message. Editing a
-title or description reruns the existing gate.
+number separately, so appending a suffix cannot hide a subject's trailing period.
+They validate the raw PR description only against the current template below.
+Editing a title or description reruns the existing gate.
 
 The current [.github/PULL_REQUEST_TEMPLATE.md](../../.github/PULL_REQUEST_TEMPLATE.md)
 is the sole source of required PR headings, checklist labels, placement, order,
@@ -117,14 +126,49 @@ unchecked only with an adjacent indented `N/A: <reason>` continuation. Do not
 delete unchecked required checks or claim results that have not been observed.
 
 The remote Commit messages check validates the current PR body against this
-template in addition to validating the complete original body with commitlint
-and the predicted squash suffix. A missing or empty body fails. A failed check
+template, both headers, and the actual topic commits in the exact base..head
+range. It cannot inspect a future edited merge body; semantic agreement between
+the PR and curated commit message is a review responsibility.
+A missing or empty body fails. A failed check
 blocks merge; edit the title or body to fix the reported errors and let the
 existing PR `edited` event rerun the check. Older PR numbers or historical prose
 provide no exception for a current submission. Local, push, and scheduled
 history checks continue to validate original commit messages without applying
 the current PR template to history. This remote body gate does not run before
 sending a PR description.
+
+### Before squash merging
+
+Read this procedure before squash merging. Prepare an independent commit body
+that retains the durable What and Why, useful How, breaking-change notes,
+relevant Issue and regression-source references, human coauthors and applicable
+attribution trailers. Apply the actual commit prose and footer/trailer rules
+above; do not copy PR-only review evidence merely to fill the blank default.
+
+1. Review the latest PR head and required successful checks. Record that exact
+   reviewed head SHA. Obtain the actual PR number and form the full header from
+   the reviewed raw title plus ` (#<number>)`; retain authored references and
+   check the total 100-character budget.
+2. Save the curated body in a UTF-8 body file. Assemble a separate full message
+   file containing that exact full header, a blank line, and the exact body file
+   contents. Validate the assembled message with the existing checker:
+
+   ```sh
+   node tooling/check-commit-message.ts <message-file>
+   ```
+
+3. After validation succeeds and merge authorization applies, send the identical
+   validated header and body, guarded by the reviewed head SHA:
+
+   ```sh
+   gh pr merge --squash --subject <full-header> --body-file <body-file> --match-head-commit <reviewed-head-sha>
+   ```
+
+   The placeholders denote command arguments; quote the full header and paths
+   for the executing shell. Any header or body edit requires reassembling and
+   revalidating the full message. A changed PR head requires fresh review and
+   checks before retrying. Preserve the actual `(#number)`, references and
+   applicable attribution in the message sent to GitHub.
 
 Keep each commit coherent, stage only files owned by the task, and preserve
 unrelated worktree changes. Review the staged diff and run the applicable
@@ -214,16 +258,20 @@ without creating duplicate owned comments or changing unrelated content.
 
 Issue association and other PR references are optional. When the change resolves
 an Issue, use `Closes`, `Fixes`, or `Resolves` followed by its Issue reference.
-Use `Refs: #220` for a non-closing reference to an Issue or another PR. Put these
-trailers at the end of the PR description, with a blank line after the description
-body. Use one reference per trailer line and `owner/repository#number` for a
-reference in another repository.
+Use `Refs: #220` for a non-closing reference to an Issue or another PR. In the
+independent commit message, put these trailers at the end after the required
+blank line. Use one reference per trailer line and `owner/repository#number`
+for a reference in another repository. PR Markdown may explain the same
+associations in prose or use these reference lines without commit wrapping or
+footer-boundary requirements.
 
 Prefer the PR description for Issue associations and regression-source
-explanations so references are visible on the PR and carried into the squash
-body. Title references are allowed; titles alone do not close Issues. Topic
-commits may also include these trailers, but keep closing keywords in the PR
-description so squash merging retains them. Closing keywords in a PR description
+explanations so references are visible on the PR. Carry relevant references into
+the independently curated squash body; the blank default does not copy them.
+Title references are allowed; titles alone do not close Issues. Topic commits
+may also include these trailers. Keep applicable closing keywords in the PR
+description for its Issue link and in the curated commit for durable context.
+Closing keywords in a PR description
 create a visible PR-Issue link when the PR targets the default branch; merging
 that PR into the default branch closes the Issue. See
 [GitHub's issue-linking documentation](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue).

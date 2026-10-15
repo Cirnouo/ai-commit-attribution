@@ -12,7 +12,7 @@ or trailer scheme is adopted as inherited governance.
 | --- | --- | --- |
 | AGENTS/CONTRIBUTING | Preserve unrelated work; cumulative instructions; before-use policy links | AGENTS/CONTRIBUTING |
 | commits-and-scope | Conventional branches, atomic scoped commits, raw footer boundaries, real merge proof | commits-and-scope |
-| current PR template/parser | Current full raw body/checklists, actual-number squash budget; historical independence | PR template/governance tools |
+| current PR template/parser | Current full raw body template validation/checklists, actual-number squash budget; historical independence | PR template/governance tools |
 | documentation | Manual directory navigation, .github INDEX, semantic whole README review, conditional single ownership | documentation |
 | quality | Native erasable TS, independent type check, per-worktree hooks, partial staging, longpaths/SSH evidence | quality/tooling |
 | supply-chain/checker | Full locked graph, trusted bootstrap order, signatures, cooling/trust, bounded exceptions | supply-chain/auditor |
@@ -56,6 +56,11 @@ external contributor approval, security toggles, immutable Releases and strict
 main Ruleset are observed platform configuration. Target read-back records actual
 values separately. Source has advanced CodeQL, not default setup. Main's Ruleset
 exists even when classic branch protection reports 404. No bypass is migrated.
+
+The target adapts squash defaults to `PR_TITLE`/`BLANK` and curates the commit
+body independently under the
+[canonical squash procedure](commits-and-scope.md#before-squash-merging).
+The historical source `PR_TITLE`/`PR_BODY` observation above remains provenance.
 
 The source Release workflow creates notes automatically; it does not rewrite
 Changelog or bump versions. Both that automation and immutable Release settings

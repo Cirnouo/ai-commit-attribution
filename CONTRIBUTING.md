@@ -45,8 +45,11 @@ runtime will be bundled JavaScript requiring only supported Node and Git.
 Read the current [PR template](.github/PULL_REQUEST_TEMPLATE.md) and
 [submission policy](docs/policies/commits-and-scope.md#commits) before submission.
 Use all required sections/checklists, actual verification results and explicit
-conditional N/A reasons. Check the predicted squash message with the actual PR
-number and complete original body. The title budget includes GitHub's suffix.
+conditional N/A reasons. The raw title and predicted squash header are checked
+separately; the title budget includes GitHub's actual PR-number suffix. PR
+Markdown is validated against the template. Before merging, follow the
+[canonical squash procedure](docs/policies/commits-and-scope.md#before-squash-merging)
+to curate and validate the independent commit message.
 PR description edits rerun the commit check. Historical messages are validated
 as history and do not acquire today's PR template.
 
