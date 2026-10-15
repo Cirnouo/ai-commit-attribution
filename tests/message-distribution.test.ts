@@ -146,6 +146,76 @@ test('installed render/validate execute actual default, policy, invalid, gap and
         const expected = `${candidate}Assisted-by: Codex App:gpt-6.1-sol (high)\r\n`;
         assert.equal(JSON.parse(success.stdout).message.preview, expected);
         assert.equal(JSON.parse(success.stdout).participationEvidence.status, 'complete-against-declared-input');
+        const trailerParent = path.join(directory, 'shared-trailer-parent');
+        await mkdir(trailerParent);
+        const observation = path.join(directory, 'trailer-observations');
+        await writeFile(
+            path.join(directory, 'trailer-boundary.json'),
+            JSON.stringify({ trailerParent, observation, entryURL: pathToFileURL(entry).href }),
+        );
+        const fsWrapper = path.join(directory, 'trailer-fs.mjs');
+        await writeFile(
+            fsWrapper,
+            `export * from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import {setTimeout} from 'node:timers/promises';
+const {trailerParent,observation}=JSON.parse(await fs.readFile(new URL('./trailer-boundary.json',import.meta.url),'utf8'));
+let injected=false;
+export async function lstat(file,...args){
+ const before=await fs.lstat(file,...args);
+ if(!injected&&file===trailerParent){
+  injected=true;await setTimeout(25);await fs.mkdtemp(path.join(file,'unrelated-child-'));
+  const after=await fs.lstat(file,...args);
+  assert.equal(before.dev,after.dev);assert.equal(before.ino,after.ino);assert.equal(before.mode,after.mode);
+  assert.ok(before.size!==after.size||(before.mtimeNs??before.mtimeMs)!==(after.mtimeNs??after.mtimeMs)||(before.ctimeNs??before.ctimeMs)!==(after.ctimeNs??after.ctimeMs));
+  await fs.writeFile(observation,'real child mutation observed');
+ }
+ return before;
+}
+`,
+        );
+        const osWrapper = path.join(directory, 'trailer-os.mjs');
+        await writeFile(
+            osWrapper,
+            `import os from 'node:os';
+import {readFile} from 'node:fs/promises';
+const {trailerParent}=JSON.parse(await readFile(new URL('./trailer-boundary.json',import.meta.url),'utf8'));
+export default {...os,tmpdir:()=>trailerParent};
+`,
+        );
+        const preload = path.join(directory, 'trailer-boundary.mjs');
+        await writeFile(
+            preload,
+            `import {registerHooks} from 'node:module';
+import {readFile} from 'node:fs/promises';
+const {entryURL}=JSON.parse(await readFile(new URL('./trailer-boundary.json',import.meta.url),'utf8'));
+const fsURL=new URL('./trailer-fs.mjs',import.meta.url).href;
+const osURL=new URL('./trailer-os.mjs',import.meta.url).href;
+registerHooks({resolve(s,c,n){
+ if(c.parentURL===entryURL){
+  if(s==='node:fs/promises')return {url:fsURL,shortCircuit:true};
+  if(s==='node:os')return {url:osURL,shortCircuit:true};
+ }
+ return n(s,c);
+}});
+`,
+        );
+        const busyParent = spawnSync(
+            process.execPath,
+            ['--import', pathToFileURL(preload).href, entry, 'render', ...args],
+            {
+                cwd: directory,
+                env,
+                encoding: 'utf8',
+                windowsHide: true,
+            },
+        );
+        assert.equal(busyParent.status, 0, busyParent.stderr + busyParent.stdout);
+        assert.equal(JSON.parse(busyParent.stdout).message.preview, expected);
+        assert.equal(await readFile(observation, 'utf8'), 'real child mutation observed');
+        assert.deepEqual(await snapshot(), before);
         const output = path.join(directory, 'new-message.txt');
         const written = run(['render', ...args, '--output', output]);
         assert.equal(written.status, 0, written.stderr);

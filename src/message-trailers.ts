@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { MessageRecord } from './message-contract.ts';
 import { LIMITS } from './policy-contract.ts';
-import { byteDigest, digest, physical } from './policy-scope.ts';
+import { byteDigest, digest, physical, physicalDirectory } from './policy-scope.ts';
 import { checkRaw, InputError } from './records.ts';
 import { gitEnvironment, inside, resolveTrustedGit } from './safe-git.ts';
 
@@ -21,7 +21,7 @@ export async function runTrailers(
     if (message.length > LIMITS.inputBytes) throw new InputError('Message byte budget exceeded.');
     options.additions?.forEach(checkRaw);
     const executable = await resolveTrustedGit(options.excluded, options.environment);
-    const parent = await physical(await realpath(os.tmpdir()));
+    const parent = await physicalDirectory(await realpath(os.tmpdir()));
     if (options.excluded.some((root) => inside(root, parent)))
         throw new Error('Trailer temporary directory is inside an excluded scope.');
     const directory = await mkdtemp(path.join(parent, 'attribution-trailer-'));

@@ -35,9 +35,13 @@ Git trailer semantics, byte preservation, strict signatures/scoped exceptions,
 new-file refusal and external installed command behavior. Native questions and
 actual host acceptance remain integrator/host checks, distinct from simulation.
 message-distribution.test.ts runs installed render/validate business paths,
-including unusable default inputs on repository-policy. message-output.test.ts
+including unusable default inputs on repository-policy and real shared temporary
+parent child creation during copied-bundle CLI rendering. message-output.test.ts
 uses real filesystem fault observation for short writes, cancellation, exclusive
 creation races and replaced-path peer preservation.
+message-temporary-directory.test.ts exercises real child creation at filesystem
+observation boundaries, isolated Git trailer preservation, directory replacement,
+linked paths and retained strict default/private-directory freshness.
 message-review-fixes.test.ts covers summary-owned exception boundaries, unique
 exception joins and optional reasoning placeholders through source and copied
 installed render/validate commands. Output fault regressions retain same-inode
