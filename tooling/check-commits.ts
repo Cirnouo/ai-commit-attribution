@@ -39,6 +39,9 @@ export function buildCommitCheckRequest({ eventName, event, currentBranch }: Eve
             (typeof pr.body !== 'string' && pr.body !== null)
         )
             throw new Error('Invalid pull request identity.');
+        if (/[\r\n\u2028\u2029]/u.test(pr.title)) {
+            throw new Error('Pull request title must be a single line.');
+        }
         if (pr.title.trimEnd().endsWith(`(#${number})`)) {
             throw new Error(
                 `Remove (#${number}) from the pull request title; GitHub appends this number when squashing.`,
@@ -53,8 +56,8 @@ export function buildCommitCheckRequest({ eventName, event, currentBranch }: Eve
                     message: pr.title,
                 },
                 {
-                    label: 'pull request squash message',
-                    message: pr.body ? `${squashTitle}\n\n${pr.body}` : squashTitle,
+                    label: 'predicted squash header',
+                    message: squashTitle,
                 },
             ],
             range: `${event.pull_request.base.sha}..${event.pull_request.head.sha}`,
@@ -233,8 +236,8 @@ function run() {
     }
     const errors = [];
     if (eventName === 'pull_request' && isRecord(event) && isRecord(event.pull_request)) {
-        // The request builder has already checked event identity and preserved
-        // the complete raw description for ordinary squash-message validation.
+        // The request builder checks event identity and the two headers;
+        // the raw Markdown description follows only the current PR template.
         const body = event.pull_request.body;
         if (typeof body !== 'string' && body !== null) throw new Error('Invalid pull request body.');
         const template = readFileSync(new URL('../.github/PULL_REQUEST_TEMPLATE.md', import.meta.url), 'utf8');

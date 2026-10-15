@@ -15,7 +15,7 @@ Before creating or editing a typed Issue, read the current
 [Issue forms](.github/ISSUE_TEMPLATE/README.md) and
 [typed Issue policy](docs/policies/commits-and-scope.md#typed-issue-submissions).
 
-Before choosing a branch, committing, or submitting a PR, read
+Before choosing a branch, committing, submitting a PR, or squash merging, read
 [commits and scope](docs/policies/commits-and-scope.md) and the current
 [PR template](.github/PULL_REQUEST_TEMPLATE.md). Preserve the template structure
 and report observed verification results. Stage only task-owned changes.

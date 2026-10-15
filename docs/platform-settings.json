@@ -1,7 +1,12 @@
 {
     "repository": "Cirnouo/ai-commit-attribution",
     "referenceSourceCommit": "7e5e9ba2248cc67d51e877198a6e3e0b0eb546eb",
-    "note": "Live platform observations are separate from historical source policy. Required context names were observed in successful runs before promotion.",
+    "note": "Live platform observations are separate from historical source policy. Required context names were observed in successful runs before promotion. Squash defaults have a separate observation date; other observations retain their original dates.",
+    "squashMergeDefaultsObservation": {
+        "observedAt": "2026-10-15T08:07:17.4485108Z",
+        "source": "https://api.github.com/repos/Cirnouo/ai-commit-attribution",
+        "fields": ["repositorySettings.squash_merge_commit_title", "repositorySettings.squash_merge_commit_message"]
+    },
     "repositorySettings": {
         "default_branch": "main",
         "visibility": "public",
@@ -19,7 +24,7 @@
         "allow_update_branch": false,
         "delete_branch_on_merge": false,
         "squash_merge_commit_title": "PR_TITLE",
-        "squash_merge_commit_message": "PR_BODY",
+        "squash_merge_commit_message": "BLANK",
         "web_commit_signoff_required": false,
         "security_and_analysis": {
             "secret_scanning": {
