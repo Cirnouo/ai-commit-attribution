@@ -5,6 +5,7 @@ reproduction recipes and the original eighteen-requirement evidence map.
 The [documentation policy](../policies/documentation.md#portable-content-and-public-evidence)
 owns portable content/public evidence. Runtime rules remain in the generated
 Skill's [policy](../../skills/ai-commit-attribution/references/policy.md),
+[ledger](../../skills/ai-commit-attribution/references/ledgers.md),
 [record](../../skills/ai-commit-attribution/references/records.md) and
 [message](../../skills/ai-commit-attribution/references/messages.md) contracts.
 The [host reference](../../skills/ai-commit-attribution/references/hosts.md)
@@ -62,6 +63,56 @@ The materializer renders/validates/rerenders successful defaults, exercises
 exclusive repository handoffs and explicitly supplied reassessment after a change.
 It provides positive and negative assertions rather than matching instruction
 headings. The ordinary-format case includes a body divider to test byte preservation.
+
+## Planned-commit ledger reproduction
+
+The 0.1.0 source also includes isolated real-Git fixtures for the planned-commit
+implementation described in [0005](../decisions/0005-planned-commit-ledgers.md).
+After the trusted setup above, run these focused suites from the repository root:
+
+```text
+node --test tests/ledger-state.test.ts tests/ledger-entry.test.ts
+node --test tests/ledger-transfer.test.ts
+node --test tests/result-git.test.ts
+node --test tests/ledger-preparation.test.ts tests/ledger-preparation-entry.test.ts
+```
+
+Each suite creates its own runtime-derived temporary repositories and synthetic
+identities. Fixture setup and the test integrator perform Git actions with
+explicit local controls; the runtime helpers under test only observe Git and
+perform their documented ledger/message writes. No private receipt, existing
+user checkout or machine-specific path is required. The maintained
+[ledger contract](../../packaging/ledgers.md) owns command, schema, recovery and
+removal requirements; these recipes identify checks rather than a second
+lifecycle specification.
+
+| Scenario family | Portable source and asserted behavior |
+| --- | --- |
+| Independent planned outputs | ledger-state and ledger-entry cover separate worktree contexts, current selection, explicit AB/AC split/combine allocation and stale child IDs; ledger-preparation checks that completing one output cannot clear another current selection. |
+| State safety and races | ledger-state covers actual shared exclude preservation, ignore precedence, staged state, unsafe occupancy, locks, same-version races, short writes, partial candidates and uncertain post-rename recovery. |
+| Transfer and removal | ledger-transfer covers replacement closure, interrupted export/retry, exact bundle digests, resume/copy distinctions, conflicts, original-move rebind, note/history-sensitive removal checks and terminal pruning. |
+| Complete staged/result evidence | result-git covers SHA-1/SHA-256, index v2/v3/v4, sparse expansion, optional/required extensions, raw index ordering, malformed/corrupt objects, intent-to-add, unmerged entries and whole-tree path/mode/object differences without index writes. |
+| Actual output forms | ledger-preparation covers root/ordinary commits, root and merge amend, two-parent/octopus merges, cherry-pick conflict/aggregate, rebase conflict/edit/rebase-merges, merge squash and interactive squash/fixup. Full ordered parents and the exact result SHA are checked even after HEAD moves. |
+| No-result actions | ledger-preparation leaves plans unconsumed when its integrator performs fast-forward, skip or drop without calling preparation/completion. This checks explicit caller discipline, not automatic event discovery. |
+| Preparation and finish failures | ledger-preparation covers publication followed by failed state persistence, successful commit followed by failed seal persistence, same-SHA retry, stale/same-version changes, selection switches, pause/reopen and immutable sealed results. |
+| Message and policy boundaries | ledger-preparation covers preview without freezing, mechanical CRLF equivalence, exact approval of other final-message changes, preservation of frozen default identities and exclusive repository-policy declarations with exit 10. |
+| Portable prepared recovery | ledger-preparation resumes into an ordinary clone, removes the source fixture, rejects an old-context review and seals the existing exact result with a fresh target-context review. Copy cannot reuse the source preparation. |
+| Installed command entry | ledger-entry and ledger-preparation-entry exercise CLI routing and strict flags. Independent copied-bundle execution remains a separate distribution check. |
+
+These are source-level reproduction instructions, not a new execution receipt.
+Record the selected full source SHA, 0.1.0 version, date, platform, Node/Git
+versions, actual commands, counts and skips when running them. The POSIX raw
+TAB/LF/non-UTF-8/backslash pathname fixture is skipped on Windows; a Windows run
+cannot establish that path's behavior or Linux/macOS execution. A portable
+recipe and actual platform CI execution remain distinct evidence.
+
+Focused tests do not establish full-suite coverage, generated payload equality,
+independent installed execution or native-host loading. Run the repository's
+required verification and distribution checks separately and report their
+observed results. No helper authenticates participation, semantic policy review,
+result causality or globally unique transfer ownership. State compare-and-swap
+and bounded Git observation do not form an atomic Git-and-ledger transaction or
+prove freedom from arbitrary concurrent mutation.
 
 ## Optional native exercises
 

@@ -77,13 +77,20 @@ and actual body/reference reads rather than relying on a catalog entry alone.
 Before creating, selecting, pausing or recovering a persistent plan, read the
 [ledger contract](../../skills/ai-commit-attribution/references/ledgers.md).
 The [integration guide](../../skills/ai-commit-attribution/references/integration.md#supply-participation-on-the-default-branch)
-shows the ordinary create/select, record and preview commands. State lives in
+shows the ordinary create/select, record, prepare and finish workflow. State lives in
 the actual worktree's .ai-commit-attribution directory, locally excluded through
 Git's info/exclude. An ordinary clone already has a usable worktree. Carry the
 exact plan ID through handoff so the next Agent can locate the same selection.
 Before moving or removing that worktree, read the ledger contract's recovery
 procedure. Unfinished plans need a verified external bundle; a local ignore rule
 keeps state out of Git history and does not back it up.
+
+Ordinary preview does not freeze a plan. Before supplying a message to a separately
+authorized real Git operation, follow the ledger contract's prepare procedure;
+after reviewing the actual result, finish with its exact SHA and message digest.
+Failed Git operations keep the plan available. If Git succeeded and recording
+failed, recover the same preparation and result instead of assuming no commit
+exists. Later amend or recommit uses a new plan after the first is sealed.
 
 ### Repository policy comes first
 

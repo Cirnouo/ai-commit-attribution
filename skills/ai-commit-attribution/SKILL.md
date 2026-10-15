@@ -49,7 +49,7 @@ identity or new Git authorization. Known required gaps remain ledger blockers
 until resolved, and default helpers provide no exception continuation.
 
 For a local planned-commit lifecycle, before initializing state, selecting or
-recording a ledger, pausing, recovering, replacing, transferring, rebinding or
+recording a ledger, running prepare/finish, pausing, recovering, replacing, transferring, rebinding or
 clearing a plan, read the
 [ledger contract](references/ledgers.md). It owns persistent worktree selection
 and failure recovery. Carry the exact ledger ID through delegation and handoff;
@@ -70,6 +70,8 @@ Before a separately authorized real operation, recheck scope and authority.
 Afterward read its final committed message and current operation evidence;
 check the applicable rule again. A host/hook mismatch stops later actions.
 Do not automatically amend, roll back, push or rewrite history to repair it.
+For a prepared local output, follow the ledger contract to review and finish the
+exact SHA. A successful Git exit alone does not seal or consume the ledger.
 
 For human integration and the explicit JSON/CLI workflow, read the
 [first-use guide](references/integration.md). Run the single [executable](scripts/attribution.mjs)

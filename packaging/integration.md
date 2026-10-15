@@ -74,7 +74,9 @@ the policy contract for semantic review and review after waiting or changes.
 ## Supply participation on the default branch
 
 Before managing persistent plans, read the [ledger contract](ledgers.md). Start
-with the actual worktree, create and select a plan, then add its confirmed set:
+with the actual worktree and inspect existing state/current selection for recovery.
+Carry the handed-off ID and reject any mismatch. For a deliberately new output,
+initialize if needed, create and select a plan, then add its confirmed set:
 
 ```text
 node <installed>/scripts/attribution.mjs ledger init --worktree <actual-worktree>
@@ -82,6 +84,12 @@ node <installed>/scripts/attribution.mjs ledger create --worktree <actual-worktr
 node <installed>/scripts/attribution.mjs ledger add --worktree <actual-worktree> --ledger <returned-ledger-UUID> --input identities.json --expect-version <returned-state-version>
 node <installed>/scripts/attribution.mjs summarize --current <actual-worktree> --operation operation.json
 ```
+
+The same ordinary clone is a worktree; no extra git worktree add is required.
+Every policy branch uses an explicitly selected plan for persistent preparation.
+On repository-policy, skip the default identity collection and check the actual
+repository rule separately. Missing state/current is a recovery gap, never a
+reason to silently replace past records with an empty ledger.
 
 identities.json contains an identities array using the confirmed objects below.
 Read each command's returned version and carry the exact ledger UUID through
@@ -122,7 +130,41 @@ helper cannot authenticate the caller's facts, inclusion judgment or authority.
 node <installed>/scripts/attribution.mjs summarize --input ledger.json --operation operation.json
 ```
 
-## Preview, check and observe the result
+## Prepare and record the planned output
+
+Before prepare/finish, read the [ledger contract](ledgers.md#prepare-one-planned-result).
+Prepare the title/body, explicit Operation and policy decision after reviewing
+the actual staged result and authority. Supply a separate ResultPlan with the
+actual ordered parents and sources; its exact shape and operation examples
+belong to that contract. Then run:
+
+```text
+node <installed>/scripts/attribution.mjs prepare --worktree <actual-worktree> --ledger <selected-ledger-UUID> --expect-version <returned-state-version> --message message.txt --operation operation.json --decision decision.json --result-plan result-plan.json --output new-message.txt
+```
+
+Inspect the result and candidate. Only status prepared with the expected 0 or
+repository-handoff 10 means both the new file and immutable receipt persisted.
+Recheck policy and authority before the separately authorized real Git action.
+The helper never performs that action or continues a replay. For batches, arrange
+one stop and candidate per actual output using the ledger contract.
+
+Afterward read the exact committed message, review its actual full SHA and
+repository criteria, and create the context/ledger/preparation/SHA/message-hash
+bound result-review.json from the ledger contract. Use the preparationId and
+latest stateVersion, then run:
+
+```text
+node <installed>/scripts/attribution.mjs finish --worktree <actual-worktree> --ledger <selected-ledger-UUID> --preparation <returned-preparation-UUID> --sha <actual-full-SHA> --review result-review.json --expect-version <returned-state-version>
+```
+
+Only an observed sealed result ends that plan. A failure may leave a candidate,
+a prepared receipt or an already-created commit; inspect status and reconcile
+the exact result. The ledger contract owns retries, changed-message review,
+late selection, imported preparations and the distinction between no-result
+reopening and a new ledger for subsequent amend. Nothing automatically cleans
+or repairs Git history.
+
+## Optional low-level preview and validation
 
 Start message.txt with the intended title/body and existing human/unrelated
 trailers. For skill-default, preview, optionally create a separate new file and

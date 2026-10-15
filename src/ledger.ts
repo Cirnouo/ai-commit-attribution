@@ -137,7 +137,10 @@ export function reopenLedger(state: WorktreeState, id: string, declaration: { re
     if (!['prepared', 'abandoned'].includes(ledger.state))
         throw new InputError('Only prepared or abandoned ledgers can reopen; sealed ledgers are immutable.');
     if (ledger.successorIds.length) throw new InputError('A replaced ledger cannot reopen while it has successors.');
-    if (ledger.state === 'prepared' && declaration.reviewedNoResult !== true)
+    if (
+        (ledger.state === 'prepared' || state.preparations.some((receipt) => receipt.ledgerId === id)) &&
+        declaration.reviewedNoResult !== true
+    )
         throw new InputError('Prepared reopen requires an explicit reviewed-no-result declaration.');
     reviseLedger(ledger);
     ledger.state = 'open';

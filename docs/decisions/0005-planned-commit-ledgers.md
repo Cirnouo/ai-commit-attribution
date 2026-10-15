@@ -231,8 +231,8 @@ with their CLI/schema details owned by the maintained installed contracts in
 [packaging](../../packaging/README.md); this ADR supplies no provisional runtime
 command recipe. Existing [records](../../packaging/records.md),
 [policy](../../packaging/policy.md) and [message](../../packaging/messages.md)
-contracts describe their current delivered versions until updated. A lifecycle
-contract is not linked before it exists.
+contracts describe their delivered versions. The dated progress below records
+the later implementation without changing the acceptance-time observation.
 
 Implementation acceptance must exercise overlapping AB/AC participation,
 context/current recovery and stale selection, concurrent state changes, ignored
@@ -243,3 +243,33 @@ fixtures on supported platforms are separate evidence. No tests or host
 acceptance are claimed by this decision. The existing erasable TypeScript,
 built-ins-only runtime and trusted Node/pnpm development boundaries remain;
 version 0.1.0 stays Unreleased and this decision grants no release authority.
+
+## Implementation progress, 2026-10-15
+
+The implementation now includes confirmed Ledger/Summary schema 2,
+MessageAssessment/MessageResult schema 3, explicit worktree-local lifecycle and
+transfer state, and top-level prepare/finish dispatch. Operation and registry
+remain schema 1; PolicyDecision remains schema 2. ResultPlan,
+PreparedReceipt and ResultReview use schema 1, with strict sealed-result joins.
+The canonical maintained [ledger contract](../../packaging/ledgers.md) owns
+preparation, exact-result review, sealing, transfer and recovery. The
+[message](../../packaging/messages.md), [record](../../packaging/records.md) and
+[policy](../../packaging/policy.md) contracts own their respective inputs and
+Agent responsibilities. The [integration guide](../../packaging/integration.md)
+provides first use and examples; this decision remains architectural history.
+
+The read-only observer checks complete staged manifests and exact commit
+objects without write-tree or repository-policy execution. Preparation publishes
+a separate candidate before persisting its receipt; finish binds the caller's
+fresh review to the exact SHA and message hash and compares the frozen result.
+The declarations still do not authenticate contribution, authority, causality or
+semantic freshness. Git actions remain with the separately authorized integrator.
+
+Portable [acceptance recipes](../acceptance/README.md#planned-commit-ledger-reproduction)
+identify state/selection, transfer, raw-index/result observation and real-Git
+prepare/finish fixtures, including overlapping outputs, failure recovery,
+ordered-parent operation forms and resumed preparation after source removal.
+They are reproducible source checks rather than a claim that every platform,
+native host, final verification gate or fixed-source installation has passed.
+Generated payload equality and independent installed execution remain separate
+checks. Version 0.1.0 remains Unreleased.

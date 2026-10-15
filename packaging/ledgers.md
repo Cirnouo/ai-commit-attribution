@@ -51,7 +51,7 @@ including a content no-op, increases stateVersion once. Stale versions fail.
 | `block` | `--ledger <UUID> --input <json>`; input is exactly `{"id":"required-gap","reason":"Confirm actual model"}`. |
 | `unblock` | `--ledger <UUID> --blocker <exact opaque ID>`. |
 | `pause`, `resume` | `--ledger <UUID>` must equal the actual active/paused current ID respectively. Pause retains the ID. |
-| `reopen` | `--ledger <UUID>`; local prepared or abandoned only. Prepared requires `--reviewed-no-result`, the caller's explicit declaration that no result needs recording. |
+| `reopen` | `--ledger <UUID>`; local prepared or abandoned only. Prepared, or abandoned with preparation history, requires `--reviewed-no-result`, the caller's explicit declaration that no result needs recording. |
 | `abandon` | `--ledger <UUID>` retains a local nonsealed record and conditionally clears only that same current ID. |
 | `split`, `combine` | `--input <json>` with the exact allocation shape below. Sources must be local open ledgers. |
 
@@ -130,9 +130,180 @@ immutable preparation and caller review to the ledger, SHA and final message
 digest. Every persisted sealed record requires this explicit result; other
 lifecycles cannot carry one. Shape validation does not authenticate contribution, authorship or
 policy decisions. These historical contracts grant no authority for a new Git
-action. Preparation and result recording commands are enabled in the next
-implementation stage. This transfer stage accepts strict historical contracts
-without exposing those commands or inferring either action from Git history.
+action. The explicit preparation and result commands below bind these contracts without inferring either action from Git history.
+
+## Prepare one planned result
+
+Use top-level `prepare` and `finish` around each separately authorized Git output.
+Ordinary render/validate remain previews/checks: they never freeze or consume a
+ledger. Before preparation or final review, read the [policy contract](policy.md)
+and [message contract](messages.md). Agent review determines participation,
+applicable rules and authority; the observer only checks finite Git objects.
+
+Prepare requires the exact active current local open ledger and current
+stateVersion. A separate schema-1 Operation and schema-2 PolicyDecision must
+agree. Use a fresh operation ID when scope changes, distinct from this stable
+ledger UUID. Known immutable preparations, including copied-origin history,
+reject reusing an operation ID with a different normalized scope. This is a
+local consistency check, not global ID freshness or policy discovery.
+
+Supply result-plan.json separately from Operation. Its exact members are
+schemaVersion, form, expectedParents, sourceTargets and, for replace only,
+replacementTarget. For an unborn ordinary commit:
+
+```json
+{
+    "schemaVersion": 1,
+    "form": "create",
+    "expectedParents": [],
+    "sourceTargets": []
+}
+```
+
+Use complete lowercase nonzero object IDs of the repository's storage format
+(40 digits for SHA-1, 64 for SHA-256). expectedParents preserves the complete order;
+never sort it. sourceTargets contains exact role/objectId pairs covering the
+complete Operation.targets set; sources do not automatically become parents.
+For create, observed HEAD must be the first parent, or parents must be empty
+when HEAD is unborn. Additional parents are explicit. For replace, the target
+must be observed HEAD and expectedParents must preserve that commit's complete
+ordered parents. Operation.kind alone never chooses form or parent order.
+
+| Caller stop or output | ResultPlan |
+| --- | --- |
+| Ordinary/root commit | create; parent HEAD, or empty for root. |
+| Amend, including root/merge/octopus | replace HEAD; retain all ordered parents. |
+| Cherry-pick conflict or `-n` aggregate | create at current HEAD; list sources separately. |
+| Rebase conflict before continue | create at current HEAD. |
+| Rebase edit after replay | replace the replayed HEAD; original commit remains a source. |
+| Merge/octopus or rebase-merges | Explicit actual ordered parents, including rewritten parents. |
+| `merge --squash` | create with HEAD as the single parent; list sources separately. |
+| Interactive squash/fixup | replace the actual accumulator; do not infer from the word squash. |
+
+Batch replay needs one ledger and preparation per planned output. The caller
+arranges the stop, resolved index and message consumption for every result.
+Fast-forward, skip and drop create no result to seal. No implicit adoption of
+an existing commit is offered.
+
+```text
+node <installed-skill>/scripts/attribution.mjs prepare --worktree <actual-worktree> --ledger <UUID> --expect-version <version> --message <message.txt> --operation <operation.json> --decision <decision.json> --result-plan <result-plan.json> --output <new-candidate.txt>
+```
+
+Optional --assessment is default-branch evidence under the message contract.
+Needs-decision returns 20 before opening state, message, result plan, default
+assessment or registry. Repository-policy still manages its explicitly selected
+plan and result observation, but skips every default identity/blocker/assessment/
+registry gate and preserves the supplied candidate, returning 10. The caller
+must check the actual repository rule independently; 10 never approves it.
+
+Default blockers stop preparation. Unknown optional reasoning is omitted.
+Successful prepare publishes and rereads a safe new candidate, then saves an
+immutable schema-1 prepared-receipt and changes the ledger to prepared at its
+next revision. The receipt freezes identities, blockers, operation, decision,
+ResultPlan, observed HEAD, storage format, full index manifest/tree and candidate
+bytes/hash. The result returns preparationId, outputPath and stateVersion.
+Identity or blocker changes require explicit reopen and new preparation; pause
+and switching retain immutable history. Sealed results require a new ledger for
+later amend or recommit.
+
+Only complete candidate publication and durable prepared state count as success.
+A published candidate followed by failed persistence is candidate-unprepared,
+exit 2; preserve it and inspect status. The file alone is not a preparation.
+An output aliasing an actually consumed input, state directory or protected Git
+metadata is refused. Inputs/outputs retain the message writer's existing new-file
+boundary. Never silently overwrite, delete uncertain artifacts or use age to
+steal a lock.
+
+### Finite Git observation and limits
+
+Preparation captures the complete resolved stage-0 index. Raw path bytes, mode
+and full OID all participate in the manifest; the expected complete Git tree ID
+is computed without write-tree or writing any Git object. Conflict entries,
+intent-to-add, force-staged reserved state paths, missing required objects and
+unsupported index forms stop preparation. Index versions 2/3/4 and expanded
+sparse indexes are supported; split indexes are explicitly unsupported. Gitlinks
+retain their OID without requiring the submodule commit in the superproject's
+object database. SHA-1 and SHA-256 repositories remain separate formats.
+
+Raw index ordering and optional-extension handling follow the official
+[Git index format](https://git-scm.com/docs/gitformat-index), checked 2026-10-15:
+entries use unsigned path-byte order; an uppercase first extension byte marks
+an optional extension. Strict bounds and mandatory-extension checks still apply.
+These format checks cannot establish participation or authority.
+
+The dedicated observer accepts fixed trusted-Git query templates, with hooks,
+fsmonitor, external diff, optional locks, replacement objects and lazy fetching
+disabled. It does not execute repository policy scripts. Each Git query is
+bounded to 10 seconds, the full observation to 30 seconds, individual data/output
+to 16 MiB and aggregate subprocess output to 64 MiB, with at most 100,000 paths.
+Full message/input limits remain 2 MiB; state and transfer files remain separate
+16 MiB limits. Oversize/unsupported observations fail closed. No hook installation,
+commit, replay continuation, todo edit, index/ref/history write or push is provided.
+
+## Review and finish an exact result
+
+After the separately authorized real Git action, read the exact complete SHA's
+raw commit message and review the applicable rule and causal result. Hash the
+actual message bytes with SHA-256, including its final newline; do not hash a
+pretty-printed Git log, normalized text or an assumed candidate. Supply a fresh
+schema-1 result-review bound to the current target context and preparation:
+
+```json
+{
+    "schemaVersion": 1,
+    "artifact": "result-review",
+    "contextId": "<current context UUID>",
+    "ledgerId": "<ledger UUID>",
+    "preparationId": "<prepared receipt UUID>",
+    "sha": "<actual complete result SHA>",
+    "messageSha256": "<SHA-256 of exact actual message bytes>",
+    "createdByPreparation": true,
+    "policyReviewed": true,
+    "reference": "<actual result and policy review provenance>"
+}
+```
+
+All strings in angle brackets are placeholders requiring actual observations.
+createdByPreparation and policyReviewed are caller declarations, not helper
+authentication. Add repositoryPolicyChecked:true only after checking the actual
+repository criteria for this SHA/message on the repository-policy branch.
+Add acceptMessageChange:true only after explicitly reviewing and accepting this
+exact changed final message. Unknown fields and false-valued approval flags fail.
+
+```text
+node <installed-skill>/scripts/attribution.mjs finish --worktree <actual-worktree> --ledger <UUID> --preparation <preparation-UUID> --sha <complete-result-SHA> --review <result-review.json> --expect-version <version>
+```
+
+Finish compares the exact result's storage format, complete ordered parents,
+tree and semantic manifest to the immutable receipt. It need not still be HEAD
+and does not depend on sequencer, MERGE_HEAD or temporary message files surviving.
+Observed old HEAD, replacement target and source commits cannot be adopted as
+new results. These finite checks plus a caller declaration do not prove causality
+or discover unknown contributors.
+
+Message comparison permits CRLF/LF conversion and the presence/absence of one
+terminal newline. Other differences retain prepared state and return 20 until
+an exact final-message review explicitly accepts them. Default validation still
+requires the frozen identity set after acceptance, using frozen canonical hosts
+without current catalog aliases. Repository-policy never runs this default gate;
+it requires the separate exact-result repositoryPolicyChecked declaration and
+retains exit 10 even after sealing. Optional --assessment is read only on default
+validation, following the message contract's exact final-message joins.
+
+Successful finish stores explicit SHA, final message digest, review and finite
+check outcomes, seals the ledger and clears current only if it still points to
+that ID. A later selected ledger survives. Retrying the same ledger/preparation/
+SHA/message hash is idempotent, including a syntactically valid older expected
+version; another result never overwrites sealed history. A failed seal preserves
+the real commit and recoverable receipt. Inspect status and retry that exact
+result; do not assume the commit failed, amend automatically or start over.
+
+After resume import or original-move rebind, historical paths need not exist for
+finish. Fresh target-context result/policy review is required. The old preparation
+is a contract for an already-created result, never authority for a new action.
+If no result exists, explicitly review that fact, reopen and prepare anew. A copy
+import's new ledger cannot finish from the source preparation. A prepared plan
+with an unknown result must be reconciled before reuse or abandonment.
 
 ## Export and interruption recovery
 

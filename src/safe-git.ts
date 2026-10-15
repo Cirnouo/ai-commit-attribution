@@ -4,7 +4,10 @@ import path from 'node:path';
 
 export class ObservationError extends Error {}
 export function inside(root: string, target: string): boolean {
-    const relative = path.relative(root, target);
+    const relative = path.relative(
+        path.toNamespacedPath(path.resolve(root)),
+        path.toNamespacedPath(path.resolve(target)),
+    );
     return (
         relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
     );

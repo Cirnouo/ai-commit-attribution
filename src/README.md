@@ -5,7 +5,7 @@ parseOperationShape preserves portable historical declarations without filesyste
 observation; parseOperation additionally enforces physical local directories for
 current scope. Portable shapes never authorize a current Git action.
 summarize.ts normalizes confirmed identities, deduplicates exact tuples and
-reports declared blockers. attribution.ts exposes ledger commands, summarize, render and validate,
+reports declared blockers. attribution.ts exposes ledger commands, prepare/finish, summarize, render and validate,
 and locates its installed registry from import.meta.url. Source requires no
 runtime packages.
 
@@ -24,6 +24,13 @@ result-contract.ts owns pure historical ResultPlan and PreparedReceipt parsing,
 including ordered object references, candidate bytes and digests. result-review.ts
 owns pure ResultReview and SealedResult declarations and their exact ID/hash
 joins. Neither historical parser observes the filesystem or authorizes a new action.
+result-git.ts owns bounded read-only index/tree/result observation through fixed
+trusted Git queries, raw index parsing and complete manifest/tree comparisons.
+ledger-preparation.ts owns candidate-before-state preparation and exact-result
+sealing, frozen identity/policy boundaries, explicit caller review and idempotent
+recovery. ledger-preparation-cli.ts parses their top-level commands and loads
+only consumed default evidence. Lazy loaders record their actual consumed paths
+for publication protection. packaging/ledgers.md owns their installed contract.
 state-path.ts owns matching the reserved raw Git path namespace, including case
 variants on Windows/macOS and Windows stream, trailing-character and short-name aliases.
 
@@ -41,7 +48,8 @@ message.ts adds route-first render/validate with a lazy default-input boundary.
 message-contract.ts owns their result types; message-assessment.ts checks exact
 current signature/migration joins using full identity keys. message-trailers.ts runs isolated
 Git interpretation and reconciles owned byte spans. message-output.ts creates
-only safe absent new files. output-scope.ts locates actual Git administrative
+only safe absent new files and owns ordinary-output checks excluding Windows
+streams/device namespaces, shared by ledger export. output-scope.ts locates actual Git administrative
 directories only for explicit new-file output protection. safe-git.ts restricts
 location and ledger-initialization observations to fixed query forms, with trusted executable,
 environment, time and network boundaries. packaging/messages.md owns the

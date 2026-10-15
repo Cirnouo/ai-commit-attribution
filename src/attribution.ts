@@ -3,7 +3,7 @@ import { isMainModule } from '../tooling/cli-entry.ts';
 import { readRegularFile } from '../tooling/file-evidence.ts';
 import { INPUT_BYTES } from './input-contract.ts';
 import { DECISION_MIGRATION } from './policy.ts';
-import { checkRaw, InputError, parseOperation } from './records.ts';
+import { checkRaw, InputError, parseOperation, parseRegistry } from './records.ts';
 
 type LedgerSource = { input?: string; ledger?: string; current?: string };
 function ledgerSource(options: Map<string, string>, required: boolean): LedgerSource {
@@ -74,6 +74,14 @@ async function loadLedger(source: LedgerSource, operationValue: unknown, consume
 }
 export async function run(args: readonly string[]) {
     if (args[0] === 'policy' || args.includes('--context')) throw new InputError(DECISION_MIGRATION);
+    if (args[0] === 'prepare' || args[0] === 'finish') {
+        const { runPreparation } = await import('./ledger-preparation-cli.ts');
+        return runPreparation(args, async (consumedPaths) => {
+            const registryFile = new URL('../references/agent-registry.json', import.meta.url);
+            consumedPaths.push(fileURLToPath(registryFile));
+            return parseRegistry(await jsonFile(registryFile));
+        });
+    }
     if (args[0] === 'ledger') {
         const { runLedger } = await import('./ledger-cli.ts');
         return { exitCode: 0, ...(await runLedger(args.slice(1))) };

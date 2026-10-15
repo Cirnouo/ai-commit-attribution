@@ -5,12 +5,15 @@ First prepare an actual operation and semantic policy decision using the
 [policy contract](policy.md). Before preparing a default participation ledger,
 read the [record contract](records.md). Repository disclosure policy applies
 exclusively; these default Assisted-by rules never supplement or veto it.
+Before using prepare or finish to freeze a candidate or reconcile an exact
+commit result, read the [ledger contract](ledgers.md). It owns the persistent
+lifecycle and result contracts; render/validate alone do not prepare a ledger.
 
 ## Commands and results
 
 ```text
-node <installed>/scripts/attribution.mjs render --message <message.txt> --operation <operation.json> --decision <decision.json> [--input <ledger.json>] [--assessment <assessment.json>] [--output <new-message.txt>]
-node <installed>/scripts/attribution.mjs validate --message <message.txt> --operation <operation.json> --decision <decision.json> [--input <ledger.json>] [--assessment <assessment.json>]
+node <installed>/scripts/attribution.mjs render --message <message.txt> --operation <operation.json> --decision <decision.json> [--input <ledger.json> | --ledger <UUID> | --current <worktree>] [--assessment <assessment.json>] [--output <new-message.txt>]
+node <installed>/scripts/attribution.mjs validate --message <message.txt> --operation <operation.json> --decision <decision.json> [--input <ledger.json> | --ledger <UUID> | --current <worktree>] [--assessment <assessment.json>]
 ```
 
 Explicit files resolve against the invocation directory. Installed resources
@@ -34,8 +37,11 @@ freshness or executes repository validators. The integrator separately records
 actual criteria/checks/outcomes for the operation, read rules and exact
 input/final-message hash, with actor/source and remaining limits.
 
-On skill-default only, --input is required and the schema-2 summary owns confirmed identity
-canonicalization, tuple ordering and declared blockers. The result
+On skill-default only, exactly one of --input, --ledger or --current is required.
+The [ledger contract](ledgers.md#selection-and-state-contract) owns persistent
+selection; --input supplies the low-level explicit snapshot. The schema-2
+summary owns confirmed identity canonicalization, tuple ordering and declared
+blockers. The result
 separates format valid/invalid/not-run, participation complete-against-declared-input,
 incomplete/not-run, and repository checking not-run.
 It includes operation and routing.branch, input hash, issues, limitations and exitCode.
@@ -154,18 +160,23 @@ Known required gaps persist as ledger blockers. Resolve the facts and inclusion
 judgment before clearing them; the helper offers no incomplete-disclosure
 exception continuation. It cannot authenticate consent or grant Git authority.
 
-Only render with --output performs a minimal trusted lookup of the actual Git
-administrative directories for output protection. It does not inspect HEAD,
+Within the low-level message path, render with --output performs a minimal
+trusted lookup of the actual Git administrative directories for output
+protection; persistent selectors also resolve the actual worktree and read its
+state under the ledger contract. Neither operation inspects HEAD,
 index, target commits, changed paths, policy documents or hook/template
-configuration. Preview and validate do not query the target repository through
-Git; they check explicit input declarations. Default trailer processing still
+configuration. Preview and validate check the selected declarations rather than
+observing staged or committed content. Default trailer processing still
 uses Git in an isolated non-repository directory. Matching supplied scope does
 not establish actual Git state or freshness.
 
 Render previews by default; validate never writes. --output creates only an
 explicit absent new regular file under a safe physical existing parent. It
 rejects existing files/directories, links/reparse points, hardlinks, consumed
-input aliases and Git administrative paths. No overwrite, in-place edit,
+input aliases and Git administrative paths. Windows streams and unsupported
+device namespaces are refused; ordinary extended-drive/UNC spellings retain
+the same containment protection. POSIX literal colons remain filename data.
+No overwrite, in-place edit,
 recursive replacement or repair occurs. Failure cleanup removes a file only
 after its exact full bytes were verified and its recorded identity, metadata and
 parent remain unchanged. Failed/interrupted or short writes leave uncertain

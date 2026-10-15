@@ -68,9 +68,15 @@ Choose repository-policy when an applicable repository AI disclosure rule owns
 the operation. Choose skill-default only after the semantic review establishes
 that no applicable AI disclosure rule replaces it and no known relevant issue
 remains. Choose needs-decision for an unresolved rule, conflict or required fact.
-The helper checks the supplied decision's shape and scope and dispatches that
+Decision routing checks the supplied decision's shape and scope and dispatches that
 branch. It does not discover documents, inspect policy sources, capture Git state,
 bind evidence or automatically rescan or establish freshness.
+
+Before prepare or finish, read the [ledger contract](ledgers.md). Its narrow
+read-only observer checks staged content and exact result objects for the
+declared plan. That mechanical observation does not discover disclosure rules,
+authenticate policy review or establish semantic freshness; this contract's
+Agent review responsibilities still apply.
 
 Before rendering, validating or interpreting message results, read the
 [message contract](messages.md). repository-policy bypasses all default inputs
@@ -96,7 +102,9 @@ review and decision. Matching JSON cannot establish live state or freshness.
 
 Before a separately authorized real Git operation, confirm the applicable rule
 and intended message. Afterward read the final committed message and current
-operation evidence and check that rule again. Report host/hook rewriting and
+operation evidence and check that rule again. For a persistent prepared ledger,
+use the ledger contract's exact-result review and finish procedure after that
+review; the caller's declaration is not helper authentication. Report host/hook rewriting and
 stop later actions on mismatch; do not automatically amend, roll back, push or
 rewrite history. Helpers prepare/check messages and never commit, push, change
 refs/index/history/identity/configuration or grant permission. File searches and

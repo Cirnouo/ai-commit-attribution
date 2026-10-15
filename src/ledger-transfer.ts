@@ -31,7 +31,7 @@ import {
     resolveLedgerContext,
     transactState,
 } from './ledger-store.ts';
-import { writeNewMessage } from './message-output.ts';
+import { checkOrdinaryOutputPath, writeNewMessage } from './message-output.ts';
 import { checkRaw, InputError, ordinal } from './records.ts';
 import type { PreparedReceipt } from './result-contract.ts';
 import { byteDigest, digest, inspectPath, physicalDirectory } from './runtime-support.ts';
@@ -118,24 +118,12 @@ async function externalOutput(context: LedgerContext, file: string): Promise<str
     checkRaw(file);
     if (!file) throw new InputError('Explicit transfer output path is empty.');
     const output = path.resolve(file);
-    const safetyPath = (value: string) => {
-        if (process.platform !== 'win32') return value;
-        if (/^\\\\\?\\UNC\\/i.test(value)) return value.replace(/^\\\\\?\\UNC\\/i, '\\\\');
-        if (/^\\\\\?\\[a-z]:\\/i.test(value)) return value.slice(4);
-        if (/^\\\\[?.]\\/.test(value))
-            throw new InputError('Transfer output uses an unsupported Windows device namespace.');
-        return value;
-    };
-    const checked = safetyPath(output);
-    // NTFS directory streams can look like external regular files but disappear with their owner.
-    // Only a leading drive designator may contain a colon; physical checks handle other aliases.
-    if (process.platform === 'win32' && checked.replace(/^[a-z]:/i, '').includes(':'))
-        throw new InputError('Transfer output must be an ordinary external file, not a Windows stream.');
+    checkOrdinaryOutputPath(output);
     if (
-        inside(safetyPath(context.locator.worktree), checked) ||
-        inside(safetyPath(context.locator.gitDirectory), checked) ||
-        inside(safetyPath(context.locator.commonGitDir), checked) ||
-        checked.split(path.sep).some((part) => part.toLowerCase() === '.git')
+        inside(context.locator.worktree, output) ||
+        inside(context.locator.gitDirectory, output) ||
+        inside(context.locator.commonGitDir, output) ||
+        output.split(path.sep).some((part) => part.toLowerCase() === '.git')
     )
         throw new InputError('Transfer output must be outside the worktree and protected Git metadata.');
     await physicalDirectory(path.dirname(output));

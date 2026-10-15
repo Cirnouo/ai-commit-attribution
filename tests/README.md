@@ -60,6 +60,17 @@ publication interruption recovery, late current preservation, strict portable
 references and byte limits, raw digest conflicts, prepared source disappearance,
 resume/copy history, original-move rebind, stale removal coverage and explicit
 terminal pruning with durable import idempotence receipts.
+result-git.test.ts exercises raw v2/v3/v4 and sparse indexes, both object formats,
+complete path/mode/OID manifests, hostile runnable monitor/hook positive controls,
+corrupt/missing objects and unsupported states without changing Git authority.
+ledger-preparation.test.ts uses real Git actions by isolated fixture callers for
+all six operation kinds, ordered merge/octopus parents, conflict/edit/merge replay,
+both squash forms, exact final-message review and transferred preparation recovery.
+It also checks late/current/version races, candidate/seal failure boundaries,
+retained copy ancestry and actual consumed-evidence path protection.
+ledger-preparation-entry.test.ts executes the complete copied CLI outside source
+and development dependencies, including preparation, actual fixture commit,
+exact-result sealing, idempotent retry and exclusive routing.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.
