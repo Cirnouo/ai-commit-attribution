@@ -57,76 +57,12 @@ export function gitEnvironment(environment = process.env): NodeJS.ProcessEnv {
 }
 const sameArgs = (actual: readonly string[], expected: readonly string[]) =>
     actual.length === expected.length && actual.every((value, index) => value === expected[index]);
-const objectId = (value: string | undefined) => value !== undefined && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value);
-/** Only argv forms used by the observer are accepted, including query modes of commands that can also write. */
+/** Only the three metadata-location queries used for new-file output protection are accepted. */
 function readOnlyArguments(command: string, args: string[]): boolean {
-    switch (command) {
-        case 'symbolic-ref':
-            return sameArgs(args, ['--quiet', 'HEAD']);
-        case 'rev-parse':
-            return (
-                (args.length === 1 &&
-                    [
-                        '--show-toplevel',
-                        '--absolute-git-dir',
-                        '--git-common-dir',
-                        '--show-object-format',
-                        '--shared-index-path',
-                    ].includes(args[0] ?? '')) ||
-                sameArgs(args, ['--verify', '--quiet', 'HEAD']) ||
-                (args.length === 2 && args[0] === '--verify' && /^[a-f0-9]{4,64}\^\{commit\}$/.test(args[1] ?? ''))
-            );
-        case 'rev-list':
-            return (
-                args.length === 2 &&
-                args[0] === '--max-count=10001' &&
-                /^(?:[a-f0-9]{40}|[a-f0-9]{64})\.\.(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(args[1] ?? '')
-            );
-        case 'ls-files':
-            return sameArgs(args, ['--stage', '-z']) || sameArgs(args, ['--cached', '-z']);
-        case 'cat-file':
-            return (
-                args.length === 2 &&
-                ((['-t', '-p'].includes(args[0] ?? '') && objectId(args[1])) ||
-                    (args[0] === '-e' && /^(?:[a-f0-9]{40}|[a-f0-9]{64})\^\{commit\}$/.test(args[1] ?? '')))
-            );
-        case 'diff':
-            return (
-                sameArgs(args, ['--cached', '--name-only', '-z', '--no-ext-diff', '--no-textconv', '--']) ||
-                (args.length === 7 &&
-                    sameArgs(args.slice(0, 4), ['--name-only', '-z', '--no-ext-diff', '--no-textconv']) &&
-                    objectId(args[4]) &&
-                    objectId(args[5]) &&
-                    args[6] === '--')
-            );
-        case 'diff-tree': {
-            const prefix = args.includes('-m')
-                ? ['--root', '-m', '--no-commit-id', '--name-only', '-r', '-z', '--no-ext-diff', '--no-textconv']
-                : ['--root', '--no-commit-id', '--name-only', '-r', '-z', '--no-ext-diff', '--no-textconv'];
-            return (
-                args.length === prefix.length + 2 &&
-                sameArgs(args.slice(0, prefix.length), prefix) &&
-                objectId(args[prefix.length]) &&
-                args.at(-1) === '--'
-            );
-        }
-        case 'config': {
-            if (sameArgs(args.slice(0, 2), ['--no-includes', '--file']) && path.isAbsolute(args[2] ?? ''))
-                return (
-                    sameArgs(args.slice(3), ['--get-regexp', '^includeIf\\..*\\.path$']) ||
-                    sameArgs(args.slice(3), ['--bool', '--get', 'extensions.worktreeConfig'])
-                );
-            return (
-                args.length === 6 &&
-                sameArgs(args.slice(0, 3), ['--no-includes', '--null', '--file']) &&
-                path.isAbsolute(args[3] ?? '') &&
-                args[4] === '--get-all' &&
-                ['core.hooksPath', 'commit.template', 'include.path'].includes(args[5] ?? '')
-            );
-        }
-        default:
-            return false;
-    }
+    return (
+        command === 'rev-parse' &&
+        ['--show-toplevel', '--absolute-git-dir', '--git-common-dir'].some((option) => sameArgs(args, [option]))
+    );
 }
 export class SafeGit {
     readonly executable: string;

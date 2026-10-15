@@ -1,189 +1,19 @@
-import path from 'node:path';
-import { INPUT_BYTES, object, strings } from './input-contract.ts';
 import type { Operation } from './records.ts';
-import { checkRaw, InputError, text } from './records.ts';
 
-export { object, strings } from './input-contract.ts';
-
-export const LIMITS = Object.freeze({
-    profile: 'policy-scan-v1' as const,
-    inputBytes: INPUT_BYTES,
-    paths: 10_000,
-    files: 128,
-    fileBytes: 256 * 1024,
-    bytes: 4 * 1024 * 1024,
-    candidates: 256,
-    ancestors: 64,
-    directoryLevels: 16,
-    referenceHops: 8,
-    entries: 4096,
-});
-export type ScopeContext = {
-    schemaVersion: 1;
-    phase: string;
-    selection: string;
-    additionalCandidatePaths?: string[];
-    invocation: {
-        kind: string;
-        reference: string;
-        effectiveDirectory: string;
-        repositoryPath?: string;
-        gitDirectory?: string;
-        worktreePath?: string;
-        adapter?: string;
-    };
-};
 export type Issue = { id: string; code: string; locator?: string; detail: string };
-export type Candidate = {
-    id: string;
-    locator: string;
-    sourceKind: string;
-    scopeBasis: string;
-    sha256: string;
-    byteLength: number;
-    text: string;
-    referenceIds: string[];
-};
-export type Binding = {
-    canonicalizationVersion: 1;
-    gitDirectory: string;
-    commonGitDir: string;
-    scopeDigest: string;
-    gitStateDigest: string;
-    pathStateDigest: string;
-    invocationDigest: string;
-    evidenceDigest: string;
-    scanDigest: string;
-};
-export type PolicyScan = {
-    schemaVersion: 1;
-    artifact: 'policy-scan';
-    operation: Operation;
-    context: ScopeContext;
-    binding: Binding;
-    scanStatus: 'complete' | 'incomplete';
-    candidates: Candidate[];
-    checkedLocations: { locator: string; status: 'present' | 'absent' | 'failed' }[];
-    issues: Issue[];
-    limits: { profile: 'policy-scan-v1'; files: number; bytes: number; candidates: number; referenceHops: number };
-    limitations: string[];
-    exitCode: number;
-};
+export type PolicyBranch = 'repository-policy' | 'skill-default' | 'needs-decision';
 export type Decision = {
-    schemaVersion: 1;
+    schemaVersion: 2;
     artifact: 'policy-decision';
     operation: Operation;
-    binding: Binding;
-    branch: string;
-    assessments: { candidateId: string; classification: string; rationale: string }[];
-    selectedCandidateIds: string[];
-    issueIds: string[];
+    branch: PolicyBranch;
     rationale: string;
-    decisionSource: { kind: string; reference: string };
+    decisionSource: { kind: 'agent-semantic'; reference: string };
 };
-export type PolicyRouteCheck = {
-    schemaVersion: 1;
-    artifact: 'policy-route-check';
+export type PolicyRoute = {
     operation: Operation;
-    binding: Binding;
-    freshness: 'current' | 'stale' | 'unresolved';
-    branch: string;
-    defaultValidation: 'not-run' | 'eligible';
-    repositoryPolicyValidation: 'not-run';
-    selectedCandidateIds: string[];
+    branch: PolicyBranch;
     issues: Issue[];
     limitations: string[];
     exitCode: number;
 };
-export type FreshRoutingResult = PolicyRouteCheck & { freshScan: PolicyScan };
-function absolute(value: unknown): string {
-    text(value);
-    const result = value as string;
-    if (!path.isAbsolute(result)) throw new InputError('Policy locator must be absolute.');
-    return result;
-}
-export function parseContext(value: unknown): ScopeContext {
-    checkRaw(value);
-    const data = object(value, ['schemaVersion', 'phase', 'selection', 'additionalCandidatePaths', 'invocation']);
-    if (
-        data.schemaVersion !== 1 ||
-        !['prepare', 'edit-message'].includes(text(data.phase)) ||
-        !['index', 'specified-paths', 'all-tracked', 'operation-targets', 'planned-paths'].includes(
-            text(data.selection),
-        )
-    )
-        throw new InputError('Unsupported scope context version, phase or selection.');
-    const supplied = object(data.invocation, [
-        'kind',
-        'reference',
-        'effectiveDirectory',
-        'repositoryPath',
-        'gitDirectory',
-        'worktreePath',
-        'adapter',
-    ]);
-    const invocation: ScopeContext['invocation'] = {
-        kind: text(supplied.kind),
-        reference: text(supplied.reference),
-        effectiveDirectory: absolute(supplied.effectiveDirectory),
-    };
-    if (!['direct-git', 'wrapper-adapter', 'agent-context'].includes(invocation.kind))
-        throw new InputError('Unsupported invocation kind.');
-    for (const field of ['repositoryPath', 'gitDirectory', 'worktreePath'] as const)
-        if (supplied[field] !== undefined) invocation[field] = absolute(supplied[field]);
-    if (supplied.adapter !== undefined) invocation.adapter = text(supplied.adapter);
-    const context: ScopeContext = {
-        schemaVersion: 1,
-        phase: text(data.phase),
-        selection: text(data.selection),
-        invocation,
-    };
-    if (data.additionalCandidatePaths !== undefined)
-        context.additionalCandidatePaths = strings(data.additionalCandidatePaths).map(absolute);
-    return context;
-}
-export function parseBinding(value: unknown): Binding {
-    const data = object(value, [
-        'canonicalizationVersion',
-        'gitDirectory',
-        'commonGitDir',
-        'scopeDigest',
-        'gitStateDigest',
-        'pathStateDigest',
-        'invocationDigest',
-        'evidenceDigest',
-        'scanDigest',
-    ]);
-    checkRaw(data);
-    if (data.canonicalizationVersion !== 1) throw new InputError('Unsupported binding canonicalization version.');
-    const result: Binding = {
-        canonicalizationVersion: 1,
-        gitDirectory: absolute(data.gitDirectory),
-        commonGitDir: absolute(data.commonGitDir),
-        scopeDigest: '',
-        gitStateDigest: '',
-        pathStateDigest: '',
-        invocationDigest: '',
-        evidenceDigest: '',
-        scanDigest: '',
-    };
-    for (const field of [
-        'scopeDigest',
-        'gitStateDigest',
-        'pathStateDigest',
-        'invocationDigest',
-        'evidenceDigest',
-        'scanDigest',
-    ] as const) {
-        const digest = text(data[field]);
-        if (!/^[a-f0-9]{64}$/.test(digest)) throw new InputError('Invalid policy binding digest.');
-        result[field] = digest;
-    }
-    return result;
-}
-export const LIMITATIONS = [
-    'Finite bounded discovery records checked locations; it cannot prove no undiscovered policy exists.',
-    'Agent semantic assessments and invocation references are declarations, not authenticated policy truth, wrapper intent or user authorization.',
-    'Observed bytes and identity checks are not an atomic snapshot and cannot prevent later races; repeat freshness checks before consumption and after waiting.',
-    'Repository-policy validation is not performed; no default identity, registry, summary or message validation is run by policy commands.',
-];

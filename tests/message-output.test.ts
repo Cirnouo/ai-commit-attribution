@@ -13,15 +13,8 @@ test('cancelled new-file publication creates no artifact', async () => {
     try {
         const output = path.join(directory, 'output');
         const binding = {
-            canonicalizationVersion: 1 as const,
             gitDirectory: path.join(directory, 'admin'),
             commonGitDir: path.join(directory, 'common'),
-            scopeDigest: '',
-            gitStateDigest: '',
-            pathStateDigest: '',
-            invocationDigest: '',
-            evidenceDigest: '',
-            scanDigest: '',
         };
         const controller = new AbortController();
         controller.abort();

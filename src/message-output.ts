@@ -2,7 +2,7 @@ import { type BigIntStats, constants } from 'node:fs';
 import { lstat, open, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { readRegularFile, samePhysicalPath } from '../tooling/file-evidence.ts';
-import type { Binding } from './policy-contract.ts';
+import type { OutputScope } from './output-scope.ts';
 import { checkRaw, InputError } from './records.ts';
 import { inspectPath, physical } from './runtime-support.ts';
 import { inside } from './safe-git.ts';
@@ -11,7 +11,7 @@ import { inside } from './safe-git.ts';
 export async function writeNewMessage(
     file: string,
     bytes: Buffer,
-    binding: Binding,
+    scope: OutputScope,
     consumed: readonly string[],
     signal?: AbortSignal,
 ): Promise<string> {
@@ -24,8 +24,8 @@ export async function writeNewMessage(
     const destination = path.resolve(file);
     if (
         consumed.some((input) => samePhysicalPath(path.resolve(input), destination)) ||
-        inside(binding.gitDirectory, destination) ||
-        inside(binding.commonGitDir, destination) ||
+        inside(scope.gitDirectory, destination) ||
+        inside(scope.commonGitDir, destination) ||
         destination.split(path.sep).some((part) => part.toLowerCase() === '.git')
     )
         throw new InputError('Output aliases a consumed input or protected Git metadata.');

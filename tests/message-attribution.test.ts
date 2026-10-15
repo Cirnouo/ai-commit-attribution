@@ -5,7 +5,6 @@ import { chmod, cp, link, mkdir, mkdtemp, readFile, realpath, rm, symlink, write
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { scanPolicy } from '../src/policy.ts';
 import { resolveTrustedGit } from '../src/safe-git.ts';
 
 const registry = {
@@ -41,28 +40,12 @@ async function fixture(policy?: string) {
         paths: ['new.txt'],
         targets: [],
     };
-    const context = {
-        schemaVersion: 1,
-        phase: 'prepare',
-        selection: 'planned-paths',
-        invocation: { kind: 'agent-context', reference: 'dispatch:fixture', effectiveDirectory: repository },
-    };
-    const scan = await scanPolicy({ operation, context });
-    assert.equal(scan.exitCode, 0, JSON.stringify(scan.issues));
     const decision = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         artifact: 'policy-decision',
-        operation: scan.operation,
-        binding: scan.binding,
+        operation,
         branch: policy ? 'repository-policy' : 'skill-default',
-        assessments: scan.candidates.map((candidate) => ({
-            candidateId: candidate.id,
-            classification: policy ? 'ai-disclosure-policy' : 'unrelated',
-            rationale: 'Synthetic semantic fixture decision.',
-        })),
-        selectedCandidateIds: policy ? scan.candidates.map((candidate) => candidate.id) : [],
-        issueIds: [],
-        rationale: 'Fixture policy was inspected.',
+        rationale: 'Fixture policy was inspected by the Agent.',
         decisionSource: { kind: 'agent-semantic', reference: 'fixture:decision' },
     };
     const event = (id = 'e', model = 'formal.model-1', reasoning: unknown = { state: 'unknown' }) => ({
@@ -110,9 +93,7 @@ async function fixture(policy?: string) {
         repository,
         executable,
         operation,
-        context,
         decision,
-        scan,
         event,
         ledger,
         git,
@@ -298,31 +279,12 @@ test('raw folded or malformed Assisted-by is rejected; unresolved required recor
     }
 });
 
-test('stale routing stops before default reads or output creation', async () => {
+test('message processing does not recapture target bytes after a declared decision or asynchronous evidence handoff', async () => {
     const { processMessage } = await runtime();
     const f = await fixture();
     try {
         await writeFile(path.join(f.repository, 'new.txt'), 'changed after a wait\n');
         const before = await f.snapshot();
-        const output = path.join(f.directory, 'new-message.txt');
-        const result = await processMessage(
-            { mode: 'render', message: Buffer.from('subject\n'), output, ...f },
-            async () => {
-                throw new Error('default read after stale decision');
-            },
-        );
-        assert.equal(result.exitCode, 20);
-        assert.equal(existsSync(output), false);
-        assert.deepEqual(await f.snapshot(), before);
-    } finally {
-        await f.dispose();
-    }
-});
-
-test('validation rechecks actual state after an asynchronous evidence handoff', async () => {
-    const { processMessage } = await runtime();
-    const f = await fixture();
-    try {
         const result = await processMessage(
             { mode: 'validate', message: Buffer.from('subject\n\nAssisted-by: Codex App:formal.model-1\n'), ...f },
             async () => {
@@ -330,8 +292,9 @@ test('validation rechecks actual state after an asynchronous evidence handoff', 
                 return { ledger: f.ledger, registry };
             },
         );
-        assert.equal(result.exitCode, 20);
-        assert.equal(result.routing.freshness, 'stale');
+        assert.equal(result.exitCode, 0);
+        assert.deepEqual(result.routing, { branch: 'skill-default' });
+        assert.deepEqual({ ...(await f.snapshot()), worktreeBytes: before.worktreeBytes }, before);
     } finally {
         await f.dispose();
     }
@@ -475,12 +438,10 @@ test('message success and failures preserve real staged index bytes and unstaged
         await writeFile(path.join(f.repository, 'new.txt'), 'staged fixture bytes\n');
         f.git(['add', 'new.txt']);
         await writeFile(path.join(f.repository, 'new.txt'), 'unstaged fixture bytes\n');
-        const scan = await scanPolicy({ operation: f.operation, context: f.context });
-        assert.equal(scan.exitCode, 0);
-        const decision = { ...f.decision, binding: scan.binding };
+        const decision = f.decision;
         const before = await f.snapshot();
         const rendered = await processMessage(
-            { mode: 'render', message: Buffer.from('subject\n'), operation: f.operation, context: f.context, decision },
+            { mode: 'render', message: Buffer.from('subject\n'), operation: f.operation, decision },
             async () => ({ ledger: f.ledger, registry }),
         );
         assert.equal(rendered.exitCode, 0);
@@ -489,7 +450,6 @@ test('message success and failures preserve real staged index bytes and unstaged
                 mode: 'validate',
                 message: Buffer.from('subject\n\nAssisted-by: Codex App:\n broken\n'),
                 operation: f.operation,
-                context: f.context,
                 decision,
             },
             async () => ({ ledger: f.ledger, registry }),
@@ -503,46 +463,29 @@ test('message success and failures preserve real staged index bytes and unstaged
     }
 });
 
-test('automatic signing assessment joins the exact fresh candidate and cannot be migrated by editing a message', async () => {
+test('automatic signing declarations need no loaded source and cannot be migrated by editing a message', async () => {
     const { processMessage } = await runtime();
     const f = await fixture();
     try {
-        const config = path.join(f.directory, 'host-signing.conf');
-        await writeFile(config, 'Actual supplied fixture host automatically appends an AI coauthor.\n');
-        const context = { ...f.context, additionalCandidatePaths: [config] };
-        const scan = await scanPolicy({ operation: f.operation, context });
-        assert.equal(scan.exitCode, 0);
-        const candidate = scan.candidates.find((candidate) => candidate.locator === config);
-        assert.ok(candidate);
-        const decision = {
-            ...f.decision,
-            binding: scan.binding,
-            assessments: scan.candidates.map((candidate) => ({
-                candidateId: candidate.id,
-                classification: 'unrelated',
-                rationale: 'Host configuration data, no normative disclosure rule.',
-            })),
-        };
         const message = Buffer.from('subject\n\nCo-authored-by: Unclassified <person@example.invalid>\n');
         const assessment = {
-            schemaVersion: 1,
+            schemaVersion: 2,
             artifact: 'message-assessment',
             operation: f.operation,
-            binding: scan.binding,
             messageSha256: (await import('node:crypto')).createHash('sha256').update(message).digest('hex'),
             signatures: [
                 {
                     id: 'auto',
-                    source: { policyCandidateId: candidate.id },
+                    source: { kind: 'automatic-signing', reference: path.join(f.directory, 'absent-source') },
                     classification: 'ai-signature',
                     eventIds: ['e'],
                     evidenceReferences: ['fixture:observed-host'],
-                    rationale: 'Exact effective fixture configuration.',
+                    rationale: 'An independently supplied host-signing declaration.',
                 },
             ],
             migrations: [],
         };
-        const input = { mode: 'render' as const, message, operation: f.operation, context, decision };
+        const input = { mode: 'render' as const, message, operation: f.operation, decision: f.decision };
         const before = await f.snapshot();
         const result = await processMessage(input, async () => ({ ledger: f.ledger, registry, assessment }));
         assert.equal(result.exitCode, 20);
@@ -556,10 +499,17 @@ test('automatic signing assessment joins the exact fresh candidate and cannot be
                 registry,
                 assessment: {
                     ...assessment,
-                    signatures: [{ ...assessment.signatures[0], source: { policyCandidateId: 'unknown' } }],
+                    migrations: [
+                        {
+                            signatureIds: ['auto'],
+                            eventIds: ['e'],
+                            mappingReferences: ['fixture:map'],
+                            modificationDecision: { operationId: 'op', reference: 'fixture:modify' },
+                        },
+                    ],
                 },
             })),
-            /candidate/,
+            /migration/i,
         );
         await assert.rejects(
             processMessage(input, async () => ({
@@ -593,21 +543,10 @@ test('separate synthetic integrator observes a real hook rewrite and halts witho
         const head = f.git(['rev-parse', 'HEAD']);
         const final = f.git(['log', '-1', '--format=%B']);
         const operation = { ...f.operation, id: 'final-operation', targets: [{ role: 'head', objectId: head }] };
-        const scan = await scanPolicy({ operation, context: f.context });
-        assert.equal(scan.exitCode, 0, JSON.stringify(scan.issues));
-        const decision = {
-            ...f.decision,
-            operation,
-            binding: scan.binding,
-            assessments: scan.candidates.map((candidate) => ({
-                candidateId: candidate.id,
-                classification: 'unrelated',
-                rationale: 'Synthetic final-message observation isolates rewrite detection.',
-            })),
-        };
+        const decision = { ...f.decision, operation };
         const before = await f.snapshot();
         const checked = await processMessage(
-            { mode: 'validate', message: Buffer.from(final), operation, context: f.context, decision },
+            { mode: 'validate', message: Buffer.from(final), operation, decision },
             async () => ({ ledger: { ...f.ledger, operation }, registry }),
         );
         let subsequentActions = 0;
@@ -631,7 +570,6 @@ test('installed render performs repository handoff with unusable default resourc
         const files = {
             message: 'subject\n\nCo-authored-by: AI <fixture@example.invalid>\n',
             operation: JSON.stringify(f.operation),
-            context: JSON.stringify(f.context),
             decision: JSON.stringify(f.decision),
         };
         const args = ['render'];
@@ -684,10 +622,9 @@ test('explicit exception applications retain incomplete summary truth without in
             20,
         );
         const assessment = {
-            schemaVersion: 1,
+            schemaVersion: 2,
             artifact: 'message-assessment',
             operation: f.operation,
-            binding: f.scan.binding,
             messageSha256: (await import('node:crypto')).createHash('sha256').update(message).digest('hex'),
             signatures: [],
             migrations: [],
@@ -742,14 +679,13 @@ test('exact legacy migration mappings are required and human coauthors remain by
         const recordIds = blocked.issues.filter((issue) => issue.code === 'legacy-signature').map((issue) => issue.id);
         assert.equal(recordIds.length, 2);
         const assessment = {
-            schemaVersion: 1,
+            schemaVersion: 2,
             artifact: 'message-assessment',
             operation: f.operation,
-            binding: f.scan.binding,
             messageSha256: (await import('node:crypto')).createHash('sha256').update(message).digest('hex'),
             signatures: recordIds.map((id, index) => ({
                 id: `s${index}`,
-                source: { messageRecordId: id },
+                source: { kind: 'message-record', messageRecordId: id },
                 classification: 'ai-signature',
                 eventIds: ['e'],
                 evidenceReferences: ['fixture:exact-pairing'],

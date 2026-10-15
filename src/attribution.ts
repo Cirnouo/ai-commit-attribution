@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { isMainModule } from '../tooling/cli-entry.ts';
 import { readRegularFile } from '../tooling/file-evidence.ts';
 import { INPUT_BYTES } from './input-contract.ts';
-import { checkFreshRouting, scanPolicy } from './policy.ts';
+import { DECISION_MIGRATION } from './policy.ts';
 import { checkRaw, InputError } from './records.ts';
 
 export function parseArguments(args: readonly string[]): { input: string; operation: string } {
@@ -45,36 +45,8 @@ async function jsonFile(file: string | URL): Promise<unknown> {
         throw new InputError('Invalid input: malformed UTF-8 JSON resource.');
     }
 }
-export function parsePolicyArguments(args: readonly string[]): {
-    operation: string;
-    context: string;
-    decision?: string;
-} {
-    if (args[0] !== 'policy' || args[1] !== 'scan')
-        throw new InputError(
-            'Usage: attribution.mjs policy scan --operation <operation.json> --context <context.json> [--decision <decision.json>]',
-        );
-    const options = new Map<string, string>();
-    for (let index = 2; index < args.length; index += 2) {
-        const flag = args[index],
-            value = args[index + 1];
-        if (
-            !flag ||
-            !['--operation', '--context', '--decision'].includes(flag) ||
-            options.has(flag) ||
-            !value ||
-            value.startsWith('--')
-        )
-            throw new InputError('Invalid policy flag or missing value.');
-        options.set(flag, value);
-    }
-    const operation = options.get('--operation'),
-        context = options.get('--context'),
-        decision = options.get('--decision');
-    if (!operation || !context) throw new InputError('Policy scan requires explicit operation and scope context.');
-    return { operation, context, ...(decision ? { decision } : {}) };
-}
 export async function run(args: readonly string[]) {
+    if (args[0] === 'policy' || args.includes('--context')) throw new InputError(DECISION_MIGRATION);
     if (args[0] === 'render' || args[0] === 'validate') {
         const mode = args[0];
         const options = new Map<string, string>();
@@ -83,15 +55,7 @@ export async function run(args: readonly string[]) {
                 value = args[index + 1];
             if (
                 !flag ||
-                ![
-                    '--message',
-                    '--operation',
-                    '--context',
-                    '--decision',
-                    '--input',
-                    '--assessment',
-                    '--output',
-                ].includes(flag) ||
+                !['--message', '--operation', '--decision', '--input', '--assessment', '--output'].includes(flag) ||
                 options.has(flag) ||
                 !value ||
                 value.startsWith('--') ||
@@ -103,26 +67,26 @@ export async function run(args: readonly string[]) {
         }
         const messageFile = options.get('--message'),
             operationFile = options.get('--operation'),
-            contextFile = options.get('--context'),
             decisionFile = options.get('--decision');
-        if (!messageFile || !operationFile || !contextFile || !decisionFile)
-            throw new InputError('Message commands require explicit message, operation, context and decision files.');
+        if (!messageFile || !operationFile || !decisionFile)
+            throw new InputError(
+                'Message commands require explicit message, operation and schemaVersion 2 AI decision files.',
+            );
         const operation = await jsonFile(operationFile),
-            context = await jsonFile(contextFile),
             decision = await jsonFile(decisionFile);
         const message = await readRegularFile(messageFile, { physicalPath: true, maximumBytes: INPUT_BYTES });
         // Unused default paths remain opaque. No stat, decode, registry lookup or summary occurs before actual routing.
-        const consumedPaths = [...options].filter(([flag]) => flag !== '--output').map(([, value]) => value);
+        const consumedPaths = [messageFile, operationFile, decisionFile];
         const { processMessage } = await import('./message.ts');
         const output = options.get('--output');
         return processMessage(
-            { mode, message, operation, context, decision, consumedPaths, ...(output ? { output } : {}) },
+            { mode, message, operation, decision, consumedPaths, ...(output ? { output } : {}) },
             async () => {
                 const input = options.get('--input');
                 if (!input) throw new InputError('Current skill-default message requires an explicit ledger input.');
                 const registryFile = new URL('../references/agent-registry.json', import.meta.url);
-                consumedPaths.push(fileURLToPath(registryFile));
                 const assessment = options.get('--assessment');
+                consumedPaths.push(input, fileURLToPath(registryFile), ...(assessment ? [assessment] : []));
                 return {
                     ledger: await jsonFile(input),
                     registry: await jsonFile(registryFile),
@@ -130,18 +94,6 @@ export async function run(args: readonly string[]) {
                 };
             },
         );
-    }
-    if (args[0] === 'policy') {
-        const options = parsePolicyArguments(args);
-        const operation = await jsonFile(options.operation),
-            context = await jsonFile(options.context);
-        if (!options.decision) return scanPolicy({ operation, context });
-        const { freshScan: _freshScan, ...route } = await checkFreshRouting({
-            operation,
-            context,
-            decision: await jsonFile(options.decision),
-        });
-        return route;
     }
     const options = parseArguments(args);
     const [ledger, operation, registry] = await Promise.all([

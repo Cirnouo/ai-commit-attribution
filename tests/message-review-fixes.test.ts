@@ -7,7 +7,6 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { processMessage } from '../src/message.ts';
-import { scanPolicy } from '../src/policy.ts';
 import { resolveTrustedGit } from '../src/safe-git.ts';
 import { summarize } from '../src/summarize.ts';
 
@@ -33,8 +32,6 @@ async function fixture() {
     git(['init', '--quiet']);
     git(['config', 'user.name', 'Synthetic Fixture']);
     git(['config', 'user.email', 'fixture@example.invalid']);
-    const candidateFile = path.join(directory, 'automatic-signing.conf');
-    await writeFile(candidateFile, 'Effective synthetic fixture host appends an AI signature.\n');
     const operation = {
         schemaVersion: 1,
         id: 'review',
@@ -45,30 +42,11 @@ async function fixture() {
         paths: ['planned.txt'],
         targets: [],
     };
-    const context = {
-        schemaVersion: 1,
-        phase: 'prepare',
-        selection: 'planned-paths',
-        additionalCandidatePaths: [candidateFile],
-        invocation: { kind: 'agent-context', reference: 'fixture:review', effectiveDirectory: repository },
-    };
-    const scan = await scanPolicy({ operation, context });
-    assert.equal(scan.exitCode, 0, JSON.stringify(scan.issues));
-    const candidate = scan.candidates.find((item) => item.locator === candidateFile);
-    assert.ok(candidate);
     const decision = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         artifact: 'policy-decision',
-        operation: scan.operation,
-        binding: scan.binding,
+        operation,
         branch: 'skill-default',
-        assessments: scan.candidates.map((item) => ({
-            candidateId: item.id,
-            classification: 'unrelated',
-            rationale: 'Synthetic host definition, not normative repository AI policy.',
-        })),
-        selectedCandidateIds: [],
-        issueIds: [],
         rationale: 'Synthetic semantic fixture.',
         decisionSource: { kind: 'agent-semantic', reference: 'fixture:review' },
     };
@@ -112,17 +90,16 @@ async function fixture() {
         action: 'continue-with-incomplete-disclosure',
     };
     const assessment = (extra: Record<string, unknown> = {}) => ({
-        schemaVersion: 1,
+        schemaVersion: 2,
         artifact: 'message-assessment',
         operation,
-        binding: scan.binding,
         messageSha256: createHash('sha256').update(message).digest('hex'),
         signatures: [],
         migrations: [],
         exceptionApplications: [],
         ...extra,
     });
-    const scope = { operation, context, decision };
+    const scope = { operation, decision };
     const snapshot = async () => ({
         head: await readFile(path.join(repository, '.git/HEAD')),
         config: await readFile(path.join(repository, '.git/config')),
@@ -135,7 +112,6 @@ async function fixture() {
     const files = {
         message: path.join(directory, 'message'),
         operation: path.join(directory, 'operation'),
-        context: path.join(directory, 'context'),
         decision: path.join(directory, 'decision'),
         input: path.join(directory, 'input'),
         assessment: path.join(directory, 'assessment'),
@@ -171,7 +147,6 @@ async function fixture() {
         directory,
         operation,
         scope,
-        candidate,
         event,
         ledger,
         registry,
@@ -210,7 +185,7 @@ test('review I1 source waivers never suppress colliding automatic or uncertain s
                         signatures: [
                             {
                                 id: issueId,
-                                source: { policyCandidateId: f.candidate.id },
+                                source: { kind: 'automatic-signing', reference: 'fixture:automatic-signing' },
                                 classification,
                                 eventIds: ['e'],
                                 evidenceReferences: ['fixture:current-signature'],
@@ -234,6 +209,84 @@ test('review I1 source waivers never suppress colliding automatic or uncertain s
     }
 });
 
+test('assessment schema 2 rejects legacy scanner sources with migration guidance and keeps exact source joins', async () => {
+    const f = await fixture();
+    try {
+        const signature = {
+            id: 'automatic',
+            source: { kind: 'automatic-signing', reference: 'fixture:source' },
+            classification: 'ai-signature',
+            eventIds: ['e'],
+            evidenceReferences: ['fixture:evidence'],
+            rationale: 'An Agent supplied a semantic signature declaration.',
+        };
+        const input = { mode: 'render' as const, message, ...f.scope };
+        const evaluate = (assessment: unknown) =>
+            processMessage(input, async () => ({ ledger: f.ledger, registry: f.registry, assessment }));
+        for (const source of [{ policyCandidateId: 'obsolete' }, { messageRecordId: 'obsolete' }])
+            await assert.rejects(
+                evaluate(f.assessment({ signatures: [{ ...signature, source }] })),
+                /schemaVersion 2|migrate/i,
+            );
+        for (const change of [{ schemaVersion: 1 }, { binding: {} }, { operation: { ...f.operation, id: 'other' } }])
+            await assert.rejects(evaluate(f.assessment(change)), /schemaVersion 2|migrate/i);
+        for (const change of [
+            { source: { kind: 'automatic-signing', reference: '' } },
+            { source: { kind: 'automatic-signing', reference: 'fixture', messageRecordId: 'mixed' } },
+            { source: { kind: 'message-record', messageRecordId: 'unknown' } },
+            { source: { kind: 'unknown', reference: 'fixture' } },
+            { classification: 'unknown' },
+            { eventIds: ['unknown'] },
+            { evidenceReferences: [] },
+        ])
+            await assert.rejects(evaluate(f.assessment({ signatures: [{ ...signature, ...change }] })));
+        await assert.rejects(
+            evaluate(f.assessment({ signatures: [signature, { ...signature, id: 'duplicate-source' }] })),
+            /Duplicate/,
+        );
+        await assert.rejects(
+            evaluate(
+                f.assessment({
+                    signatures: [
+                        signature,
+                        { ...signature, source: { kind: 'automatic-signing', reference: 'another' } },
+                    ],
+                }),
+            ),
+            /Duplicate/,
+        );
+    } finally {
+        await f.dispose();
+    }
+});
+
+test('copied bundle explains schema 2 migration for obsolete assessment versions and scanner sources', async () => {
+    const f = await fixture();
+    try {
+        await f.installed();
+        const signature = {
+            id: 'legacy-source',
+            source: { policyCandidateId: 'obsolete' },
+            classification: 'ai-signature',
+            eventIds: ['e'],
+            evidenceReferences: ['fixture:evidence'],
+            rationale: 'An obsolete scanner association.',
+        };
+        for (const change of [
+            { schemaVersion: 1 },
+            { binding: {} },
+            { signatures: [signature] },
+            { signatures: [{ ...signature, source: { messageRecordId: 'obsolete' } }] },
+        ]) {
+            const response = await f.run('render', f.ledger, f.assessment(change));
+            assert.equal(response.status, 2, response.stderr + response.stdout);
+            assert.match(JSON.parse(response.stderr).error, /schemaVersion 2|migrate/i);
+        }
+    } finally {
+        await f.dispose();
+    }
+});
+
 test('review I1 copied bundle retains signature blockers beside a legitimate incomplete-disclosure exception', async (t) => {
     const f = await fixture();
     try {
@@ -251,7 +304,7 @@ test('review I1 copied bundle retains signature blockers beside a legitimate inc
                         signatures: [
                             {
                                 id: issueId,
-                                source: { policyCandidateId: f.candidate.id },
+                                source: { kind: 'automatic-signing', reference: 'fixture:automatic-signing' },
                                 classification,
                                 eventIds: ['e'],
                                 evidenceReferences: ['fixture:current-signature'],

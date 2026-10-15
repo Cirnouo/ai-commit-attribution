@@ -1,4 +1,4 @@
-# Message rendering and validation (schema 1)
+# Message rendering and validation (schema 2)
 
 Before rendering, validating or interpreting message results, read this contract.
 First prepare an actual operation and semantic policy decision using the
@@ -9,8 +9,8 @@ exclusively; these default Assisted-by rules never supplement or veto it.
 ## Commands and results
 
 ```text
-node <installed>/scripts/attribution.mjs render --message <message.txt> --operation <operation.json> --context <context.json> --decision <decision.json> [--input <ledger.json>] [--assessment <assessment.json>] [--output <new-message.txt>]
-node <installed>/scripts/attribution.mjs validate --message <message.txt> --operation <operation.json> --context <context.json> --decision <decision.json> [--input <ledger.json>] [--assessment <assessment.json>]
+node <installed>/scripts/attribution.mjs render --message <message.txt> --operation <operation.json> --decision <decision.json> [--input <ledger.json>] [--assessment <assessment.json>] [--output <new-message.txt>]
+node <installed>/scripts/attribution.mjs validate --message <message.txt> --operation <operation.json> --decision <decision.json> [--input <ledger.json>] [--assessment <assessment.json>]
 ```
 
 Explicit files resolve against the invocation directory. Installed resources
@@ -20,23 +20,25 @@ allow LF/CRLF and body tabs; other controls, NUL, bare CR and Unicode line
 separators are rejected. Single-line structured fields reject all raw controls
 before trimming or normalization. No private session discovery occurs.
 
-Every call freshly observes the actual operation and policy binding before
-opening default input, assessment or registry. A stale/unresolved decision stops
-with 20. A current repository-policy call skips every default check, including
+Each call validates the explicit operation and schema-2 semantic decision, checks
+their scope consistency and dispatches the declared branch before accessing any
+default input, assessment or registry. needs-decision returns 20 without a
+preview or output file. repository-policy skips every default check, including
 required identities, tuple accounting, legacy migration and AI coauthor vetoes.
-It reports format, participation evidence and repository validation as not-run
-and returns 10. Render previews/copies the supplied repository candidate unchanged;
-this unverified handoff is neither an invalid message nor an approved commit.
-This CLI never executes repository validators or promotes supplied assertions
-to an actual repository-policy pass. The integrator separately records actual
-criteria/checks/outcomes bound to operation, current binding, selected policy
-IDs and exact input/final-message hash, with actor/source and remaining limits.
+Unused default paths are not opened, statted or resolved. It reports format,
+participation evidence and repository validation as not-run and returns 10.
+Render previews/copies the supplied repository candidate unchanged; this
+unverified handoff is neither an invalid message nor an approved commit.
+The helper never discovers policy, reads decision references, establishes
+freshness or executes repository validators. The integrator separately records
+actual criteria/checks/outcomes for the operation, read rules and exact
+input/final-message hash, with actor/source and remaining limits.
 
 On skill-default only, --input is required and the summary owns identity/event
 resolution, provenance, tuple ordering and concrete participant gaps. The result
 separates format valid/invalid/not-run, participation complete-against-declared-input,
 incomplete/incomplete-with-user-exception/not-run, and repository checking not-run.
-It includes operation/binding/routing, input hash, issues, limits and exitCode.
+It includes operation and routing.branch, input hash, issues, limitations and exitCode.
 Render adds a JSON-escaped preview, changed flag and output hash only after
 success. No single ready/verified/permission flag combines these dimensions.
 Declared evidence cannot authenticate dispatch or prove all actors were named.
@@ -87,8 +89,7 @@ The isolated trailer process uses trusted absolute Git and a private temporary
 non-repository directory, isolated system/global/home/XDG configuration and a
 discovery ceiling. Inherited Git/config/command/trace/routing variables are
 removed. Calls are bounded to 10 seconds and 4 MiB output; no shell, hooks,
-filters, transport or repository scripts are requested. The observer's separate
-exact read-only command allowlist is unchanged. Git semantics and cmd/command
+filters, transport or repository scripts are requested. Git semantics and cmd/command
 configuration are documented in the official
 [Git 2.56.0 trailer manual](https://git-scm.com/docs/git-interpret-trailers/2.56.0),
 checked 2026-10-14; isolation/preservation require actual tests, not this citation.
@@ -104,27 +105,42 @@ automatic AI signing conflicts stop rather than being hidden by another line.
 Read definitions as data; never execute them to discover their intent or modify
 global/user/repository identity/configuration to make validation pass.
 
-An optional MessageAssessment has exactly schemaVersion 1, artifact
-message-assessment, operation, binding, messageSha256, signatures, migrations,
-and optional exceptionApplications. It must match this input message and fresh
-binding. Signatures have exact opaque id, source with exactly one messageRecordId
-or policyCandidateId, classification ai-signature/human-signature/unrelated/uncertain,
-eventIds, nonempty evidenceReferences, and rationale. Message record IDs are
-returned in concrete signature issues and bind message hash, original span and
-raw bytes. Default results also expose record IDs/keys/raw-byte hashes/lengths
-under message.records so an integrator can precisely assess an existing coauthor.
-Candidate IDs join only the same fresh scan retained by routing.
-All event IDs join current summary events. Unknown/duplicate/mismatched joins fail.
+An optional MessageAssessment has exactly schemaVersion 2, artifact
+message-assessment, operation, messageSha256, signatures, migrations, and optional
+exceptionApplications. It must match the explicit operation and exact input
+message. Each signature has exact opaque id, source, classification
+ai-signature/human-signature/unrelated/uncertain, eventIds, nonempty
+evidenceReferences and rationale. source has one of these exact shapes:
+
+```json
+{ "kind": "message-record", "messageRecordId": "<exact returned record id>" }
+```
+
+```json
+{ "kind": "automatic-signing", "reference": "<actual inspected signing evidence>" }
+```
+
+Message record IDs are returned in concrete signature issues and bind the message
+hash, original span and raw bytes. Default results expose record IDs, keys,
+raw-byte hashes and lengths under message.records for precise assessment of an
+existing coauthor. Automatic-signing references declare evidence inspected by the
+Agent; the helper never opens or executes the reference. All event IDs join
+current summary events. Unknown, duplicate or mismatched joins fail.
 
 Migrations have signatureIds, eventIds, nonempty mappingReferences, and
 modificationDecision with current operationId and reference. They cover exact
 AI-classified message records and resolved current events; overlapping or guessed
 pairings fail. Render removes only those exact records. Validate never migrates.
-A policy-candidate AI signature remains an automatic-signing blocker, because a
-message edit cannot disable the observed automatic behavior. Uncertain supplied
-signature assessment also requires a decision. Supplied classifications and
-references are declarations, not authenticated evidence or modification authority.
-The integrator must inspect actual evidence and current user/session authority.
+An automatic-signing AI signature remains a blocker because a message edit cannot
+disable the declared automatic behavior. Uncertain supplied signature assessment
+also requires a decision. Supplied classifications and references are declarations,
+not authenticated evidence or modification authority. The integrator must inspect
+actual evidence and current user/session authority.
+
+Schema-1 assessments and their binding or policyCandidateId fields are rejected
+with exit 2; recreate the assessment using schema 2 and explicit source kinds.
+Message results use schema 2 with routing.branch and no binding or routing.freshness.
+Operation, ledger, registry and participation-summary schemas remain 1.
 
 ## Questions, scoped exceptions and actual operations
 
@@ -133,22 +149,31 @@ missing facts in its authorized scope, then uses the actually available native
 question tool when needed. Unavailable/failed/cancelled questions, a request,
 saved notification or elapsed waiting are not consent; preserve work and stop.
 The finite CLI does not implement interactive questions, waiting or polling.
-After a genuine response, recheck scope, evidence and existing authorization.
+After a genuine response, follow the [policy review procedure](policy.md#review-after-waiting-or-changes).
 
-PR4 userExceptions remain declared records and never clear summary issues.
+userExceptions remain declared records and never clear summary issues.
 To apply an inspected current user decision, the assessment may include
 exceptionApplications entries with operationId, exact existing exception reference,
 concrete current summary issueIds and action continue-with-incomplete-disclosure.
 Exactly one matching ledger record must cover those IDs; ambiguous duplicate
-records are rejected. Operation, binding and message
-hash must be current. The integrator MUST confirm the referenced actual decision
+records are rejected. The explicit operation and exact message hash must match.
+The integrator MUST confirm the referenced actual decision
 before supplying this handoff. JSON cannot authenticate consent or grant commit
 authority. Applied IDs are reported separately; original gaps, records and summary
 exit 20 remain. Outer message completion may return 0 only when every remaining
 required identity/participant gap is explicitly covered. Raw invalid data,
-stale routing, unsafe paths, existing-signature conflicts and migration authority
-are never waived, even if their issue IDs coincide with applied summary issue IDs.
+incompatible explicit scopes, unsafe paths, existing-signature conflicts and
+migration authority are never waived, even if their issue IDs coincide with
+applied summary issue IDs.
 Free-text exception records alone do not authorize continuation.
+
+Only render with --output performs a minimal trusted lookup of the actual Git
+administrative directories for output protection. It does not inspect HEAD,
+index, target commits, changed paths, policy documents or hook/template
+configuration. Preview and validate do not query the target repository through
+Git; they check explicit input declarations. Default trailer processing still
+uses Git in an isolated non-repository directory. Matching supplied scope does
+not establish actual Git state or freshness.
 
 Render previews by default; validate never writes. --output creates only an
 explicit absent new regular file under a safe physical existing parent. It
@@ -159,17 +184,14 @@ after its exact full bytes were verified and its recorded identity, metadata and
 parent remain unchanged. Failed/interrupted or short writes leave uncertain
 artifacts intact, including empty or candidate-prefix content; inspect the
 explicit output path after an execution failure. No file is created on a
-pre-publication blocker/input error. Repository
-handoff may explicitly copy unchanged bytes with exit 10. Unused default paths
-remain opaque and are not opened/statted/resolved on that route.
+pre-publication blocker/input error. Repository handoff may explicitly copy
+unchanged bytes with exit 10. Unused default paths remain opaque and are not opened/statted/resolved on that route.
 
 Exit 0 completes a default message goal against declared evidence, including a
 separately recorded applicable exception; 10 is an unverified repository handoff;
 20 needs a decision/evidence; 2 is invalid input or default syntax; other nonzero
-is execution failure. Re-observe before publication and after waits/changes.
-Observations are non-atomic and cannot eliminate later races. Helpers never
+is execution failure. Before consuming decisions, after waits or changes and
+before/after actual operations, follow the [policy review procedure](policy.md#review-after-waiting-or-changes).
+Mechanical scope matching cannot establish live state or freshness. Helpers never
 commit/push/change refs/index/history/identity or grant operation authority.
-After a separately authorized real operation, the integrator reads the final
-message and final operation evidence, checks the applicable rule again, reports
-host/hook rewriting, and stops subsequent actions on mismatch. Do not reuse a
-pre-commit fingerprint as final-state evidence or automatically amend/rollback.
+Follow that review procedure for final-message checks and host/hook mismatches.

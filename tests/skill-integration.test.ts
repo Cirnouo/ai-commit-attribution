@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import type { MessageResult, Summary } from '../src/message-contract.ts';
-import type { Decision, PolicyScan } from '../src/policy-contract.ts';
+import type { Decision } from '../src/policy-contract.ts';
 import type { Event, Evidence } from '../src/records.ts';
 import { resolveTrustedGit } from '../src/safe-git.ts';
 
@@ -24,7 +24,7 @@ type Case = {
     mapped?: boolean;
     participants?: boolean;
     efforts?: boolean;
-    stale?: boolean;
+    policyChange?: boolean;
     signing?: boolean;
     injection?: boolean;
     finalRewrite?: boolean;
@@ -111,71 +111,39 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                         paths: ['widget.txt'],
                         targets: [{ role: 'head', objectId: git(['rev-parse', 'HEAD']).trim() }],
                     };
-                    const context = {
-                        schemaVersion: 1,
-                        phase: 'prepare',
-                        selection: 'index',
-                        invocation: {
-                            kind: 'agent-context',
-                            reference: 'synthetic:public-corpus',
-                            effectiveDirectory: business,
-                        },
-                        ...(item.signing
-                            ? { additionalCandidatePaths: [path.join(directory, 'host-signing.txt')] }
-                            : {}),
-                    };
-                    if (item.signing)
-                        await writeFile(
-                            path.join(directory, 'host-signing.txt'),
-                            corpus.additionalFacts.knownHostSigning,
-                        );
                     const json = async (name: string, value: unknown) => {
                         const file = path.join(directory, `${name}.json`);
                         await writeFile(file, JSON.stringify(value));
                         return file;
                     };
                     const operationFile = await json('operation', operation);
-                    const contextFile = await json('context', context);
-                    const scanArgs = ['policy', 'scan', '--operation', operationFile, '--context', contextFile];
-                    const scan = call<PolicyScan>(scanArgs).result;
-                    const repositoryPolicy = [
-                        'body-only',
-                        'required-ai-coauthor',
-                        'no-disclosure',
-                        'marker-only',
-                        'final-hook-rewrite',
-                    ].includes(item.id);
+                    const repositoryPolicy =
+                        [
+                            'body-only',
+                            'required-ai-coauthor',
+                            'no-disclosure',
+                            'marker-only',
+                            'final-hook-rewrite',
+                        ].includes(item.id) || !!item.policyChange;
                     const decision = (
-                        current: PolicyScan,
-                        branch = repositoryPolicy ? 'repository-policy' : 'skill-default',
+                        branch: Decision['branch'] = item.id === 'uncertain-policy'
+                            ? 'needs-decision'
+                            : repositoryPolicy
+                              ? 'repository-policy'
+                              : 'skill-default',
                     ): Decision => ({
-                        schemaVersion: 1,
+                        schemaVersion: 2,
                         artifact: 'policy-decision',
-                        operation: current.operation,
-                        binding: current.binding,
-                        branch: current.scanStatus === 'incomplete' ? 'needs-decision' : branch,
-                        assessments: current.candidates.map((candidate) => ({
-                            candidateId: candidate.id,
-                            classification:
-                                candidate.locator === path.join(business, 'CONTRIBUTING.md') &&
-                                branch === 'repository-policy'
-                                    ? 'ai-disclosure-policy'
-                                    : 'ordinary-format-only',
-                            rationale: 'Synthetic test assessment supplied independently of the scanner.',
-                        })),
-                        selectedCandidateIds:
-                            branch === 'repository-policy'
-                                ? current.candidates
-                                      .filter(
-                                          (candidate) => candidate.locator === path.join(business, 'CONTRIBUTING.md'),
-                                      )
-                                      .map((candidate) => candidate.id)
-                                : [],
-                        issueIds: current.issues.map((issue) => issue.id),
-                        rationale: 'Finite fixture-specific semantic assessment, not a general classifier.',
+                        operation,
+                        branch,
+                        rationale:
+                            'Finite fixture-specific supplied declaration, not AI discovery or a general classifier.',
                         decisionSource: { kind: 'agent-semantic', reference: 'synthetic:public-corpus' },
                     });
-                    const decisionFile = await json('decision', decision(scan));
+                    const decisionFile = await json(
+                        'decision',
+                        decision(item.policyChange ? 'skill-default' : undefined),
+                    );
                     const profile = item.participants
                         ? 'participants'
                         : item.efforts
@@ -241,29 +209,22 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                         messageFile,
                         '--operation',
                         operationFile,
-                        '--context',
-                        contextFile,
                         '--decision',
                         decisionFile,
                         '--input',
                         ledgerFile,
                     ];
                     if (item.signing) {
-                        const candidate = scan.candidates.find(
-                            (candidate) => candidate.locator === path.join(directory, 'host-signing.txt'),
-                        );
-                        assert.ok(candidate);
                         const { createHash } = await import('node:crypto');
                         const assessment = await json('assessment', {
-                            schemaVersion: 1,
+                            schemaVersion: 2,
                             artifact: 'message-assessment',
                             operation,
-                            binding: scan.binding,
                             messageSha256: createHash('sha256').update(item.message).digest('hex'),
                             signatures: [
                                 {
                                     id: 'automatic',
-                                    source: { policyCandidateId: candidate.id },
+                                    source: { kind: 'automatic-signing', reference: 'fixture:effective-host-setting' },
                                     classification: 'ai-signature',
                                     eventIds: events.map((event) => event.id),
                                     evidenceReferences: ['fixture:effective-host-setting'],
@@ -274,8 +235,12 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                         });
                         messageArgs.push('--assessment', assessment);
                     }
-                    if (item.stale)
+                    if (item.policyChange) {
                         await writeFile(path.join(business, 'CONTRIBUTING.md'), corpus.additionalFacts.changedPolicy);
+                        operation.id = 'policy-reassessed';
+                        await json('operation', operation);
+                        await json('decision', decision('repository-policy'));
+                    }
                     if (item.finalRewrite) {
                         const hook = path.join(operation.commonGitDir, 'hooks/commit-msg');
                         await writeFile(
@@ -293,7 +258,7 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                         operation.id = 'final-message';
                         operation.targets = [{ role: 'head', objectId: git(['rev-parse', 'HEAD']).trim() }];
                         await json('operation', operation);
-                        await json('decision', decision(call<PolicyScan>(scanArgs).result));
+                        await json('decision', decision());
                     }
                     const snapshot = async () => ({
                         head: git(['rev-parse', 'HEAD']),
@@ -311,8 +276,7 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                         : item.missing === 'participant' ||
                             item.missing === 'router' ||
                             item.signing ||
-                            item.stale ||
-                            scan.scanStatus === 'incomplete'
+                            item.id === 'uncertain-policy'
                           ? 20
                           : repositoryPolicy
                             ? 10
@@ -355,11 +319,6 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                         assert.equal(result.result.participationEvidence.status, 'not-run');
                         assert.equal(result.result.repositoryPolicyValidation.status, 'not-run');
                     } else if (expected === 20) assert.equal(result.result.message.preview, undefined);
-                    if (item.stale) {
-                        await json('decision', decision(call<PolicyScan>(scanArgs).result, 'repository-policy'));
-                        await writeFile(messageFile, 'fix: preserve widget state\n\nAI assistance was used.\n');
-                        assert.equal(call<MessageResult>(['render', ...messageArgs]).status, 10);
-                    }
                     assert.deepEqual(await snapshot(), before);
                     assert.equal(existsSync(path.join(business, 'injected')), false);
                 });

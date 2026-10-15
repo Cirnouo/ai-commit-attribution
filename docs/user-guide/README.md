@@ -74,10 +74,12 @@ and actual body/reference reads rather than relying on a catalog entry alone.
 
 ### Repository policy comes first
 
-Before scanning, deciding policy applicability or checking freshness, read the
+Before finding relevant rules, deciding applicability or reviewing a decision
+after waiting or changes, read the
 [policy contract](../../skills/ai-commit-attribution/references/policy.md).
-The Agent reads applicable rules and decides their meaning and precedence;
-the scanner supplies candidates.
+The Agent finds and reads rules using their meaning and the actual task context,
+then supplies an explicit decision. Helpers consume that decision without
+searching documents, reading policy references or establishing freshness.
 
 An applicable repository AI disclosure policy applies exclusively. Its alternate
 format, AI coauthor, marker-only or no-disclosure rule replaces the whole default
@@ -124,8 +126,8 @@ Concrete required host/model, known-participant or policy gaps stop automatic
 continuation. Recover trustworthy evidence within the operation's authority or
 obtain a genuine current user decision where the contracts allow one. A pending
 question, timeout, cancellation or unavailable question tool is not an answer;
-preserve the work and index. Recheck scope, evidence and existing authorization
-after a response or material change. See
+preserve the work and index. Before continuing after a response or material change,
+follow the [policy review procedure](../../skills/ai-commit-attribution/references/policy.md#review-after-waiting-or-changes). See
 [questions and scoped exceptions](../../skills/ai-commit-attribution/references/messages.md#questions-scoped-exceptions-and-actual-operations)
 before applying a decision; an exception is not verified identity or new Git
 authorization.
@@ -169,7 +171,8 @@ Unknown optional effort alone needs no mandatory question.
 - [Integration guide](../../skills/ai-commit-attribution/references/integration.md):
   human integration and explicit JSON/CLI inputs; read before preparing them.
 - [Policy contract](../../skills/ai-commit-attribution/references/policy.md):
-  applicability, scope and freshness; read before scanning or routing.
+  semantic discovery, applicability and review; read before deciding policy or
+  revisiting a decision.
 - [Record contract](../../skills/ai-commit-attribution/references/records.md):
   participation and evidence; read before collecting inputs or interpreting summaries.
 - [Message contract](../../skills/ai-commit-attribution/references/messages.md):

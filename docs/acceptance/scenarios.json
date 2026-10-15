@@ -101,8 +101,8 @@
                 {
                     "id": "changed-policy",
                     "policy": "# Contribution guide\nUse a Conventional Commit subject beginning fix:.\n",
-                    "stale": true,
-                    "message": "fix: preserve widget state\n"
+                    "message": "fix: preserve widget state\n",
+                    "policyChange": true
                 }
             ]
         },

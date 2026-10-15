@@ -9,11 +9,11 @@ Apply this workflow before preparing or changing a commit message, including
 through wrappers or tools. It does not authorize a commit, push or history edit.
 
 Resolve the actual repository, worktree, operation, selected paths and targets.
-Before scanning, deciding policy applicability or checking freshness, read the
-[policy contract](references/policy.md). Read the applicable AI disclosure rules;
-the scanner supplies candidates and the Agent decides their meaning and precedence.
-Choose repository-policy, skill-default or needs-decision. Recheck the binding
-immediately before consumption, after waiting and after material changes.
+Before finding rules, deciding applicability or reviewing a decision after a wait
+or change, read the [policy contract](references/policy.md). The Agent finds and
+reads relevant rules using meaning and context, resolves precedence and supplies
+an explicit repository-policy, skill-default or needs-decision decision. Helpers
+consume that decision without discovering policy or establishing freshness.
 
 Repository policy applies exclusively. Its AI coauthor, alternate-format,
 no-disclosure or marker-only rule replaces the entire default disclosure branch,

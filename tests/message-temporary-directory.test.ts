@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 
-test('trailer shared parent tolerates real child changes while physical identity and strict freshness stay enforced', async (t) => {
+test('trailer shared parent tolerates real child changes while physical identity and strict filesystem identity stay enforced', async (t) => {
     const temporaryRoot = await realpath(os.tmpdir());
     const root = await realpath(await mkdtemp(path.join(temporaryRoot, 'trailer-parent-test-')));
     try {

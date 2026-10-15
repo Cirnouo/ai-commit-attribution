@@ -1,4 +1,4 @@
-import type { Binding, Issue } from './policy-contract.ts';
+import type { Issue, PolicyBranch } from './policy-contract.ts';
 import type { Operation } from './records.ts';
 import type { summarize } from './summarize.ts';
 
@@ -15,7 +15,7 @@ export type MessageRecord = {
 export type MessageAssessment = {
     signatures: {
         id: string;
-        source: { messageRecordId?: string; policyCandidateId?: string };
+        source: { kind: 'message-record'; messageRecordId: string } | { kind: 'automatic-signing'; reference: string };
         classification: string;
         eventIds: string[];
         evidenceReferences: string[];
@@ -30,11 +30,10 @@ export type MessageAssessment = {
     exceptionApplications: { operationId: string; reference: string; issueIds: string[]; action: string }[];
 };
 export type MessageResult = {
-    schemaVersion: 1;
+    schemaVersion: 2;
     artifact: 'message-render' | 'message-validation';
     operation: Operation;
-    binding: Binding;
-    routing: { branch: string; freshness: 'current' | 'stale' | 'unresolved' };
+    routing: { branch: PolicyBranch };
     message: {
         inputSha256: string;
         outputSha256?: string;

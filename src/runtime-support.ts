@@ -7,7 +7,7 @@ import { samePhysicalPath } from '../tooling/file-evidence.ts';
 import { ordinal } from './records.ts';
 import { ObservationError } from './safe-git.ts';
 
-/** One deterministic, delimiter-free serialization owner for all scope/evidence bindings. */
+/** One deterministic, delimiter-free serialization owner for declared input joins and stable identifiers. */
 export function canonical(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(canonical);
     if (isRecord(value))
