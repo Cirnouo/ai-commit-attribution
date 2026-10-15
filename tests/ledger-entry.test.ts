@@ -25,6 +25,117 @@ test('summary accepts an explicit ID or current context without guessing an inpu
         assert.throws(() => parseArguments(['summarize', ...source, '--operation', 'operation']));
 });
 
+test('root CLI preserves an unsafe removal check instead of defaulting it to success', async () => {
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'ledger-removal-entry-')));
+    try {
+        const executable = await resolveTrustedGit([directory]);
+        const initialized = spawnSync(executable, ['init', '-q'], {
+            cwd: directory,
+            env: gitEnvironment(),
+            windowsHide: true,
+        });
+        assert.equal(initialized.status, 0, initialized.stderr.toString());
+        await run(['ledger', 'init', '--worktree', directory]);
+        await run(['ledger', 'create', '--worktree', directory, '--select', '--expect-version', '0']);
+        const result = await run(['ledger', 'check-removal', '--worktree', directory]);
+        assert.equal(result.exitCode, 1);
+        assert.equal('safe' in result && result.safe, false);
+    } finally {
+        assert.equal(path.dirname(directory), await realpath(os.tmpdir()));
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
+test('copied bundle exports and resumes without registry access or later-current replacement', async () => {
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'ledger-transfer-entry-')));
+    try {
+        const source = path.join(directory, 'source');
+        const target = path.join(directory, 'target');
+        const payload = path.join(directory, 'home', 'skill');
+        const executable = await resolveTrustedGit([directory]);
+        const environment = gitEnvironment();
+        for (const repository of [source, target]) {
+            await mkdir(repository);
+            const result = spawnSync(executable, ['init', '-q'], {
+                cwd: repository,
+                env: environment,
+                windowsHide: true,
+            });
+            assert.equal(result.status, 0, result.stderr.toString());
+        }
+        await cp(new URL('../skills/ai-commit-attribution/', import.meta.url), payload, { recursive: true });
+        await writeFile(path.join(payload, 'references', 'agent-registry.json'), 'UNUSABLE REGISTRY');
+        const invoke = (repository: string, command: string, args: string[] = [], code = 0) => {
+            const result = spawnSync(
+                process.execPath,
+                [
+                    path.join(payload, 'scripts', 'attribution.mjs'),
+                    'ledger',
+                    command,
+                    '--worktree',
+                    repository,
+                    ...args,
+                ],
+                {
+                    cwd: directory,
+                    env: environment,
+                    encoding: 'utf8',
+                    windowsHide: true,
+                },
+            );
+            assert.equal(result.status, code, result.stderr + result.stdout);
+            return JSON.parse(result.stdout || result.stderr);
+        };
+        invoke(source, 'init');
+        const first = invoke(source, 'create', ['--select', '--expect-version', '0']);
+        const ledgerId = first.current.ledgerId;
+        invoke(source, 'check-removal', [], 1);
+        const selection = path.join(directory, 'selection.json');
+        const bundle = path.join(directory, 'transfer.json');
+        await writeFile(selection, JSON.stringify({ ledgerIds: [ledgerId] }));
+        const exported = invoke(source, 'export', ['--input', selection, '--output', bundle, '--expect-version', '1']);
+        assert.match(exported.bundleDigest, /^[a-f0-9]{64}$/);
+        assert.equal(invoke(source, 'status').ledgers[0].ownership.kind, 'exported');
+        assert.equal(invoke(source, 'check-removal').safe, true);
+        const targetInitial = invoke(target, 'init');
+        const imported = invoke(target, 'import', [
+            '--input',
+            bundle,
+            '--mode',
+            'resume',
+            '--single-authority',
+            '--expect-version',
+            '0',
+        ]);
+        assert.deepEqual(imported.ledgerIds, [ledgerId]);
+        assert.notEqual(targetInitial.contextId, first.contextId);
+        const paused = invoke(target, 'status');
+        assert.deepEqual(paused.current, { ledgerId, paused: true });
+        invoke(target, 'select', ['--ledger', ledgerId, '--expect-version', String(paused.stateVersion)]);
+        const selected = invoke(target, 'status');
+        const retried = invoke(target, 'import', [
+            '--input',
+            bundle,
+            '--mode',
+            'resume',
+            '--single-authority',
+            '--expect-version',
+            String(selected.stateVersion),
+        ]);
+        assert.equal(retried.idempotent, true);
+        const retained = invoke(target, 'status');
+        assert.equal(retained.stateVersion, selected.stateVersion);
+        assert.deepEqual(retained.current, selected.current);
+        invoke(target, 'check-removal', [], 1);
+        assert.equal(existsSync(path.join(directory, 'node_modules')), false);
+        assert.equal(existsSync(path.join(source, '.git', 'index')), false);
+        assert.equal(existsSync(path.join(target, '.git', 'index')), false);
+    } finally {
+        assert.equal(path.dirname(directory), await realpath(os.tmpdir()));
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
 test('copied bundle persists selection and rejects a late child without source dependencies', async () => {
     const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'ledger-installed-')));
     try {

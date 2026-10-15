@@ -466,6 +466,7 @@ test('ledger CLI requires exact versions and strict flags, then returns recovera
             /duplicate|flag/i,
         );
         const state = await runLedger(['create', ...args, '--expect-version', '0', '--select']);
+        assert.ok('ledgers' in state);
         assert.equal(state.stateVersion, 1);
         assert.equal(state.current?.ledgerId, state.ledgers[0]?.ledgerId);
         const id = state.ledgers[0]?.ledgerId;
@@ -482,6 +483,7 @@ test('ledger CLI requires exact versions and strict flags, then returns recovera
             ['add', ...args, '--expect-version', '1', '--ledger', id, '--input', input],
             async () => registry,
         );
+        assert.ok('ledgers' in added);
         assert.deepEqual(added.ledgers[0]?.identities, [{ agent: 'Synthetic Agent', model: 'formal-model' }]);
         assert.equal((await runLedger(['status', ...args])).stateVersion, 2);
     } finally {
@@ -507,6 +509,7 @@ test('CLI basic lifecycle and explicit split/combine retain all source records',
                 async () => registry,
             );
             version = state.stateVersion;
+            assert.ok('ledgers' in state);
             return state;
         };
         const first = '11111111-1111-1111-1111-111111111111';

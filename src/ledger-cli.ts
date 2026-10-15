@@ -17,6 +17,16 @@ import {
 } from './ledger.ts';
 import { array, integer, object, parseBlocker, uuid, type WorktreeState } from './ledger-contract.ts';
 import { initializeState, readState, resolveLedgerContext, transactState } from './ledger-store.ts';
+import {
+    checkRemoval,
+    type ExportResult,
+    exportLedgers,
+    type ImportResult,
+    importLedgers,
+    pruneLedgers,
+    type RemovalResult,
+    rebindState,
+} from './ledger-transfer.ts';
 import { checkRaw, InputError, parseIdentity, parseRegistry, type Registry, text } from './records.ts';
 
 const commandFlags: Record<string, readonly string[]> = {
@@ -34,15 +44,20 @@ const commandFlags: Record<string, readonly string[]> = {
     abandon: ['--ledger'],
     split: ['--input'],
     combine: ['--input'],
+    export: ['--input', '--output', '--transfer-id'],
+    import: ['--input', '--mode', '--single-authority'],
+    rebind: ['--context-id', '--moved-original'],
+    'check-removal': [],
+    prune: ['--input'],
 };
-const switches = ['--select', '--reviewed-no-result'];
+const switches = ['--select', '--reviewed-no-result', '--single-authority', '--moved-original'];
 export function parseLedgerArguments(args: readonly string[]): {
     command: string;
     options: Map<string, string | true>;
 } {
     const command = args[0] ?? '';
     if (!Object.hasOwn(commandFlags, command)) throw new InputError('Unknown ledger command.');
-    const mutation = command !== 'init' && command !== 'status';
+    const mutation = !['init', 'status', 'check-removal'].includes(command);
     const allowed = ['--worktree', ...(mutation ? ['--expect-version'] : []), ...(commandFlags[command] ?? [])];
     const options = new Map<string, string | true>();
     for (let index = 1; index < args.length; index++) {
@@ -92,7 +107,7 @@ export async function runLedger(
     args: readonly string[],
     loadRegistry: () => Promise<Registry> = async () =>
         parseRegistry(await json(new URL('../references/agent-registry.json', import.meta.url))),
-): Promise<WorktreeState> {
+): Promise<WorktreeState | ExportResult | ImportResult | RemovalResult> {
     const { command, options } = parseLedgerArguments(args);
     const value = (flag: string) => {
         const found = options.get(flag);
@@ -104,7 +119,32 @@ export async function runLedger(
     );
     if (command === 'init') return initializeState(context);
     if (command === 'status') return readState(context);
+    if (command === 'check-removal') return checkRemoval(context);
     const version = Number(value('--expect-version'));
+    if (command === 'rebind')
+        return rebindState(context, version, {
+            contextId: uuid(value('--context-id')),
+            movedOriginal: options.has('--moved-original'),
+        });
+    if (command === 'import') {
+        const mode = value('--mode');
+        if (mode !== 'resume' && mode !== 'copy') throw new InputError('Import mode must be resume or copy.');
+        return importLedgers(context, version, {
+            input: value('--input'),
+            mode,
+            singleAuthority: options.has('--single-authority'),
+        });
+    }
+    if (command === 'export' || command === 'prune') {
+        const selection = object(await json(value('--input')), ['ledgerIds']);
+        const ledgerIds = array(selection.ledgerIds, uuid);
+        if (command === 'prune') return pruneLedgers(context, version, { ledgerIds });
+        return exportLedgers(context, version, {
+            ledgerIds,
+            output: value('--output'),
+            ...(options.has('--transfer-id') ? { transferId: uuid(value('--transfer-id')) } : {}),
+        });
+    }
     let transform: (draft: WorktreeState) => void;
     if (command === 'create') {
         const ledgerId = options.has('--ledger') ? uuid(value('--ledger')) : undefined;

@@ -8,14 +8,18 @@ import { readRegularFile, samePhysicalPath } from '../tooling/file-evidence.ts';
 import {
     type ContextLocator,
     encodeState,
+    type ImportReceipt,
     integer,
+    type PlannedLedger,
     parseWorktreeState,
     STATE_BYTES,
+    type TransitionMode,
     validateStateTransition,
     type WorktreeState,
 } from './ledger-contract.ts';
 import { checkRaw, InputError } from './records.ts';
-import { inspectPath, physicalDirectory } from './runtime-support.ts';
+import type { PreparedReceipt } from './result-contract.ts';
+import { digest, inspectPath, physicalDirectory } from './runtime-support.ts';
 import { resolveTrustedGit, SafeGit } from './safe-git.ts';
 import { isLedgerStatePath } from './state-path.ts';
 
@@ -195,7 +199,7 @@ async function checkDirectory(context: LedgerContext): Promise<void> {
     )
         throw new InputError('Ledger state directory contains unknown occupancy; preserve and review it.');
 }
-async function stateEvidence(context: LedgerContext) {
+async function stateEvidence(context: LedgerContext, rebind = false) {
     await checkDirectory(context);
     const observed = await regular(context.stateFile, STATE_BYTES);
     let value: unknown;
@@ -205,7 +209,7 @@ async function stateEvidence(context: LedgerContext) {
         throw new InputError('Ledger state is malformed UTF-8 JSON.');
     }
     const state = parseWorktreeState(value);
-    if (!sameLocator(state.locator, context.locator))
+    if (!rebind && !sameLocator(state.locator, context.locator))
         throw new InputError(
             'Stored locator/context does not match this physical worktree; explicit rebind is required.',
         );
@@ -325,14 +329,23 @@ export async function transactState(
     transform: (draft: WorktreeState) => void,
     io: StateIO = {},
 ): Promise<WorktreeState> {
+    return transaction(contextValue, expectedStateVersion, transform, io, 'ordinary');
+}
+async function transaction(
+    contextValue: LedgerContext,
+    expectedStateVersion: number,
+    transform: (draft: WorktreeState) => void,
+    io: StateIO,
+    mode: TransitionMode,
+): Promise<WorktreeState> {
     integer(expectedStateVersion);
     const context = await actualContext(contextValue);
     const git = await checkTracked(context);
     await checkIgnore(git);
-    const before = await stateEvidence(context);
+    const before = await stateEvidence(context, mode === 'rebind');
     if (before.state.stateVersion !== expectedStateVersion) throw new InputError('Ledger state version is stale.');
     return withLock(path.join(context.stateDirectory, 'state.lock'), async (guard) => {
-        const locked = await stateEvidence(context);
+        const locked = await stateEvidence(context, mode === 'rebind');
         if (
             locked.state.stateVersion !== expectedStateVersion ||
             !unchanged(before.info, locked.info) ||
@@ -345,13 +358,95 @@ export async function transactState(
         if (
             draft.stateVersion !== expectedStateVersion ||
             draft.contextId !== locked.state.contextId ||
-            !sameLocator(draft.locator, locked.state.locator)
+            (mode === 'rebind'
+                ? !sameLocator(draft.locator, context.locator)
+                : !sameLocator(draft.locator, locked.state.locator))
         )
             throw new InputError('Transform may not change state version or context locator.');
         draft.stateVersion = integer(expectedStateVersion + 1);
-        validateStateTransition(locked.state, draft);
+        validateStateTransition(locked.state, draft, mode);
         const bytes = encodeState(draft);
         await publish(context.stateFile, bytes, locked, guard, io);
         return (await stateEvidence(context)).state;
     });
+}
+/** Narrow original-move entry; only the stored locator is replaced. */
+export async function rebindState(
+    context: LedgerContext,
+    expectedStateVersion: number,
+    declaration: { contextId: string; movedOriginal: boolean },
+): Promise<WorktreeState> {
+    if (declaration.movedOriginal !== true)
+        throw new InputError('Rebind requires an explicit moved-original declaration.');
+    return transaction(
+        context,
+        expectedStateVersion,
+        (draft) => {
+            if (draft.contextId !== declaration.contextId) throw new InputError('Rebind stored context ID mismatch.');
+            draft.locator = structuredClone(context.locator);
+        },
+        {},
+        'rebind',
+    );
+}
+/** Explicit terminal selection; no generic deletion transform is exposed. */
+export async function pruneState(
+    context: LedgerContext,
+    expectedStateVersion: number,
+    ledgerIds: readonly string[],
+): Promise<WorktreeState> {
+    return transaction(
+        context,
+        expectedStateVersion,
+        (draft) => {
+            if (!ledgerIds.length || new Set(ledgerIds).size !== ledgerIds.length)
+                throw new InputError('Prune requires a nonempty distinct selection.');
+            for (const id of ledgerIds) {
+                const ledger = draft.ledgers.find((item) => item.ledgerId === id);
+                if (!ledger || !['sealed', 'abandoned'].includes(ledger.state))
+                    throw new InputError('Prune requires selected terminal ledgers.');
+                const missing = [...ledger.predecessorIds, ...ledger.successorIds].filter(
+                    (linked) => !ledgerIds.includes(linked),
+                );
+                if (missing.length)
+                    throw new InputError(`Prune requires complete terminal link closure: ${missing.join(', ')}`);
+                if (draft.transfers.some((receipt) => receipt.phase === 'exporting' && receipt.ledgerIds.includes(id)))
+                    throw new InputError('Pending export must finish before terminal prune.');
+            }
+            draft.ledgers = draft.ledgers.filter((item) => !ledgerIds.includes(item.ledgerId));
+        },
+        {},
+        'prune',
+    );
+}
+/** Import-only append with immutable receipts and collision checks; never replaces existing records. */
+export async function importState(
+    context: LedgerContext,
+    expectedStateVersion: number,
+    receipt: ImportReceipt,
+    ledgers: PlannedLedger[],
+    preparations: PreparedReceipt[],
+    current: WorktreeState['current'],
+): Promise<WorktreeState> {
+    return transaction(
+        context,
+        expectedStateVersion,
+        (draft) => {
+            if (draft.imports.some((item) => item.transferId === receipt.transferId))
+                throw new InputError('Transfer import already exists; reread before retry.');
+            if (ledgers.some((ledger) => draft.ledgers.some((item) => item.ledgerId === ledger.ledgerId)))
+                throw new InputError('Imported ledger ID collision.');
+            for (const preparation of preparations) {
+                const existing = draft.preparations.find((item) => item.preparationId === preparation.preparationId);
+                if (existing && digest(existing) !== digest(preparation))
+                    throw new InputError('Imported preparation ID collision.');
+                if (!existing) draft.preparations.push(structuredClone(preparation));
+            }
+            draft.ledgers.push(...structuredClone(ledgers));
+            draft.imports.push(structuredClone(receipt));
+            if (!draft.current && current) draft.current = { ledgerId: current.ledgerId, paused: true };
+        },
+        {},
+        'import',
+    );
 }

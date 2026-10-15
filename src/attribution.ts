@@ -76,7 +76,7 @@ export async function run(args: readonly string[]) {
     if (args[0] === 'policy' || args.includes('--context')) throw new InputError(DECISION_MIGRATION);
     if (args[0] === 'ledger') {
         const { runLedger } = await import('./ledger-cli.ts');
-        return { ...(await runLedger(args.slice(1))), exitCode: 0 };
+        return { exitCode: 0, ...(await runLedger(args.slice(1))) };
     }
     if (args[0] === 'render' || args[0] === 'validate') {
         const mode = args[0];

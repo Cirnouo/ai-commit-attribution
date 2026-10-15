@@ -14,8 +14,16 @@ bound. ledger-store.ts resolves actual Git context, preserves the shared exclude
 and publishes locked state transactions with exact-byte/version checks. ledger.ts
 owns explicit selection, revisions and lifecycle transitions; ledger-cli.ts parses
 the command group and loads the registry only for identity mutations. The installed
-state contract is packaging/ledgers.md. Transfer and preparation receipts remain
-reserved until their separate runtime contracts are delivered.
+state contract is packaging/ledgers.md. ledger-transfer.ts owns strict portable
+bundles, recoverable export phases, resume/copy import, explicit original-move
+rebind, removal coverage and terminal cleanup. Historical preparations and sealed
+results retain their original declarations across context moves; portable parsing
+never grants current action authority. Store rebind/prune/import entries are
+narrow, while ordinary transforms cannot change locators or delete records.
+result-contract.ts owns pure historical ResultPlan and PreparedReceipt parsing,
+including ordered object references, candidate bytes and digests. result-review.ts
+owns pure ResultReview and SealedResult declarations and their exact ID/hash
+joins. Neither historical parser observes the filesystem or authorizes a new action.
 state-path.ts owns matching the reserved raw Git path namespace, including case
 variants on Windows/macOS and Windows stream, trailing-character and short-name aliases.
 

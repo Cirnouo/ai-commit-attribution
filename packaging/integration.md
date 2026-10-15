@@ -89,6 +89,13 @@ handoff. For render or validate, replace --input ledger.json in the examples bel
 with --current <actual-worktree> or --ledger <selected-ledger-UUID>. The ledger
 contract owns selector exclusivity, pause/resume, split/combine and failure recovery.
 
+Before transferring plans, moving the original worktree, clearing terminal records
+or deleting/archiving a worktree, read the [ledger recovery contract](ledgers.md).
+Export unfinished plans to an explicit new bundle outside the worktree and Git
+metadata, then run ledger check-removal against the current state. Keep the bundle
+available to the receiving Agent. The recovery contract owns freeze/retry, resume
+versus copy, source ownership and paused import selection.
+
 For the low-level explicit-input route on skill-default, prepare ledger.json with schemaVersion 2, a stable ledgerId
 UUID and the same complete operation object in its operation member. Add the
 confirmed identities and known blockers below. This fragment illustrates the

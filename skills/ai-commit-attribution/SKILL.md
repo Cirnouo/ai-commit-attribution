@@ -49,10 +49,13 @@ identity or new Git authorization. Known required gaps remain ledger blockers
 until resolved, and default helpers provide no exception continuation.
 
 For a local planned-commit lifecycle, before initializing state, selecting or
-recording a ledger, pausing, recovering or replacing a plan, read the
+recording a ledger, pausing, recovering, replacing, transferring, rebinding or
+clearing a plan, read the
 [ledger contract](references/ledgers.md). It owns persistent worktree selection
 and failure recovery. Carry the exact ledger ID through delegation and handoff;
 missing or inconsistent state requires an explicit recovery decision.
+Before deleting or archiving a worktree, use that contract's export and removal
+check procedure for unfinished ledgers. Worktree-local state shares its lifetime.
 
 Before render, validate, signature assessment or migration, read the
 [message contract](references/messages.md). Inspect concrete automatic-signing

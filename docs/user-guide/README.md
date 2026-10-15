@@ -81,6 +81,9 @@ shows the ordinary create/select, record and preview commands. State lives in
 the actual worktree's .ai-commit-attribution directory, locally excluded through
 Git's info/exclude. An ordinary clone already has a usable worktree. Carry the
 exact plan ID through handoff so the next Agent can locate the same selection.
+Before moving or removing that worktree, read the ledger contract's recovery
+procedure. Unfinished plans need a verified external bundle; a local ignore rule
+keeps state out of Git history and does not back it up.
 
 ### Repository policy comes first
 

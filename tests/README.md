@@ -55,6 +55,11 @@ failures. ledger-lifecycle.test.ts covers exact current selection, content
 revisions, independent split/combine sets and immutable terminal records.
 ledger-entry.test.ts exercises lazy selectors and the copied installed CLI,
 including pause, explicit preview, switching and a late child carrying an old ID.
+ledger-transfer.test.ts uses real Git/filesystem fixtures for export freeze and
+publication interruption recovery, late current preservation, strict portable
+references and byte limits, raw digest conflicts, prepared source disappearance,
+resume/copy history, original-move rebind, stale removal coverage and explicit
+terminal pruning with durable import idempotence receipts.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.
