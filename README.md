@@ -10,7 +10,7 @@
   <a href="https://skills.sh/Cirnouo/ai-commit-attribution"><img alt="skills.sh installs" src="https://skills.sh/b/Cirnouo/ai-commit-attribution"></a>
 </p>
 
-<p align="center"><a href="#why-use-it">Why use it</a> · <a href="#requirements">Requirements</a> · <a href="#quick-start">Quick start</a> · <a href="#start-a-task">Start a task</a> · <a href="#documentation">Documentation</a></p>
+<p align="center"><a href="#why-use-it">Why use it</a> · <a href="#requirements">Requirements</a> · <a href="#quick-start">Quick start</a> · <a href="#build-from-source">Build from source</a> · <a href="#start-a-task">Start a task</a> · <a href="#documentation">Documentation</a></p>
 
 ## Why use it
 
@@ -35,6 +35,30 @@ npx skills add https://github.com/cirnouo/ai-commit-attribution --skill ai-commi
 ```
 
 This follows development `main`. See the [installation and host guidance](docs/user-guide/README.md#install-for-codex) for scope, target selection and loading checks.
+
+### Build from source
+
+To generate the Skill runtime yourself, clone the repository:
+
+```text
+git clone https://github.com/Cirnouo/ai-commit-attribution.git
+cd ai-commit-attribution
+```
+
+Select a revision you have reviewed before running repository scripts. Review `src/`, `packaging/`, `tooling/`, `package.json`, `pnpm-lock.yaml` and `pnpm-workspace.yaml`, including the build tools and dependency inputs.
+
+Before installing dependencies, read [checkout preparation](CONTRIBUTING.md#prepare-a-checkout) and complete the [trusted installation sequence](docs/policies/supply-chain.md#installation-and-scan-order) with pnpm 12.4.2. That sequence first executes the committed standalone security auditor, `tooling/security/dist/check-security.mjs`. Review that bootstrap executable, its bundled dependencies and its source/build inputs before starting; this path still executes that precompiled auditor.
+
+After trusted setup succeeds, build and check the complete payload:
+
+```text
+pnpm --ignore-pnpmfile '--config.configDependencies={}' build:skill
+pnpm --ignore-pnpmfile '--config.configDependencies={}' check:build
+pnpm --ignore-pnpmfile '--config.configDependencies={}' check:distribution
+pnpm --ignore-pnpmfile '--config.configDependencies={}' test:distribution
+```
+
+The output is the complete `skills/ai-commit-attribution/` directory, including its entry, references, executable and notices. Use that generated directory through [source-checkout use](docs/user-guide/README.md#from-a-source-checkout); before installing or replacing a copy, follow the [installation gate](docs/acceptance/README.md#fixed-source-installation-gate). Matching build output does not establish trust in the source, toolchain or dependencies.
 
 ### Start a task
 
