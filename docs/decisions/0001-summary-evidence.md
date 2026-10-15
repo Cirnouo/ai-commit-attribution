@@ -40,3 +40,11 @@ behavior resources.
 The current command inventory contains only summarize. Policy scanning/routing,
 trailer rendering/message validation, and final host integration remain separate
 feature deliveries. No passing stubs or default-policy vetoes stand in for them.
+
+Partial successor accepted 2026-10-15: [0005](0005-planned-commit-ledgers.md)
+replaces this record's event/evidence/known-participant and user-exception
+participation model with a forward schema-2 confirmed-tuple planned-commit
+ledger and summary, plus explicit worktree ownership and lifecycle. Operation
+and registry schema 1, supplied-scope consistency and the installed distribution
+boundary remain. This annotation preserves the historical account; the accepted
+successor is not evidence that its new runtime behavior is implemented or tested.

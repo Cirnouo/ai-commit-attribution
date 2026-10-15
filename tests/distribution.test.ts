@@ -31,23 +31,13 @@ test('installed summary runs business success and failures outside source with u
             paths: [],
             targets: [],
         };
-        const event = {
-            id: 'event',
-            participantId: 'actor',
-            task: 'research',
-            agent: 'Codex App',
-            model: 'gpt-6.1-sol',
-            reasoning: { state: 'unknown' },
-            evidence: [
-                { fields: ['agent', 'model'], kind: 'handoff', observation: 'effective', reference: 'dispatch:actor' },
-            ],
-        };
+        const confirmed = { agent: 'Codex App', model: 'gpt-6.1-sol' };
         const input = {
-            schemaVersion: 1,
+            schemaVersion: 2,
+            ledgerId: '00000000-0000-4000-8000-000000000001',
             operation,
-            knownParticipants: [{ id: 'actor', eventIds: ['event'] }],
-            events: [event],
-            userExceptions: [],
+            identities: [confirmed],
+            blockers: [],
         };
         const ledgerFile = path.join(directory, 'ledger.json');
         const operationFile = path.join(directory, 'operation.json');
@@ -95,84 +85,51 @@ test('installed summary runs business success and failures outside source with u
             await writeFile(operationFile, JSON.stringify({ ...operation, paths: ['report.md'] }));
             assert.equal(run(args).status, 2);
         });
-        await t.test('review F1 installed whitespace-distinct event IDs do not enrich each other', async () => {
-            const missing: Record<string, unknown> = { ...event, id: ' event' };
-            delete missing.model;
-            await writeFile(
-                ledgerFile,
-                JSON.stringify({
-                    ...input,
-                    events: [missing, event],
-                    knownParticipants: [{ id: 'actor', eventIds: [' event', 'event'] }],
-                }),
-            );
-            await writeFile(operationFile, JSON.stringify(operation));
-            const result = run(args);
-            assert.equal(result.status, 20, result.stderr);
-            assert.deepEqual(JSON.parse(result.stdout).tuples[0].eventIds, ['event']);
-        });
-        await t.test('review F2 installed contradictory effective mapping exits 20 with no tuple', async () => {
-            const evidence = ['gpt-6.1-sol', 'other-formal-model'].map((model) => ({
-                fields: ['model'],
-                kind: 'handoff',
-                observation: 'effective',
-                reference: `handoff:${model}`,
-                mapping: { route: 'gateway/selected', model },
-            }));
-            await writeFile(
-                ledgerFile,
-                JSON.stringify({
-                    ...input,
-                    events: [{ ...event, modelRoute: 'gateway/selected', evidence: [...event.evidence, ...evidence] }],
-                }),
-            );
-            const result = run(args);
-            assert.equal(result.status, 20, result.stderr);
-            assert.equal(JSON.parse(result.stdout).issues[0].code, 'conflicting-model');
-            assert.equal(JSON.parse(result.stdout).tuples.length, 0);
-        });
-        for (const model of ['unknown', 'N/A', 'null']) {
-            await t.test(`review F3 installed missing model ${model} exits 20`, async () => {
-                await writeFile(ledgerFile, JSON.stringify({ ...input, events: [{ ...event, model }] }));
-                assert.equal(run(args).status, 20);
-            });
-        }
-        await t.test('review F4 installed exception selects one opaque concrete issue', async () => {
-            const gaps = {
-                ...input,
-                events: [],
-                knownParticipants: [
-                    { id: 'a', eventIds: ['b:events'] },
-                    { id: 'a:event:b', eventIds: [] },
-                ],
-            };
-            await writeFile(ledgerFile, JSON.stringify(gaps));
-            const result = run(args);
-            assert.equal(result.status, 20);
-            const summary = JSON.parse(result.stdout);
-            assert.equal(new Set(summary.issues.map((issue: { id: string }) => issue.id)).size, 3);
-            const issueId = summary.issues.find((issue: { code: string }) => issue.code === 'missing-event').id;
-            await writeFile(
-                ledgerFile,
-                JSON.stringify({
-                    ...gaps,
-                    userExceptions: [
-                        {
-                            operationId: operation.id,
-                            issueIds: [issueId],
-                            decision: 'explicit current-operation exception',
-                            reference: 'user:message-7',
-                        },
-                    ],
-                }),
-            );
-            const recorded = run(args);
-            assert.equal(recorded.status, 20);
-            assert.equal(
-                JSON.parse(recorded.stdout).issues.filter((issue: { id: string }) => issue.id === issueId).length,
-                1,
-            );
-        });
+        await t.test(
+            'installed schema 2 handles empty sets, exact tuple dedupe, blockers and rejects old schemas',
+            async () => {
+                await writeFile(operationFile, JSON.stringify(operation));
+                await writeFile(ledgerFile, JSON.stringify({ ...input, identities: [] }));
+                assert.equal(run(args).status, 0);
+                await writeFile(
+                    ledgerFile,
+                    JSON.stringify({
+                        ...input,
+                        identities: [confirmed, { ...confirmed, reasoning: 'none' }, confirmed],
+                    }),
+                );
+                const deduped = run(args);
+                assert.equal(deduped.status, 0, deduped.stderr);
+                assert.deepEqual(JSON.parse(deduped.stdout).tuples, [confirmed, { ...confirmed, reasoning: 'none' }]);
+                await writeFile(
+                    ledgerFile,
+                    JSON.stringify({
+                        ...input,
+                        blockers: [{ id: 'required:model', reason: 'Required model unresolved.' }],
+                    }),
+                );
+                const blocked = run(args);
+                assert.equal(blocked.status, 20);
+                assert.equal(JSON.parse(blocked.stdout).issues[0].id, 'required:model');
+                await writeFile(
+                    ledgerFile,
+                    JSON.stringify({
+                        schemaVersion: 1,
+                        operation,
+                        events: [],
+                        knownParticipants: [],
+                        userExceptions: [],
+                    }),
+                );
+                const legacy = run(args);
+                assert.equal(legacy.status, 2);
+                assert.match(JSON.parse(legacy.stderr).error, /migrat.*schemaVersion 2/i);
+                for (const model of ['auto', 'latest', 'UNKNOWN', 'N/A', 'null']) {
+                    await writeFile(ledgerFile, JSON.stringify({ ...input, identities: [{ ...confirmed, model }] }));
+                    assert.equal(run(args).status, 2);
+                }
+            },
+        );
         await writeFile(ledgerFile, JSON.stringify(input));
         await writeFile(operationFile, JSON.stringify(operation));
         for (const bad of [
@@ -187,10 +144,13 @@ test('installed summary runs business success and failures outside source with u
             assert.equal(failure.status, 2, failure.stderr);
             assert.equal(failure.stdout, '');
         }
-        await writeFile(ledgerFile, JSON.stringify({ ...input, events: [{ ...event, model: 'auto' }] }));
+        await writeFile(
+            ledgerFile,
+            JSON.stringify({ ...input, blockers: [{ id: 'required:model', reason: 'Required model unresolved.' }] }),
+        );
         const missing = run(args);
         assert.equal(missing.status, 20, missing.stderr);
-        assert.equal(JSON.parse(missing.stdout).issues[0].code, 'unresolved-model');
+        assert.equal(JSON.parse(missing.stdout).issues[0].code, 'known-blocker');
         await writeFile(operationFile, JSON.stringify({ ...operation, id: 'stale' }));
         assert.equal(run(args).status, 2);
         await writeFile(ledgerFile, '{"secret":"do not echo this"');
@@ -207,7 +167,7 @@ test('installed summary runs business success and failures outside source with u
         const registry = JSON.parse(await readFile(registryFile, 'utf8'));
         registry.hosts = registry.hosts.filter((host: { name: string }) => host.name !== 'Codex App');
         await writeFile(registryFile, JSON.stringify(registry));
-        assert.equal(run(args).status, 20, 'installed registry must be read relative to the entry, not source/cwd');
+        assert.equal(run(args).status, 2, 'installed registry must be read relative to the entry, not source/cwd');
     } finally {
         await rm(directory, { recursive: true, force: true });
     }

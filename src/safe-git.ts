@@ -4,7 +4,10 @@ import path from 'node:path';
 
 export class ObservationError extends Error {}
 export function inside(root: string, target: string): boolean {
-    const relative = path.relative(root, target);
+    const relative = path.relative(
+        path.toNamespacedPath(path.resolve(root)),
+        path.toNamespacedPath(path.resolve(target)),
+    );
     return (
         relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
     );
@@ -57,11 +60,15 @@ export function gitEnvironment(environment = process.env): NodeJS.ProcessEnv {
 }
 const sameArgs = (actual: readonly string[], expected: readonly string[]) =>
     actual.length === expected.length && actual.every((value, index) => value === expected[index]);
-/** Only the three metadata-location queries used for new-file output protection are accepted. */
+/** Fixed metadata queries and the two exact ledger exclusion observations; never arbitrary Git argv. */
 function readOnlyArguments(command: string, args: string[]): boolean {
     return (
-        command === 'rev-parse' &&
-        ['--show-toplevel', '--absolute-git-dir', '--git-common-dir'].some((option) => sameArgs(args, [option]))
+        (command === 'rev-parse' &&
+            (['--show-toplevel', '--absolute-git-dir', '--git-common-dir'].some((option) => sameArgs(args, [option])) ||
+                sameArgs(args, ['--path-format=absolute', '--git-path', 'info/exclude']))) ||
+        (command === 'ls-files' && sameArgs(args, ['--cached', '--full-name', '-z'])) ||
+        (command === 'check-ignore' &&
+            sameArgs(args, ['--no-index', '--', '.ai-commit-attribution/', '.ai-commit-attribution/state.json']))
     );
 }
 export class SafeGit {
@@ -113,7 +120,8 @@ export class SafeGit {
             [
                 '--no-lazy-fetch',
                 '--no-optional-locks',
-                '--literal-pathspecs',
+                // check-ignore accepts fixed pathnames, not Git pathspec magic (including literal).
+                ...(command === 'check-ignore' ? [] : ['--literal-pathspecs']),
                 '-c',
                 'core.fsmonitor=false',
                 '-c',

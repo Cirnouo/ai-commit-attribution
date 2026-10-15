@@ -16,33 +16,14 @@ export type Operation = {
     paths: string[];
     targets: { role: string; objectId: string }[];
 };
-export type Evidence = {
-    fields: string[];
-    kind: string;
-    observation: string;
-    reference: string;
-    detail?: string;
-    nativeReasoning?: string;
-    mapping?: { route: string; model: string };
-};
-export type Event = {
-    id: string;
-    participantId: string;
-    task: string;
-    agent?: string;
-    host?: string;
-    model?: string;
-    modelRoute?: string;
-    reasoning: { state: 'unknown' } | { state: 'confirmed'; value: string };
-    evidence: Evidence[];
-};
-export type UserException = { operationId: string; issueIds: string[]; decision: string; reference: string };
+export type ConfirmedIdentity = { agent: string; model: string; reasoning?: string };
+export type Blocker = { id: string; reason: string };
 export type Ledger = {
-    schemaVersion: 1;
+    schemaVersion: 2;
+    ledgerId: string;
     operation: Operation;
-    knownParticipants: { id: string; eventIds: string[] }[];
-    events: Event[];
-    userExceptions: UserException[];
+    identities: ConfirmedIdentity[];
+    blockers: Blocker[];
 };
 export type Registry = {
     schemaVersion: 1;
@@ -92,8 +73,8 @@ function version(value: unknown): void {
     if (value !== 1) throw new InputError('Invalid input: schemaVersion must be 1.');
 }
 
-/** Shared scope normalization. It validates supplied physical paths, not live Git state or freshness. */
-export async function parseOperation(value: unknown): Promise<Operation> {
+/** Portable historical shape only: this never establishes local physical scope or Git authority. */
+export function parseOperationShape(value: unknown): Operation {
     checkRaw(value);
     const data = record(value, [
         'schemaVersion',
@@ -106,19 +87,6 @@ export async function parseOperation(value: unknown): Promise<Operation> {
         'targets',
     ]);
     version(data.schemaVersion);
-    async function physical(value: unknown): Promise<string> {
-        const directory = opaque(value);
-        if (!path.isAbsolute(directory))
-            throw new InputError('Invalid input scope: paths must be physical absolute directories.');
-        try {
-            const actual = await realpath(directory);
-            if (path.relative(path.resolve(directory), actual) !== '' || !(await stat(actual)).isDirectory())
-                throw new Error('physical');
-            return actual;
-        } catch {
-            throw new InputError('Invalid input scope: directory is missing or not physical.');
-        }
-    }
     const paths = unique(
         list(data.paths, (item) => {
             if (typeof item !== 'string' || item.length === 0) throw new InputError('Invalid input scope: empty path.');
@@ -148,107 +116,109 @@ export async function parseOperation(value: unknown): Promise<Operation> {
     return {
         schemaVersion: 1,
         id: opaque(data.id),
-        repository: await physical(data.repository),
-        worktree: await physical(data.worktree),
-        commonGitDir: await physical(data.commonGitDir),
+        repository: opaque(data.repository),
+        worktree: opaque(data.worktree),
+        commonGitDir: opaque(data.commonGitDir),
         kind,
         paths,
         targets,
     };
 }
 
-function parseEvidence(value: unknown): Evidence {
-    const data = record(value, ['fields', 'kind', 'observation', 'reference', 'detail', 'nativeReasoning', 'mapping']);
-    const fields = unique(list(data.fields, text));
-    if (!fields.length || fields.some((field) => !['agent', 'host', 'model', 'reasoning'].includes(field)))
-        throw new InputError('Invalid input: unsupported evidence field.');
-    const observation = text(data.observation);
-    if (!['effective', 'requested', 'capability', 'display'].includes(observation))
-        throw new InputError('Invalid input: unsupported observation.');
-    const evidence: Evidence = { fields, kind: text(data.kind), observation, reference: text(data.reference) };
-    if (data.detail !== undefined) evidence.detail = text(data.detail);
-    if (data.nativeReasoning !== undefined) {
-        evidence.nativeReasoning = text(data.nativeReasoning);
-        if (!['enabled', 'disabled'].includes(evidence.nativeReasoning))
-            throw new InputError('Invalid input: unsupported native reasoning observation.');
+/** Current scope additionally requires existing physical local directories, never merely a portable shape. */
+export async function parseOperation(value: unknown): Promise<Operation> {
+    const operation = parseOperationShape(value);
+    async function physical(value: unknown): Promise<string> {
+        const directory = opaque(value);
+        if (!path.isAbsolute(directory))
+            throw new InputError('Invalid input scope: paths must be physical absolute directories.');
+        try {
+            const actual = await realpath(directory);
+            if (path.relative(path.resolve(directory), actual) !== '' || !(await stat(actual)).isDirectory())
+                throw new Error('physical');
+            return actual;
+        } catch {
+            throw new InputError('Invalid input scope: directory is missing or not physical.');
+        }
     }
-    if (data.mapping !== undefined) {
-        const mapping = record(data.mapping, ['route', 'model']);
-        evidence.mapping = { route: text(mapping.route), model: identity(mapping.model, 'model') };
-    }
-    return evidence;
-}
-function parseEvent(value: unknown): Event {
-    const data = record(value, [
-        'id',
-        'participantId',
-        'task',
-        'agent',
-        'host',
-        'model',
-        'modelRoute',
-        'reasoning',
-        'evidence',
-    ]);
-    const reasoning = record(data.reasoning, ['state', 'value']);
-    if (reasoning.state !== 'unknown' && reasoning.state !== 'confirmed')
-        throw new InputError('Invalid input: unsupported reasoning state.');
-    if (reasoning.state === 'unknown' && reasoning.value !== undefined)
-        throw new InputError('Invalid input: unknown reasoning has no value.');
-    const event: Event = {
-        id: opaque(data.id),
-        participantId: opaque(data.participantId),
-        task: text(data.task),
-        reasoning:
-            reasoning.state === 'unknown'
-                ? { state: 'unknown' }
-                : { state: 'confirmed', value: identity(reasoning.value, 'reasoning') },
-        evidence: list(data.evidence, parseEvidence),
+    return {
+        ...operation,
+        repository: await physical(operation.repository),
+        worktree: await physical(operation.worktree),
+        commonGitDir: await physical(operation.commonGitDir),
     };
-    for (const field of ['agent', 'host', 'model', 'modelRoute'] as const)
-        if (data[field] !== undefined)
-            event[field] = field === 'model' ? identity(data[field], 'model') : text(data[field]);
-    if ([event.agent, event.host].some((field) => field && /[:()<>]/u.test(field)))
+}
+
+/** Inputs are already confirmed by the caller; parsing never infers dispatch or native settings. */
+export function parseIdentity(value: unknown): ConfirmedIdentity {
+    checkRaw(value);
+    const data = record(value, ['agent', 'model', 'reasoning']);
+    const agent = text(data.agent);
+    if (/[:()<>]/u.test(agent) || ['unknown', 'n/a', 'null'].includes(agent.toLowerCase()))
         throw new InputError('Invalid input: ambiguous Agent host field.');
-    return event;
+    const model = identity(data.model, 'model');
+    if (['auto', 'latest', 'unknown', 'n/a', 'null'].includes(model.toLowerCase()))
+        throw new InputError('Invalid input: an actual formal model is required.');
+    const reasoning = data.reasoning === undefined ? undefined : identity(data.reasoning, 'reasoning');
+    if (
+        reasoning !== undefined &&
+        ['unknown', 'off', 'n/a', 'n-a', 'null', 'auto', 'latest'].includes(reasoning.toLowerCase())
+    )
+        throw new InputError('Invalid input: omit unknown reasoning; confirmed disabled reasoning must use none.');
+    return { agent, model, ...(reasoning !== undefined ? { reasoning } : {}) };
+}
+
+export function canonicalizeIdentity(value: ConfirmedIdentity, registry: Registry): ConfirmedIdentity {
+    const parsed = parseIdentity(value);
+    const matches = registry.hosts.filter((host) => host.name === parsed.agent || host.aliases.includes(parsed.agent));
+    if (matches.length !== 1 || registry.ambiguousAliases.includes(parsed.agent))
+        throw new InputError('Invalid input: Agent must be an exact registered host or unique explicit alias.');
+    const host = matches[0];
+    if (!host) throw new InputError('Invalid input: unregistered Agent host.');
+    return parseIdentity({ ...parsed, agent: host.name });
+}
+export const identityKey = (value: ConfirmedIdentity): string =>
+    JSON.stringify([value.agent, value.model, value.reasoning ?? null]);
+export function normalizeIdentities(values: readonly ConfirmedIdentity[], registry: Registry): ConfirmedIdentity[] {
+    const identities = new Map<string, ConfirmedIdentity>();
+    for (const value of values) {
+        const normalized = canonicalizeIdentity(value, registry);
+        identities.set(identityKey(normalized), normalized);
+    }
+    return [...identities.values()].sort(
+        (a, b) =>
+            ordinal(a.agent, b.agent) ||
+            ordinal(a.model, b.model) ||
+            (a.reasoning === undefined
+                ? b.reasoning === undefined
+                    ? 0
+                    : -1
+                : b.reasoning === undefined
+                  ? 1
+                  : ordinal(a.reasoning, b.reasoning)),
+    );
 }
 
 export async function parseLedger(value: unknown): Promise<Ledger> {
     checkRaw(value);
-    const data = record(value, ['schemaVersion', 'operation', 'knownParticipants', 'events', 'userExceptions']);
-    version(data.schemaVersion);
+    if (isRecord(value) && value.schemaVersion !== 2)
+        throw new InputError(
+            'Invalid input: migrate old event ledgers to schemaVersion 2 confirmed identities and blockers.',
+        );
+    const data = record(value, ['schemaVersion', 'ledgerId', 'operation', 'identities', 'blockers']);
+    if (data.schemaVersion !== 2) throw new InputError('Invalid input: ledger schemaVersion must be 2.');
+    const ledgerId = opaque(data.ledgerId);
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(ledgerId))
+        throw new InputError('Invalid input: ledgerId must be a UUID.');
     const operation = await parseOperation(data.operation);
-    const knownParticipants = list(data.knownParticipants, (item) => {
-        const participant = record(item, ['id', 'eventIds']);
-        return { id: opaque(participant.id), eventIds: unique(list(participant.eventIds, opaque)) };
+    const identities = list(data.identities, parseIdentity);
+    const blockers = list(data.blockers, (item) => {
+        const blocker = record(item, ['id', 'reason']);
+        return { id: opaque(blocker.id), reason: text(blocker.reason) };
     });
-    if (new Set(knownParticipants.map((item) => item.id)).size !== knownParticipants.length)
-        throw new InputError('Invalid input: duplicate participant.');
-    const events = list(data.events, parseEvent);
-    const associations = new Map<string, string>();
-    for (const event of events) {
-        const association = JSON.stringify([event.participantId, event.task]);
-        if (associations.has(event.id) && associations.get(event.id) !== association)
-            throw new InputError('Invalid input: conflicting event association.');
-        associations.set(event.id, association);
-    }
-    for (const participant of knownParticipants)
-        for (const id of participant.eventIds)
-            if (events.some((event) => event.id === id && event.participantId !== participant.id))
-                throw new InputError('Invalid input: participant/event join mismatch.');
-    const userExceptions = list(data.userExceptions, (item) => {
-        const exception = record(item, ['operationId', 'issueIds', 'decision', 'reference']);
-        const result = {
-            operationId: opaque(exception.operationId),
-            issueIds: unique(list(exception.issueIds, opaque)),
-            decision: text(exception.decision),
-            reference: text(exception.reference),
-        };
-        if (result.operationId !== operation.id) throw new InputError('Invalid input scope: stale user exception.');
-        if (!result.issueIds.length) throw new InputError('Invalid input: exception needs concrete issue IDs.');
-        return result;
-    });
-    return { schemaVersion: 1, operation, events, knownParticipants, userExceptions };
+    if (new Set(blockers.map((blocker) => blocker.id)).size !== blockers.length)
+        throw new InputError('Invalid input: duplicate blocker ID.');
+    return { schemaVersion: 2, ledgerId, operation, identities, blockers };
 }
 
 export function parseRegistry(value: unknown): Registry {

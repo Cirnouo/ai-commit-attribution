@@ -73,50 +73,98 @@ the policy contract for semantic review and review after waiting or changes.
 
 ## Supply participation on the default branch
 
-Only on skill-default, prepare ledger.json. Supply schemaVersion 1 and copy the
-same complete operation object into its operation member, then include the
-knownParticipants, events and userExceptions members below. This one-event
-fragment illustrates shape rather than a complete inventory or detected identity.
-Replace the angle-bracket values with trustworthy actual information and repeat
-for every relevant participant, including research/review/test-only work:
+Before managing persistent plans, read the [ledger contract](ledgers.md). Start
+with the actual worktree and inspect existing state/current selection for recovery.
+Carry the handed-off ID and reject any mismatch. For a deliberately new output,
+initialize if needed, create and select a plan, then add its confirmed set:
+
+```text
+node <installed>/scripts/attribution.mjs ledger init --worktree <actual-worktree>
+node <installed>/scripts/attribution.mjs ledger create --worktree <actual-worktree> --select --expect-version <returned-state-version>
+node <installed>/scripts/attribution.mjs ledger add --worktree <actual-worktree> --ledger <returned-ledger-UUID> --input identities.json --expect-version <returned-state-version>
+node <installed>/scripts/attribution.mjs summarize --current <actual-worktree> --operation operation.json
+```
+
+The same ordinary clone is a worktree; no extra git worktree add is required.
+Every policy branch uses an explicitly selected plan for persistent preparation.
+On repository-policy, skip the default identity collection and check the actual
+repository rule separately. Missing state/current is a recovery gap, never a
+reason to silently replace past records with an empty ledger.
+
+identities.json contains an identities array using the confirmed objects below.
+Read each command's returned version and carry the exact ledger UUID through
+handoff. For render or validate, replace --input ledger.json in the examples below
+with --current <actual-worktree> or --ledger <selected-ledger-UUID>. The ledger
+contract owns selector exclusivity, pause/resume, split/combine and failure recovery.
+
+Before transferring plans, moving the original worktree, clearing terminal records
+or deleting/archiving a worktree, read the [ledger recovery contract](ledgers.md).
+Export unfinished plans to an explicit new bundle outside the worktree and Git
+metadata, then run ledger check-removal against the current state. Keep the bundle
+available to the receiving Agent. The recovery contract owns freeze/retry, resume
+versus copy, source ownership and paused import selection.
+
+For the low-level explicit-input route on skill-default, prepare ledger.json with schemaVersion 2, a stable ledgerId
+UUID and the same complete operation object in its operation member. Add the
+confirmed identities and known blockers below. This fragment illustrates the
+shape; determine actual inclusion and identity separately for this output commit.
 
 ```json
 {
-    "knownParticipants": [{ "id": "actor", "eventIds": ["event-1"] }],
-    "events": [
-        {
-            "id": "event-1",
-            "participantId": "actor",
-            "task": "implementation",
-            "agent": "<actual canonical host>",
-            "model": "<actual formal model>",
-            "reasoning": { "state": "unknown" },
-            "evidence": [
-                {
-                    "fields": ["agent", "model"],
-                    "kind": "actual dispatch or handoff",
-                    "observation": "effective",
-                    "reference": "<minimal trustworthy provenance>"
-                }
-            ]
-        }
+    "ledgerId": "00000000-0000-4000-8000-000000000001",
+    "identities": [
+        { "agent": "<actual canonical host>", "model": "<actual formal model>" }
     ],
-    "userExceptions": []
+    "blockers": []
 }
 ```
 
-The record contract explains routed-model mappings, confirmed native settings,
-same-event enrichment and exact issue references. A real host/model change gets
-a new event. Preserve unknown optional effort instead of copying another event's
-value. JSON provenance declarations are not authentication. For a concrete
-required gap, recover the evidence or obtain the genuine current decision before
-continuing; free-text exception records alone do not clear summary issues.
+The record contract owns canonicalization, exact tuple keys and blocker rules.
+Omit unknown optional reasoning; use none only for confirmed disablement.
+Relevant changes to host, model or confirmed effort produce distinct tuples.
+Never borrow child/historical identity from the current integrator. Keep a known
+required gap in blockers until resolved; no exception field bypasses it. The
+helper cannot authenticate the caller's facts, inclusion judgment or authority.
 
 ```text
 node <installed>/scripts/attribution.mjs summarize --input ledger.json --operation operation.json
 ```
 
-## Preview, check and observe the result
+## Prepare and record the planned output
+
+Before prepare/finish, read the [ledger contract](ledgers.md#prepare-one-planned-result).
+Prepare the title/body, explicit Operation and policy decision after reviewing
+the actual staged result and authority. Supply a separate ResultPlan with the
+actual ordered parents and sources; its exact shape and operation examples
+belong to that contract. Then run:
+
+```text
+node <installed>/scripts/attribution.mjs prepare --worktree <actual-worktree> --ledger <selected-ledger-UUID> --expect-version <returned-state-version> --message message.txt --operation operation.json --decision decision.json --result-plan result-plan.json --output new-message.txt
+```
+
+Inspect the result and candidate. Only status prepared with the expected 0 or
+repository-handoff 10 means both the new file and immutable receipt persisted.
+Recheck policy and authority before the separately authorized real Git action.
+The helper never performs that action or continues a replay. For batches, arrange
+one stop and candidate per actual output using the ledger contract.
+
+Afterward read the exact committed message, review its actual full SHA and
+repository criteria, and create the context/ledger/preparation/SHA/message-hash
+bound result-review.json from the ledger contract. Use the preparationId and
+latest stateVersion, then run:
+
+```text
+node <installed>/scripts/attribution.mjs finish --worktree <actual-worktree> --ledger <selected-ledger-UUID> --preparation <returned-preparation-UUID> --sha <actual-full-SHA> --review result-review.json --expect-version <returned-state-version>
+```
+
+Only an observed sealed result ends that plan. A failure may leave a candidate,
+a prepared receipt or an already-created commit; inspect status and reconcile
+the exact result. The ledger contract owns retries, changed-message review,
+late selection, imported preparations and the distinction between no-result
+reopening and a new ledger for subsequent amend. Nothing automatically cleans
+or repairs Git history.
+
+## Optional low-level preview and validation
 
 Start message.txt with the intended title/body and existing human/unrelated
 trailers. For skill-default, preview, optionally create a separate new file and
@@ -133,7 +181,7 @@ absent new file; it never overwrites message.txt. Inspect the result dimensions
 and process exit. Required decisions/errors stop continuation; a failed write
 can leave an uncertain artifact at the explicit output path. Before supplying
 an optional --assessment, read the message contract for signatures, authorized
-migration, scoped exceptions and output safety.
+migration and output safety.
 
 For repository-policy, prepare the repository-required candidate and omit default
 inputs. The helper preserves that candidate and returns exit 10, leaving actual

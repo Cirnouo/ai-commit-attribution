@@ -1,12 +1,71 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { writeNewMessage } from '../src/message-output.ts';
+
+test('Windows new-file publication refuses directory streams without creating an artifact', {
+    skip: process.platform !== 'win32',
+}, async () => {
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'message-output-stream-')));
+    try {
+        const binding = { gitDirectory: path.join(directory, '.git'), commonGitDir: path.join(directory, 'common') };
+        for (const metadata of [binding.gitDirectory, binding.commonGitDir]) {
+            await mkdir(metadata);
+            for (const output of [`${metadata}:candidate`, `${path.toNamespacedPath(metadata)}:candidate:$DATA`]) {
+                await assert.rejects(writeNewMessage(output, Buffer.from('candidate'), binding, []), /stream/i);
+                assert.equal(existsSync(output), false);
+            }
+        }
+    } finally {
+        assert.equal(path.dirname(directory), await realpath(os.tmpdir()));
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
+test('POSIX new-file publication keeps literal colons in ordinary filenames', {
+    skip: process.platform === 'win32',
+}, async () => {
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'message-output-colon-')));
+    try {
+        const output = path.join(directory, 'candidate:literal');
+        await writeNewMessage(
+            output,
+            Buffer.from('candidate'),
+            { gitDirectory: path.join(directory, 'admin'), commonGitDir: path.join(directory, 'common') },
+            [],
+        );
+        assert.equal(await readFile(output, 'utf8'), 'candidate');
+    } finally {
+        assert.equal(path.dirname(directory), await realpath(os.tmpdir()));
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
+test('Windows extended paths cannot publish into protected administrative directories', {
+    skip: process.platform !== 'win32',
+}, async () => {
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'message-output-namespace-')));
+    try {
+        const binding = { gitDirectory: path.join(directory, 'admin'), commonGitDir: path.join(directory, 'common') };
+        for (const metadata of [binding.gitDirectory, binding.commonGitDir]) {
+            await mkdir(metadata);
+            const output = path.join(metadata, 'candidate.txt');
+            await assert.rejects(
+                writeNewMessage(path.toNamespacedPath(output), Buffer.from('candidate'), binding, []),
+                /protected/i,
+            );
+            assert.equal(existsSync(output), false);
+        }
+    } finally {
+        assert.equal(path.dirname(directory), await realpath(os.tmpdir()));
+        await rm(directory, { recursive: true, force: true });
+    }
+});
 
 test('cancelled new-file publication creates no artifact', async () => {
     const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'message-output-abort-')));

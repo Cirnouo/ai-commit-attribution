@@ -44,6 +44,7 @@ test('business build has a separate exact inventory, native version, original li
             'references/agent-registry.json',
             'references/hosts.md',
             'references/integration.md',
+            'references/ledgers.md',
             'references/messages.md',
             'references/policy.md',
             'references/records.md',

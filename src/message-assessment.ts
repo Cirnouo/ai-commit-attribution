@@ -1,7 +1,7 @@
 import { object, strings } from './input-contract.ts';
 import type { MessageAssessment, MessageRecord, Summary } from './message-contract.ts';
 import type { PolicyRoute } from './policy-contract.ts';
-import { checkRaw, InputError, parseOperation, text, unique } from './records.ts';
+import { checkRaw, InputError, identityKey, parseOperation, text, unique } from './records.ts';
 import { digest } from './runtime-support.ts';
 
 const exact = (value: unknown): string => {
@@ -20,42 +20,34 @@ export async function parseAssessment(
     records: readonly MessageRecord[],
     summary: Summary,
 ): Promise<MessageAssessment> {
-    if (value === undefined) return { signatures: [], migrations: [], exceptionApplications: [] };
+    if (value === undefined) return { signatures: [], migrations: [] };
     checkRaw(value);
     let data: Record<string, unknown>;
     try {
-        data = object(value, [
-            'schemaVersion',
-            'artifact',
-            'operation',
-            'messageSha256',
-            'signatures',
-            'migrations',
-            'exceptionApplications',
-        ]);
+        data = object(value, ['schemaVersion', 'artifact', 'operation', 'messageSha256', 'signatures', 'migrations']);
     } catch {
         throw new InputError(
-            'Invalid message assessment shape; migrate to schemaVersion 2 AI decision/assessment inputs without scanner fields.',
+            'Invalid message assessment shape; migrate to schemaVersion 3 confirmed-identity assessment inputs without event or exception fields.',
         );
     }
     if (
-        data.schemaVersion !== 2 ||
+        data.schemaVersion !== 3 ||
         data.artifact !== 'message-assessment' ||
         data.messageSha256 !== messageSha256 ||
         digest(await parseOperation(data.operation)) !== digest(route.operation)
     )
         throw new InputError(
-            'Message assessment requires schemaVersion 2 and exact declared operation/message association; migrate old AI decision/assessment inputs.',
+            'Message assessment requires schemaVersion 3 and exact declared operation/message association; migrate old AI decision/assessment inputs.',
         );
-    const eventIds = new Set(summary.events.map((event) => event.id));
+    const identityKeys = new Set(summary.tuples.map(identityKey));
     const signatures = rows(data.signatures).map((item) => {
-        const row = object(item, ['id', 'source', 'classification', 'eventIds', 'evidenceReferences', 'rationale']);
+        const row = object(item, ['id', 'source', 'classification', 'identityKeys', 'evidenceReferences', 'rationale']);
         let source: Record<string, unknown>;
         try {
             source = object(row.source, ['kind', 'messageRecordId', 'reference']);
         } catch {
             throw new InputError(
-                'Invalid signature source; migrate to schemaVersion 2 message-record or automatic-signing sources.',
+                'Invalid signature source; migrate to schemaVersion 3 message-record or automatic-signing sources.',
             );
         }
         const classification = text(row.classification);
@@ -64,7 +56,7 @@ export async function parseAssessment(
             Object.keys(source).length !== 2
         )
             throw new InputError(
-                'Invalid signature assessment source/classification; schemaVersion 2 requires an explicit source kind.',
+                'Invalid signature assessment source/classification; schemaVersion 3 requires an explicit source kind.',
             );
         let location: MessageAssessment['signatures'][number]['source'];
         if (source.kind === 'message-record' && source.reference === undefined) {
@@ -76,10 +68,10 @@ export async function parseAssessment(
             location = { kind: 'automatic-signing', reference: exact(source.reference) };
         else
             throw new InputError(
-                'Invalid signature source; schemaVersion 2 requires message-record or automatic-signing.',
+                'Invalid signature source; schemaVersion 3 requires message-record or automatic-signing.',
             );
-        const events = strings(row.eventIds);
-        if (events.some((id) => !eventIds.has(id))) throw new InputError('Unknown signature event association.');
+        const keys = strings(row.identityKeys);
+        if (keys.some((id) => !identityKeys.has(id))) throw new InputError('Unknown signature identity association.');
         const evidenceReferences = strings(row.evidenceReferences);
         if (!evidenceReferences.length)
             throw new InputError('Signature assessment needs concrete evidence references.');
@@ -87,7 +79,7 @@ export async function parseAssessment(
             id: exact(row.id),
             source: location,
             classification,
-            eventIds: events,
+            identityKeys: keys,
             evidenceReferences,
             rationale: text(row.rationale),
         };
@@ -99,19 +91,19 @@ export async function parseAssessment(
         throw new InputError('Duplicate signature assessment ID/source.');
     const migrated = new Set<string>();
     const migrations = rows(data.migrations).map((item) => {
-        const row = object(item, ['signatureIds', 'eventIds', 'mappingReferences', 'modificationDecision']);
+        const row = object(item, ['signatureIds', 'identityKeys', 'mappingReferences', 'modificationDecision']);
         const signatureIds = strings(row.signatureIds),
-            events = strings(row.eventIds),
+            keys = strings(row.identityKeys),
             mappingReferences = strings(row.mappingReferences);
         const decision = object(row.modificationDecision, ['operationId', 'reference']);
         if (
             !signatureIds.length ||
-            !events.length ||
+            !keys.length ||
             !mappingReferences.length ||
             exact(decision.operationId) !== route.operation.id
         )
             throw new InputError(
-                'Migration requires exact signatures/events/mapping and a current modification decision.',
+                'Migration requires exact signatures/keys/mapping and a current modification decision.',
             );
         for (const id of signatureIds) {
             const signature = signatures.find((signature) => signature.id === id);
@@ -119,8 +111,8 @@ export async function parseAssessment(
                 signature?.classification !== 'ai-signature' ||
                 signature.source.kind !== 'message-record' ||
                 migrated.has(id) ||
-                !signature.eventIds.length ||
-                signature.eventIds.some((eventId) => !events.includes(eventId))
+                !signature.identityKeys.length ||
+                signature.identityKeys.some((key) => !keys.includes(key))
             )
                 throw new InputError('Invalid, duplicate or unsupported migration signature mapping.');
             migrated.add(id);
@@ -128,45 +120,16 @@ export async function parseAssessment(
         const joined = unique(
             signatures
                 .filter((signature) => signatureIds.includes(signature.id))
-                .flatMap((signature) => signature.eventIds),
+                .flatMap((signature) => signature.identityKeys),
         );
-        if (
-            JSON.stringify(joined) !== JSON.stringify(events) ||
-            events.some((id) => !summary.tuples.some((tuple) => tuple.eventIds.includes(id)))
-        )
-            throw new InputError('Migration pairing does not cover exact resolved event evidence.');
+        if (JSON.stringify(joined) !== JSON.stringify(keys) || keys.some((id) => !identityKeys.has(id)))
+            throw new InputError('Migration pairing does not cover exact resolved identity keys.');
         return {
             signatureIds,
-            eventIds: events,
+            identityKeys: keys,
             mappingReferences,
             modificationDecision: { operationId: exact(decision.operationId), reference: text(decision.reference) },
         };
     });
-    const applied = new Set<string>();
-    const exceptionApplications = rows(data.exceptionApplications ?? []).map((item) => {
-        const row = object(item, ['operationId', 'reference', 'issueIds', 'action']);
-        const operationId = exact(row.operationId),
-            reference = exact(row.reference),
-            issueIds = strings(row.issueIds);
-        const matching = summary.userExceptions.filter(
-            (exception) =>
-                exception.operationId === operationId &&
-                exception.reference === reference &&
-                issueIds.every((id) => exception.issueIds.includes(id)),
-        );
-        if (
-            row.action !== 'continue-with-incomplete-disclosure' ||
-            operationId !== route.operation.id ||
-            !issueIds.length ||
-            issueIds.some((id) => applied.has(id)) ||
-            matching.length !== 1 ||
-            issueIds.some((id) => !summary.issues.some((issue) => issue.id === id))
-        )
-            throw new InputError('Invalid exception application scope/reference or concrete issue coverage.');
-        issueIds.forEach((id) => {
-            applied.add(id);
-        });
-        return { operationId, reference, issueIds, action: 'continue-with-incomplete-disclosure' };
-    });
-    return { signatures, migrations, exceptionApplications };
+    return { signatures, migrations };
 }

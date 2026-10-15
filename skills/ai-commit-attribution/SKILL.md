@@ -28,9 +28,9 @@ the integrator checks the actual repository criteria separately.
 On skill-default, before collecting inputs or interpreting summaries, read the
 [record contract](references/records.md). Include every actual relevant participant
 in planning, research, delegation, implementation, review, tests, fixes and
-integration. Preserve event-specific actual host, formal model and effective
-configuration through handoffs and changes; never fill a child or historical
-event from the integrator's current settings. Use the [registry](references/agent-registry.json)
+integration. Confirm actual host, formal model and effective configuration for
+each included identity; never fill a child or historical identity from the
+integrator's current settings. Use the [registry](references/agent-registry.json)
 for exact canonical hosts and aliases. For host identity acquisition, discovery,
 loading or native-question capabilities, first read [host evidence](references/hosts.md).
 
@@ -44,8 +44,18 @@ Inspect the actually exposed, mode-permitted native question facilities and use
 an available nonterminal one. Wait for the actual human answer. Unavailable,
 failed, cancelled or noninteractive questioning stops automatic continuation;
 report the concrete gap and preserve work/index. A request, timeout, pending or
-automatic selection is not an answer. A genuine user exception is a separate
-current-operation decision, never verified identity or new Git authorization.
+automatic selection is not an answer. A genuine answer can resolve facts or inclusion judgment; it is never verified
+identity or new Git authorization. Known required gaps remain ledger blockers
+until resolved, and default helpers provide no exception continuation.
+
+For a local planned-commit lifecycle, before initializing state, selecting or
+recording a ledger, running prepare/finish, pausing, recovering, replacing, transferring, rebinding or
+clearing a plan, read the
+[ledger contract](references/ledgers.md). It owns persistent worktree selection
+and failure recovery. Carry the exact ledger ID through delegation and handoff;
+missing or inconsistent state requires an explicit recovery decision.
+Before deleting or archiving a worktree, use that contract's export and removal
+check procedure for unfinished ledgers. Worktree-local state shares its lifetime.
 
 Before render, validate, signature assessment or migration, read the
 [message contract](references/messages.md). Inspect concrete automatic-signing
@@ -60,6 +70,8 @@ Before a separately authorized real operation, recheck scope and authority.
 Afterward read its final committed message and current operation evidence;
 check the applicable rule again. A host/hook mismatch stops later actions.
 Do not automatically amend, roll back, push or rewrite history to repair it.
+For a prepared local output, follow the ledger contract to review and finish the
+exact SHA. A successful Git exit alone does not seal or consume the ledger.
 
 For human integration and the explicit JSON/CLI workflow, read the
 [first-use guide](references/integration.md). Run the single [executable](scripts/attribution.mjs)

@@ -7,6 +7,15 @@ import { checkRaw, InputError } from './records.ts';
 import { inspectPath, physical } from './runtime-support.ts';
 import { inside } from './safe-git.ts';
 
+/** A Windows directory stream can masquerade as a regular new leaf attached to protected metadata. */
+export function checkOrdinaryOutputPath(destination: string): void {
+    if (process.platform !== 'win32') return;
+    const ordinary = destination.replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\(?=[a-z]:\\)/i, '');
+    if (/^\\\\[?.]\\/.test(ordinary)) throw new InputError('Output uses an unsupported Windows device namespace.');
+    if (ordinary.replace(/^[a-z]:/i, '').includes(':'))
+        throw new InputError('Output must be an ordinary file, not a Windows stream.');
+}
+
 /** Create only an absent new leaf; peer paths and any uncertain partial artifact remain untouched. */
 export async function writeNewMessage(
     file: string,
@@ -22,6 +31,7 @@ export async function writeNewMessage(
     checkRaw(file);
     if (!file) throw new InputError('Explicit output path is empty.');
     const destination = path.resolve(file);
+    checkOrdinaryOutputPath(destination);
     if (
         consumed.some((input) => samePhysicalPath(path.resolve(input), destination)) ||
         inside(scope.gitDirectory, destination) ||

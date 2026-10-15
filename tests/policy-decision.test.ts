@@ -48,7 +48,7 @@ test('schema 2 exclusive routes use only the Agent declaration and preserve poli
                     },
                 );
                 assert.equal(result.exitCode, code);
-                assert.equal(result.schemaVersion, 2);
+                assert.equal(result.schemaVersion, 3);
                 assert.deepEqual(result.routing, { branch });
                 assert.equal('binding' in result, false);
                 assert.equal(result.repositoryPolicyValidation.status, 'not-run');

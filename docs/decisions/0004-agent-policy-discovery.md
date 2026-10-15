@@ -67,3 +67,13 @@ policy scripts. The installed [policy](../../packaging/policy.md) and
 declaration tests, finite actual Agent semantic reading and historical schema-1
 host exercises. None establishes universal policy discovery or real host Git
 behavior beyond its observed scope.
+
+Partial successor accepted 2026-10-15: [0005](0005-planned-commit-ledgers.md)
+replaces the event-based ledger/summary and message event joins with forward
+schema-2 tuple ledgers/summaries and schema-3 message assessments/results, and
+removes exception continuation. It extends Git observation beyond directory
+lookup through a dedicated read-only prepare/finish result observer. Agent
+semantic discovery, PolicyDecision schema 2, Operation/registry schema 1 and
+exclusive routing remain; no policy scanner, automatic freshness claim or
+authority authentication returns. The successor is an accepted design, not
+evidence of implementation or successful verification at base `a1b0499`.

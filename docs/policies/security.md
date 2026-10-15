@@ -17,8 +17,9 @@ leak into repository-policy validation. Missing required identity, stale scope,
 unreadable relevant policy or unresolved conflict cannot be reported as ready.
 Native questions unavailable, failed or cancelled do not become consent.
 
-Participation evidence records actual event identity/configuration/source and
-task association, without secrets or private transcripts. Unknown reasoning is
+Confirmed identity sets declare actual host/model and optional confirmed
+reasoning; the caller decides facts, inclusion and authority. Known required
+gaps remain explicit blockers. Keep secrets and private transcripts out of inputs. Unknown reasoning is
 different from confirmed disabled reasoning. Selected routing aliases, requested
 off settings and hidden display do not prove effective runtime configuration.
 

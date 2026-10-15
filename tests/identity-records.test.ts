@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,338 +16,71 @@ const registry = {
     familyAliases: { codex: 'Codex' },
 };
 
-test('summary resolves only compatible same-event effective observations and retains accounting', async () => {
-    assert.ok(existsSync(new URL('../src/summarize.ts', import.meta.url)), 'PR4 must implement summary business logic');
+test('confirmed set canonicalizes explicit aliases and sorts exact tuples without event accounting', async () => {
     const { summarize } = await import('../src/summarize.ts');
-    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'identity-records-')));
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'identity-set-')));
     const operation = {
         schemaVersion: 1,
-        id: 'operation',
+        id: 'op',
         repository: directory,
         worktree: directory,
         commonGitDir: directory,
         kind: 'commit',
-        paths: ['b.ts', 'a.ts'],
-        targets: [{ role: 'parent', objectId: 'a'.repeat(40) }],
+        paths: ['b', 'a'],
+        targets: [],
     };
-    const observation = (fields: string[], extra = {}) => ({
-        fields,
-        kind: 'handoff',
-        observation: 'effective',
-        reference: 'dispatch:local',
-        ...extra,
-    });
-    const event = (id: string, participantId: string, extra = {}) => ({
-        id,
-        participantId,
-        task: 'implementation',
-        agent: 'Codex App',
-        model: 'gpt-6.1-sol',
-        reasoning: { state: 'unknown' },
-        evidence: [observation(['agent', 'model'])],
-        ...extra,
-    });
-    const ledger = (events: unknown[], knownParticipants = [{ id: 'actor', eventIds: ['first'] }]) => ({
-        schemaVersion: 1,
+    const ledger = {
+        schemaVersion: 2,
+        ledgerId: '00000000-0000-4000-8000-000000000001',
         operation,
-        events,
-        knownParticipants,
-        userExceptions: [],
-    });
+        identities: [
+            { agent: 'omp CLI', model: 'vendor.model-2' },
+            { agent: 'Codex desktop', model: 'amazon.nova-micro-v1:0', reasoning: 'none' },
+            { agent: 'Codex App', model: 'amazon.nova-micro-v1:0' },
+            { agent: 'Codex App', model: 'amazon.nova-micro-v1:0', reasoning: 'high' },
+            { agent: 'Codex desktop', model: 'amazon.nova-micro-v1:0' },
+        ],
+        blockers: [],
+    };
     try {
-        const result = await summarize(
-            ledger([
-                event('first', 'actor', { agent: 'Codex desktop', model: undefined }),
-                event('first', 'actor', {
-                    agent: 'Codex App',
-                    reasoning: { state: 'confirmed', value: 'high' },
-                    evidence: [observation(['agent', 'model', 'reasoning'], { nativeReasoning: 'enabled' })],
-                }),
-                event('later', 'actor', { model: 'formal.snapshot-2026', reasoning: { state: 'unknown' } }),
-                event('research', 'researcher', { agent: 'omp CLI', model: 'vendor-model.2' }),
-            ]),
-            { ...operation, paths: ['a.ts', 'b.ts'] },
-            registry,
-        );
+        const result = await summarize(ledger, { ...operation, paths: ['a', 'b'] }, registry);
+        assert.equal(result.schemaVersion, 2);
+        assert.equal(result.ledgerId, ledger.ledgerId);
         assert.equal(result.exitCode, 0);
-        assert.deepEqual(
-            result.tuples.map((tuple) => [tuple.agent, tuple.model, tuple.reasoning]),
-            [
-                ['Codex App', 'formal.snapshot-2026', undefined],
-                ['Codex App', 'gpt-6.1-sol', 'high'],
-                ['oh-my-pi CLI', 'vendor-model.2', undefined],
-            ],
-        );
-        assert.deepEqual(
-            result.participants.map((participant) => participant.id),
-            ['actor', 'researcher'],
-        );
-        assert.equal(result.participants[1]?.declared, false);
-        assert.deepEqual(result.operation.paths, ['a.ts', 'b.ts']);
-        assert.ok(result.limitations.some((limit) => limit.includes('authenticate')));
-        assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === 'unknown-reasoning'));
-
-        const gaps = await summarize(
-            ledger(
-                [
-                    event('first', 'actor', { agent: 'Codex' }),
-                    event('conflict', 'second'),
-                    event('conflict', 'second', { model: 'different-model' }),
-                    event('extra', 'extra'),
-                ],
-                [
-                    { id: 'actor', eventIds: ['first', 'missing'] },
-                    { id: 'absent', eventIds: [] },
-                ],
-            ),
+        assert.deepEqual(result.tuples, [
+            { agent: 'Codex App', model: 'amazon.nova-micro-v1:0' },
+            { agent: 'Codex App', model: 'amazon.nova-micro-v1:0', reasoning: 'high' },
+            { agent: 'Codex App', model: 'amazon.nova-micro-v1:0', reasoning: 'none' },
+            { agent: 'oh-my-pi CLI', model: 'vendor.model-2' },
+        ]);
+        assert.equal('events' in result, false);
+        assert.equal('participants' in result, false);
+        assert.equal('userExceptions' in result, false);
+        assert.equal((await summarize({ ...ledger, identities: [] }, operation, registry)).exitCode, 0);
+        const blocked = await summarize(
+            { ...ledger, blockers: [{ id: 'missing:model', reason: 'Required model is unresolved.' }] },
             operation,
             registry,
         );
-        assert.equal(gaps.exitCode, 20);
-        assert.ok(gaps.issues.some((issue) => issue.code === 'unresolved-agent'));
-        assert.ok(gaps.issues.some((issue) => issue.code === 'conflicting-model'));
-        assert.ok(gaps.issues.some((issue) => issue.code === 'missing-event'));
-        assert.ok(gaps.issues.some((issue) => issue.code === 'missing-participant-event'));
-        assert.equal(gaps.tuples.length, 1);
-        assert.equal(gaps.tuples[0]?.eventIds[0], 'extra');
-
-        for (const candidate of ['Codex', 'planner', 'Pi Desktop', 'codex app']) {
-            assert.equal(
-                (await summarize(ledger([event('first', 'actor', { agent: candidate })]), operation, registry))
-                    .exitCode,
-                20,
-            );
-        }
-        const contextual = await summarize(
-            ledger([
-                event('first', 'actor', {
-                    agent: 'Codex',
-                    host: 'Codex App',
-                    evidence: [observation(['agent', 'model', 'host'])],
-                }),
-            ]),
-            operation,
-            registry,
-        );
-        assert.equal(contextual.tuples[0]?.agent, 'Codex App');
-        const familyAliasRegistry = { ...registry, ambiguousAliases: [...registry.ambiguousAliases, 'codex'] };
-        const aliasContext = await summarize(
-            ledger([
-                event('first', 'actor', {
-                    agent: 'codex',
-                    host: 'Codex App',
-                    evidence: [observation(['agent', 'model', 'host'])],
-                }),
-            ]),
-            operation,
-            familyAliasRegistry,
-        );
-        assert.equal(aliasContext.tuples[0]?.agent, 'Codex App');
-        const hostEnrichment = await summarize(
-            ledger([
-                event('first', 'actor', { agent: 'Codex' }),
-                event('first', 'actor', {
-                    agent: undefined,
-                    model: undefined,
-                    host: 'Codex App',
-                    evidence: [observation(['host'])],
-                }),
-            ]),
-            operation,
-            registry,
-        );
-        assert.equal(hostEnrichment.tuples[0]?.agent, 'Codex App');
-        const incompatibleHost = await summarize(
-            ledger([event('first', 'actor', { host: 'Pi CLI', evidence: [observation(['agent', 'model', 'host'])] })]),
-            operation,
-            registry,
-        );
-        assert.equal(incompatibleHost.exitCode, 20);
-        const unknownHost = await summarize(
-            ledger([
-                event('first', 'actor', {
-                    host: 'invented Desktop',
-                    evidence: [observation(['agent', 'model', 'host'])],
-                }),
-            ]),
-            operation,
-            registry,
-        );
-        assert.equal(unknownHost.exitCode, 20);
-        const unknownConflict = await summarize(
-            ledger([event('first', 'actor'), event('first', 'actor', { agent: 'invented Desktop' })]),
-            operation,
-            registry,
-        );
-        assert.equal(unknownConflict.exitCode, 20);
-        for (const model of ['auto', 'latest'])
-            assert.equal(
-                (await summarize(ledger([event('first', 'actor', { model })]), operation, registry)).exitCode,
-                20,
-            );
-        const routed = event('first', 'actor', {
-            modelRoute: 'gateway/selected',
-            evidence: [
-                observation(['agent', 'model'], { mapping: { route: 'gateway/selected', model: 'gpt-6.1-sol' } }),
-            ],
-        });
-        assert.equal((await summarize(ledger([routed]), operation, registry)).exitCode, 0);
-        assert.equal((await summarize(ledger([{ ...routed, modelRoute: 'other' }]), operation, registry)).exitCode, 20);
-
-        const efforts = await summarize(
-            ledger([
-                event('first', 'actor'),
-                event('disabled', 'actor', {
-                    reasoning: { state: 'confirmed', value: 'none' },
-                    evidence: [observation(['agent', 'model', 'reasoning'], { nativeReasoning: 'disabled' })],
-                }),
-                event('requested', 'actor', {
-                    reasoning: { state: 'confirmed', value: 'off' },
-                    evidence: [
-                        observation(['agent', 'model']),
-                        observation(['reasoning'], { observation: 'requested', nativeReasoning: 'disabled' }),
-                    ],
-                }),
-                event('hidden', 'actor', {
-                    reasoning: { state: 'confirmed', value: 'none' },
-                    evidence: [observation(['agent', 'model']), observation(['reasoning'], { observation: 'display' })],
-                }),
-                event('clamped', 'actor', {
-                    reasoning: { state: 'confirmed', value: 'low' },
-                    evidence: [
-                        observation(['agent', 'model', 'reasoning'], {
-                            nativeReasoning: 'enabled',
-                            detail: 'off request clamped to low',
-                        }),
-                    ],
-                }),
-                event('optional-conflict', 'actor', {
-                    reasoning: { state: 'confirmed', value: 'high' },
-                    evidence: [observation(['agent', 'model', 'reasoning'], { nativeReasoning: 'enabled' })],
-                }),
-                event('optional-conflict', 'actor', {
-                    reasoning: { state: 'confirmed', value: 'ultra' },
-                    evidence: [observation(['agent', 'model', 'reasoning'], { nativeReasoning: 'enabled' })],
-                }),
-            ]),
-            operation,
-            registry,
-        );
-        assert.equal(efforts.exitCode, 0);
-        assert.deepEqual(
-            efforts.tuples.map((tuple) => tuple.reasoning),
-            [undefined, 'low', 'none'],
-        );
-        assert.ok(efforts.diagnostics.some((diagnostic) => diagnostic.code === 'conflicting-reasoning'));
-        assert.deepEqual(efforts.tuples[0]?.eventIds, ['first', 'hidden', 'optional-conflict', 'requested']);
-        for (const value of ['off', '0', 'disabled']) {
-            const disabled = await summarize(
-                ledger([
-                    event('first', 'actor', {
-                        reasoning: { state: 'confirmed', value },
-                        evidence: [observation(['agent', 'model', 'reasoning'], { nativeReasoning: 'disabled' })],
-                    }),
-                ]),
-                operation,
-                registry,
-            );
-            assert.equal(disabled.tuples[0]?.reasoning, 'none');
-        }
-        const nativeConflict = await summarize(
-            ledger([
-                event('first', 'actor', {
-                    reasoning: { state: 'confirmed', value: 'high' },
-                    evidence: [
-                        observation(['agent', 'model', 'reasoning'], { nativeReasoning: 'disabled' }),
-                        observation(['reasoning'], { nativeReasoning: 'enabled' }),
-                    ],
-                }),
-            ]),
-            operation,
-            registry,
-        );
-        assert.equal(nativeConflict.tuples[0]?.reasoning, undefined);
-        assert.ok(nativeConflict.diagnostics.some((diagnostic) => diagnostic.code === 'conflicting-reasoning'));
-
-        const ordered = [
-            event('first', 'actor'),
-            event('pi', 'other', { agent: 'pi CLI' }),
-            event('omp', 'other', { agent: 'omp CLI' }),
-        ];
-        const forward = await summarize(ledger(ordered), operation, registry);
-        const backward = await summarize(ledger([...ordered].reverse()), operation, registry);
-        assert.deepEqual(forward.tuples, backward.tuples);
-        const crossEvent = await summarize(
-            ledger([event('first', 'actor', { model: undefined }), event('second', 'actor')]),
-            operation,
-            registry,
-        );
-        assert.equal(crossEvent.exitCode, 20);
-        assert.deepEqual(crossEvent.tuples[0]?.eventIds, ['second']);
-        const withException = await summarize(
-            {
-                ...ledger([event('first', 'actor', { model: undefined })]),
-                userExceptions: [
-                    {
-                        operationId: 'operation',
-                        issueIds: ['["event","first","model"]'],
-                        decision: 'user explicitly accepts missing model for this operation',
-                        reference: 'user:message-7',
-                    },
-                ],
-            },
-            operation,
-            registry,
-        );
-        assert.equal(withException.exitCode, 20);
-        assert.equal(withException.userExceptions.length, 1);
-        assert.equal(withException.tuples.length, 0);
-
-        for (const changes of [
-            { id: 'other' },
-            { commonGitDir: undefined },
-            { kind: 'amend' },
-            { paths: ['other.ts'] },
-            { targets: [] },
-        ])
+        assert.equal(blocked.exitCode, 20);
+        assert.deepEqual(blocked.blockers, [{ id: 'missing:model', reason: 'Required model is unresolved.' }]);
+        assert.equal(blocked.issues[0]?.id, 'missing:model');
+        await assert.rejects(summarize(ledger, { ...operation, id: 'other' }, registry), /scope/);
+        for (const agent of ['Codex', 'codex', 'Novel CLI'])
             await assert.rejects(
-                summarize(ledger([event('first', 'actor')]), { ...operation, ...changes }, registry),
-                /input|scope/i,
+                summarize({ ...ledger, identities: [{ agent, model: 'formal.model' }] }, operation, registry),
+                /Agent|host|registered|alias/i,
             );
-        for (const changes of [{ task: 'different' }, { participantId: 'other' }])
-            await assert.rejects(
-                summarize(ledger([event('first', 'actor'), event('first', 'actor', changes)]), operation, registry),
-                /association/i,
-            );
-        for (const raw of ['\n', '\r', '\0', '\u0085', '\u2028', '\u2029', '\u001b'])
-            await assert.rejects(
-                summarize(ledger([event('first', 'actor', { agent: ` ${raw}Codex App ` })]), operation, registry),
-                /control/i,
-            );
-        for (const changes of [
-            { trusted: true },
-            { reasoning: { state: 'confirmed', value: '' } },
-            { model: 'bad (value)' },
-            { evidence: [{ fields: ['model'], kind: 'handoff', observation: 'effective', reference: '' }] },
-        ])
-            await assert.rejects(summarize(ledger([event('first', 'actor', changes)]), operation, registry), /input/i);
-        await assert.rejects(
-            summarize(ledger([event('first', 'actor')], [{ id: 'other', eventIds: ['first'] }]), operation, registry),
-            /participant/i,
-        );
         await assert.rejects(
             summarize(
-                {
-                    ...ledger([]),
-                    userExceptions: [{ operationId: 'stale', issueIds: ['x'], decision: 'accept', reference: 'user' }],
-                },
+                { schemaVersion: 1, operation, knownParticipants: [], events: [], userExceptions: [] },
                 operation,
                 registry,
             ),
-            /scope/i,
+            /migrat.*schemaVersion 2|schemaVersion 2.*migrat/i,
         );
     } finally {
-        await rm(directory, { recursive: true });
+        await rm(directory, { recursive: true, force: true });
     }
 });
 
@@ -380,7 +112,13 @@ test('supplied scope distinguishes real orphan linked worktrees and separate Git
                 { role: 'parent', objectId: 'a'.repeat(40) },
             ],
         };
-        const input = { schemaVersion: 1, operation, knownParticipants: [], events: [], userExceptions: [] };
+        const input = {
+            schemaVersion: 2,
+            ledgerId: '00000000-0000-4000-8000-000000000001',
+            operation,
+            identities: [],
+            blockers: [],
+        };
         const summary = await summarize(input, operation, registry);
         assert.deepEqual(summary.operation.paths, ['a', 'b']);
         assert.equal(summary.operation.repository, linked);
@@ -415,14 +153,21 @@ test('supplied scope distinguishes real orphan linked worktrees and separate Git
         ])
             await assert.rejects(parseOperation({ ...operation, ...change }), /input/i);
         for (const change of [
-            { events: null },
-            { events: [{}] },
+            { identities: null },
+            { identities: [{}] },
             {
-                knownParticipants: [
-                    { id: 'x', eventIds: [] },
-                    { id: 'x', eventIds: [] },
+                blockers: [
+                    { id: 'x', reason: 'missing' },
+                    { id: 'x', reason: 'missing' },
                 ],
             },
+            { ledgerId: 'not-a-UUID' },
+            { ledgerId: '' },
+            { blockers: [{ id: '', reason: 'Missing input.' }] },
+            { blockers: [{ id: 'required', reason: ' ' }] },
+            { blockers: [{ id: 'required', reason: 'bad\nline' }] },
+            { task: 'implementation' },
+            { events: [] },
             { schemaVersion: 0 },
             { unexpected: true },
         ])
@@ -437,6 +182,70 @@ test('supplied scope distinguishes real orphan linked worktrees and separate Git
             { ...registry, hosts: [...registry.hosts, registry.hosts[0]] },
         ])
             assert.throws(() => parseRegistry(invalid), /input/i);
+    } finally {
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
+test('independent commit ledgers retain overlapping confirmed identities without inferred allocation', async () => {
+    const { summarize } = await import('../src/summarize.ts');
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'identity-overlap-')));
+    const operation = {
+        schemaVersion: 1,
+        id: 'op',
+        repository: directory,
+        worktree: directory,
+        commonGitDir: directory,
+        kind: 'commit',
+        paths: [],
+        targets: [],
+    };
+    const shared = { agent: 'Codex App', model: 'Shared.Model:0' };
+    try {
+        const ab = await summarize(
+            {
+                schemaVersion: 2,
+                ledgerId: '00000000-0000-4000-8000-000000000001',
+                operation,
+                identities: [shared, { agent: 'Pi CLI', model: 'Model.B' }],
+                blockers: [],
+            },
+            operation,
+            registry,
+        );
+        const ac = await summarize(
+            {
+                schemaVersion: 2,
+                ledgerId: '00000000-0000-4000-8000-000000000002',
+                operation,
+                identities: [shared, { agent: 'oh-my-pi CLI', model: 'Model.C' }],
+                blockers: [],
+            },
+            operation,
+            registry,
+        );
+        assert.deepEqual(ab.tuples, [shared, { agent: 'Pi CLI', model: 'Model.B' }]);
+        assert.deepEqual(ac.tuples, [shared, { agent: 'oh-my-pi CLI', model: 'Model.C' }]);
+        assert.notEqual(ab.ledgerId, ac.ledgerId);
+        const opaque = await summarize(
+            {
+                schemaVersion: 2,
+                ledgerId: ab.ledgerId,
+                operation,
+                identities: [],
+                blockers: [
+                    { id: ' gap', reason: 'First required gap.' },
+                    { id: 'gap', reason: 'Second required gap.' },
+                ],
+            },
+            operation,
+            registry,
+        );
+        assert.deepEqual(
+            opaque.issues.map((issue) => issue.id),
+            [' gap', 'gap'],
+        );
+        assert.equal(opaque.exitCode, 20);
     } finally {
         await rm(directory, { recursive: true, force: true });
     }

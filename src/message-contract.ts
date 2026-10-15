@@ -17,20 +17,19 @@ export type MessageAssessment = {
         id: string;
         source: { kind: 'message-record'; messageRecordId: string } | { kind: 'automatic-signing'; reference: string };
         classification: string;
-        eventIds: string[];
+        identityKeys: string[];
         evidenceReferences: string[];
         rationale: string;
     }[];
     migrations: {
         signatureIds: string[];
-        eventIds: string[];
+        identityKeys: string[];
         mappingReferences: string[];
         modificationDecision: { operationId: string; reference: string };
     }[];
-    exceptionApplications: { operationId: string; reference: string; issueIds: string[]; action: string }[];
 };
 export type MessageResult = {
-    schemaVersion: 2;
+    schemaVersion: 3;
     artifact: 'message-render' | 'message-validation';
     operation: Operation;
     routing: { branch: PolicyBranch };
@@ -47,9 +46,8 @@ export type MessageResult = {
         convention: 'skill-default' | 'repository-policy' | 'undetermined';
     };
     participationEvidence: {
-        status: 'complete-against-declared-input' | 'incomplete' | 'incomplete-with-user-exception' | 'not-run';
+        status: 'complete-against-declared-input' | 'incomplete' | 'not-run';
         summary?: Summary;
-        appliedExceptionIssueIds: string[];
     };
     repositoryPolicyValidation: { status: 'not-run' };
     issues: Issue[];

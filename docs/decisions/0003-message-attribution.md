@@ -46,3 +46,12 @@ retain their colon exactly (primary source checked 2026-10-14). This is a compat
 schema-1 input extension, not a model catalogue, dispatch claim or provider
 integration. The repository footer checker already accepts colon-bearing values
 and remains unchanged; source summary/mapping and installed message parity are tested.
+
+Partial successor accepted 2026-10-15: [0005](0005-planned-commit-ledgers.md)
+replaces event joins with schema-3 identity-key assessments and removes the
+scoped exception application/incomplete-with-user-exception completion path.
+It adds forward preparation receipts and exact-result reconciliation. Isolated
+trailer interpretation, byte preservation, exclusive policy routing and exact
+signature classification/migration authority safeguards remain. This is an
+accepted design change, not implementation or test evidence; the preceding
+schema-1/schema-2 accounts and observed results retain their historical scope.

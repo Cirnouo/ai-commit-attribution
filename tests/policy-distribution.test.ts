@@ -63,7 +63,7 @@ test('installed schema 2 policy routes bypass default resources without actual G
             const response = run([mode, ...args]);
             assert.equal(response.status, 10, response.stderr + response.stdout);
             const result = JSON.parse(response.stdout);
-            assert.equal(result.schemaVersion, 2);
+            assert.equal(result.schemaVersion, 3);
             assert.deepEqual(result.routing, { branch: 'repository-policy' });
             assert.equal(result.participationEvidence.status, 'not-run');
             assert.equal(result.repositoryPolicyValidation.status, 'not-run');

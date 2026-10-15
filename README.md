@@ -17,6 +17,7 @@
 - Follow the repository's AI disclosure policy first.
 - Account for actual planning, implementation, review and test participants.
 - Preview and check disclosure while preserving the message body and unrelated trailers.
+- Keep a separate ledger for each planned output commit, then reconcile it with the exact result.
 
 ## Requirements
 
@@ -64,7 +65,14 @@ The output is the complete `skills/ai-commit-attribution/` directory, including 
 
 In Codex, explicitly invoke the Skill and ask:
 
-> $ai-commit-attribution Prepare and validate a commit message for the selected changes in the current actual worktree, following the applicable repository policy. Show the preview and any decision or evidence gaps. Do not commit or push.
+> $ai-commit-attribution Track this planned output commit in the current actual worktree, following the applicable repository policy. Recover its ledger; create and select a new one only for a new planned output. Record actual participants and required gaps, then preview the message. Show any decision or evidence gaps. Do not commit or push.
+
+The normal workflow keeps each planned commit's participants in worktree-local
+state. Before preparing a candidate for an authorized Git action or recording its
+exact result, read the [ledger contract](skills/ai-commit-attribution/references/ledgers.md).
+Follow the [first-use guide](docs/user-guide/README.md#getting-started) in the same
+ordinary clone; a linked worktree is optional. The Agent separately reviews
+policy and authority for each operation.
 
 Illustrative default format from the [message contract](skills/ai-commit-attribution/references/messages.md), with placeholders rather than detected identities:
 
@@ -75,6 +83,10 @@ Assisted-by: <canonical Agent host>:<actual formal Model>
 This default applies only when no applicable repository AI disclosure policy exists. Repository policy may choose another format or no disclosure.
 
 To try the [source Skill](skills/ai-commit-attribution/SKILL.md), ask the Agent to read that checkout's `skills/ai-commit-attribution/SKILL.md` and its before-use references, then work in the actual target worktree, which may differ from the Skill checkout. See [source-checkout use](docs/user-guide/README.md#from-a-source-checkout) or [existing-copy use](docs/user-guide/README.md#from-an-existing-skill-copy) for the corresponding access and host steps.
+
+Ledger state is ignored local data. Before deleting or archiving its worktree,
+follow [export and removal checks](skills/ai-commit-attribution/references/ledgers.md#removal-check-and-explicit-terminal-cleanup)
+to preserve unfinished plans outside that worktree and Git metadata.
 
 ## Documentation
 

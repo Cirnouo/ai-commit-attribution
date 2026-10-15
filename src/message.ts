@@ -6,7 +6,7 @@ import { decodeMessage, messageLayout, preflightAssisted, reconcileSpans, runTra
 import { resolveOutputScope } from './output-scope.ts';
 import { checkRouting } from './policy.ts';
 import type { Issue } from './policy-contract.ts';
-import { checkRaw, InputError, identity, parseRegistry, unique } from './records.ts';
+import { checkRaw, InputError, parseIdentity, parseRegistry } from './records.ts';
 import { byteDigest, digest } from './runtime-support.ts';
 
 type MessageInput = {
@@ -30,12 +30,13 @@ function assisted(record: MessageRecord, registry: ReturnType<typeof parseRegist
     const agent = match[1].trim();
     if (!agent || ['unknown', 'n/a', 'null'].includes(agent.toLowerCase()))
         throw new InputError('Malformed default Assisted-by Agent placeholder.');
+    const parsed = parseIdentity({ agent, model: match[2], ...(match[3] ? { reasoning: match[3] } : {}) });
     const host = registry.hosts.find((host) => host.name === agent || host.aliases.includes(agent));
     // Preserve an unresolved spelling as evidence; it cannot match a resolved current tuple or become generated output.
     return {
         agent: host?.name ?? agent,
-        model: identity(match[2], 'model'),
-        ...(match[3] ? { reasoning: identity(match[3], 'reasoning') } : {}),
+        model: parsed.model,
+        ...(parsed.reasoning ? { reasoning: parsed.reasoning } : {}),
     };
 }
 
@@ -51,7 +52,7 @@ export async function processMessage(
     const message = decodeMessage(input.message);
     const route = await checkRouting(input);
     const result: MessageResult = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         artifact: input.mode === 'render' ? 'message-render' : 'message-validation',
         operation: route.operation,
         routing: { branch: route.branch },
@@ -60,7 +61,7 @@ export async function processMessage(
             status: 'not-run',
             convention: route.branch === 'repository-policy' ? 'repository-policy' : 'undetermined',
         },
-        participationEvidence: { status: 'not-run', appliedExceptionIssueIds: [] },
+        participationEvidence: { status: 'not-run' },
         repositoryPolicyValidation: { status: 'not-run' },
         issues: [...route.issues],
         limitations: [
@@ -91,15 +92,10 @@ export async function processMessage(
         result.participationEvidence = {
             status: summary.issues.length ? 'incomplete' : 'complete-against-declared-input',
             summary,
-            appliedExceptionIssueIds: [],
         };
         const summaryIssues = new Set(
             summary.issues.map((item) =>
-                issue(
-                    item.id,
-                    item.code,
-                    'Declared participation has an unresolved required identity or participant gap.',
-                ),
+                issue(item.id, item.code, 'A declared required identity or inclusion blocker remains unresolved.'),
             ),
         );
         result.issues.push(...summaryIssues);
@@ -136,10 +132,6 @@ export async function processMessage(
             sha256: byteDigest(Buffer.from(record.raw)),
             byteLength: Buffer.byteLength(record.raw),
         }));
-        const applied = unique(assessment.exceptionApplications.flatMap((application) => application.issueIds));
-        result.participationEvidence.appliedExceptionIssueIds = applied;
-        if (summary.issues.length && applied.length)
-            result.participationEvidence.status = 'incomplete-with-user-exception';
         const removed = new Set<string>();
         const canonical = summary.tuples.map(
             (tuple) => `Assisted-by: ${tuple.agent}:${tuple.model}${tuple.reasoning ? ` (${tuple.reasoning})` : ''}`,
@@ -158,7 +150,7 @@ export async function processMessage(
                             issue(
                                 record.id,
                                 'unresolved-existing-identity',
-                                'Existing Agent/model has no supported current event association.',
+                                'Existing Agent/model has no supported current identity association.',
                             ),
                         );
                     } else {
@@ -191,7 +183,7 @@ export async function processMessage(
                         issue(
                             record.id,
                             'legacy-signature',
-                            'Legacy signature needs an exact event mapping and current modification decision.',
+                            'Legacy signature needs an exact identity mapping and current modification decision.',
                         ),
                     );
             }
@@ -235,9 +227,7 @@ export async function processMessage(
             }
         }
         const formatIssues = result.issues.filter((item) => item.code === 'invalid-assisted-by');
-        const blockers = result.issues.filter(
-            (item) => !(summaryIssues.has(item) && applied.includes(item.id)) && !formatIssues.includes(item),
-        );
+        const blockers = result.issues.filter((item) => !formatIssues.includes(item));
         if (formatIssues.length || (input.mode === 'validate' && invalid)) {
             result.format.status = 'invalid';
             result.exitCode = 2;

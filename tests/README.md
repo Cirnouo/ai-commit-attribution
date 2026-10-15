@@ -7,10 +7,10 @@ prove history and worktree behavior without modifying the contributor checkout.
 
 Report targeted red/green evidence and measured coverage separately from live
 GitHub/platform acceptance. Mock network tests establish state handling, not live
-publication. identity-records.test.ts covers declared event evidence, participant
-gaps, same-event enrichment, scope consistency and stable tuples.
-identity-records-review.test.ts covers exact filename/opaque-ID scope, complete
-effective mapping conflicts, explicit missing-model markers and unique issue joins.
+publication. identity-records.test.ts covers confirmed identity sets, blockers,
+explicit aliases, scope consistency and stable tuples.
+identity-records-review.test.ts covers unsafe/placeholder rejection, exact model
+punctuation and full tuple keys distinguishing absent reasoning from none.
 agent-registry.test.ts checks production host distinctions. skill-build.test.ts audits nested physical
 payloads and unchanged peers on failure; distribution.test.ts executes installed
 summary business paths from outside dependencies with Git-state preservation.
@@ -27,7 +27,7 @@ policy-distribution.test.ts executes installed schema 2 routes outside
 dependencies and actual Git repositories, corrupts the registry to prove bypass,
 rejects removed scanner inputs and uses a real import sentinel for default summary.
 message-attribution.test.ts exercises exclusive declared route entry, real isolated
-Git trailer semantics, byte preservation, strict signatures/scoped exceptions,
+Git trailer semantics, byte preservation, strict signatures/full-identity migrations,
 new-file refusal and external installed command behavior. Native questions and
 actual host acceptance remain integrator/host checks, distinct from simulation.
 message-distribution.test.ts runs installed render/validate business paths,
@@ -38,16 +38,39 @@ creation races and replaced-path peer preservation.
 message-temporary-directory.test.ts exercises real child creation at filesystem
 observation boundaries, isolated Git trailer preservation, directory replacement,
 linked paths and retained strict default/private-directory metadata checks.
-message-review-fixes.test.ts covers summary-owned exception boundaries, unique
-exception joins and optional reasoning placeholders through source and copied
+message-review-fixes.test.ts covers blocker/signature collisions, strict schema-3
+assessment joins, rejected legacy exception inputs and optional reasoning placeholders through source and copied
 installed render/validate commands. Output fault regressions retain same-inode
 peer prefix, empty and equal content as well as uncertain partial writes.
 skill-integration.test.ts materializes the finite public acceptance corpus and
 executes all fifteen copied-bundle cases in isolated real Git repositories,
-including positive idempotence, exclusive policy handoff, participant/effort
-accounting, operation mismatches, raw controls and a synthetic final-hook rewrite.
+including positive idempotence, exclusive policy handoff, confirmed tuple
+sets and blockers, operation mismatches, raw controls and a synthetic final-hook rewrite.
 The [acceptance guide](../docs/acceptance/README.md) maps all eighteen requirements
 to these mechanical checks and separate optional native exercises.
+
+ledger-state.test.ts uses real ordinary and linked Git worktrees to exercise
+exclude initialization, physical state safety, locked CAS and preserved write
+failures. ledger-lifecycle.test.ts covers exact current selection, content
+revisions, independent split/combine sets and immutable terminal records.
+ledger-entry.test.ts exercises lazy selectors and the copied installed CLI,
+including pause, explicit preview, switching and a late child carrying an old ID.
+ledger-transfer.test.ts uses real Git/filesystem fixtures for export freeze and
+publication interruption recovery, late current preservation, strict portable
+references and byte limits, raw digest conflicts, prepared source disappearance,
+resume/copy history, original-move rebind, stale removal coverage and explicit
+terminal pruning with durable import idempotence receipts.
+result-git.test.ts exercises raw v2/v3/v4 and sparse indexes, both object formats,
+complete path/mode/OID manifests, hostile runnable monitor/hook positive controls,
+corrupt/missing objects and unsupported states without changing Git authority.
+ledger-preparation.test.ts uses real Git actions by isolated fixture callers for
+all six operation kinds, ordered merge/octopus parents, conflict/edit/merge replay,
+both squash forms, exact final-message review and transferred preparation recovery.
+It also checks late/current/version races, candidate/seal failure boundaries,
+retained copy ancestry and actual consumed-evidence path protection.
+ledger-preparation-entry.test.ts executes the complete copied CLI outside source
+and development dependencies, including preparation, actual fixture commit,
+exact-result sealing, idempotent retry and exclusive routing.
 
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.
