@@ -1,217 +1,102 @@
-# Policy scan and routing contract (schema 1)
+# Semantic policy decision (schema 2)
 
-Before preparing or editing a commit message, identify its actual operation and
-read this contract. Repository AI disclosure policy applies exclusively. A rule
-allowing/requiring AI Co-authored-by, forbidding disclosure, declaring disclosure
-unnecessary or forbidding only one marker still owns that branch. Ordinary
-Conventional Commits, language and length rules alone do not replace the default
-AI disclosure rules. The scanner finds candidates; the Agent reads them and
-makes the semantic applicability and precedence decision.
+Before preparing or editing a commit message, identify the actual operation and
+read this contract. The Agent finds and reads relevant rules using their meaning,
+the task, repository context and applicable instructions. It decides applicability
+and precedence, then supplies an explicit decision to the message helper.
 
-## Inputs and commands
+## Find and apply the relevant rules
 
-Read the [record contract](records.md) before preparing Operation. Schema 1 now
-also accepts kind merge, in addition to the five existing kinds. All existing
-ledgers remain compatible. repository/worktree are the physical active worktree
-top; commonGitDir is its physical shared Git metadata directory. Never infer a
-primary checkout from a .git parent. Targets contain real resolved commit IDs;
-use distinct roles such as head, source, base, onto or original. A squash needs
-base and head/source roles. An amend/replay/merge/squash needs actual targets.
+Start from the actual repository, worktree, invocation, operation, selected or
+intended paths and targets. Account for explicit Git directories, working-directory
+arguments and wrapper selection. A message-only amend still concerns the replaced
+commit; replay, merge and squash concern the actual affected history and operation.
+Do not infer a primary checkout from a .git parent or treat the Skill checkout as
+the target repository. Read the [record contract](records.md) before preparing
+Operation; its schema remains 1 and provides the shared explicit scope.
 
-Supply ScopeContext JSON with exactly schemaVersion 1, phase (prepare or
-edit-message), selection (index, specified-paths, all-tracked, operation-targets
-or planned-paths), invocation and optional additionalCandidatePaths. Paths and
-targets remain in Operation; do not duplicate them here. invocation has kind
-(direct-git, wrapper-adapter or agent-context), a nonempty reference and physical
-absolute effectiveDirectory. Optional repositoryPath, gitDirectory and worktreePath
-are physical absolute locators, validated against observed Git. Optional adapter
-names a supported wrapper contract. additionalCandidatePaths lists exact absolute
-external/local evidence files the caller has adopted, never directories to crawl.
-Absolute locators retain exact spelling, including filename whitespace. Path
-records from Git lose only their record terminator, never filename whitespace.
+Use the repository's applicable ancestor/local instructions and task context to
+find relevant disclosure rules and their referenced authorities. Follow known
+relevant sources in the form they actually use. A file extension, directory name,
+document title, link syntax or absence of matching links cannot determine whether
+something is a policy document or prove that all relevant rules have been found.
+Read definitions, hooks and templates as data when they are relevant; do not
+execute repository scripts to discover policy or change configuration to satisfy it.
 
-```text
-node <installed>/scripts/attribution.mjs policy scan --operation <operation.json> --context <context.json>
-node <installed>/scripts/attribution.mjs policy scan --operation <operation.json> --context <context.json> --decision <decision.json>
+Repository AI disclosure policy applies exclusively. An applicable rule allowing
+or requiring AI Co-authored-by, selecting another format, forbidding disclosure,
+declaring disclosure unnecessary or restricting only one marker replaces the
+entire default disclosure branch. Do not supplement a partial AI policy with
+default identity, registry, participation or AI-coauthor restrictions. Ordinary
+Conventional Commits, language and length rules alone permit the default AI
+disclosure branch.
+
+Explain how the read rules apply to this scope and resolve their precedence.
+Known relevant unread, inaccessible or failed sources, uncertain applicability
+and unresolved conflicts require needs-decision. Do not silently choose defaults
+because a search found nothing, a reference could not be read or a question failed.
+Recover the concrete evidence within existing authority, then obtain a genuine
+current decision where needed. A request, timeout, cancellation or saved pending
+question is not an answer and grants no Git authorization.
+
+## Explicit decision
+
+PolicyDecision has exactly these members:
+
+```json
+{
+    "schemaVersion": 2,
+    "artifact": "policy-decision",
+    "operation": {},
+    "branch": "skill-default",
+    "rationale": "Explain the rules read, their applicability and precedence for this operation.",
+    "decisionSource": {
+        "kind": "agent-semantic",
+        "reference": "Minimal provenance for the Agent's actual policy review."
+    }
+}
 ```
 
-The first command returns PolicyScan JSON. It does not choose a branch. The second
-freshly recaptures scope/evidence and returns PolicyRouteCheck. A host integrates
-the same boundary through checkFreshRouting before future default rendering or
-validation, and repeats it after waiting, clarification or material changes.
-Standalone summarize is declared evidence processing; it does not perform routing.
+Replace the empty operation above with the complete schema-1 Operation supplied
+separately to the helper. Their canonical explicit scopes must match. branch is
+repository-policy, skill-default or needs-decision. rationale and the source
+reference are nonempty single-line strings. Cite actual read evidence without
+private transcripts or secrets. The reference is provenance; the helper does
+not open it, retrieve sources or authenticate semantic judgment or consent.
 
-effectiveDirectory represents the actual effective Git -C directory. Explicit
-Git directory/worktree locators are reconstructed after inherited routing is
-cleared. The explicit-scope-v1 wrapper adapter accepts these already-derived
-locators, selection and Operation targets/paths; the integrating Agent must
-derive them from its actual supported wrapper inputs. An executable name, adapter
-label or JSON reference cannot prove actual invocation. Other adapters and ambiguous
-selection require a decision. No wrapper command is executed to discover intent.
+Choose repository-policy when an applicable repository AI disclosure rule owns
+the operation. Choose skill-default only after the semantic review establishes
+that no applicable AI disclosure rule replaces it and no known relevant issue
+remains. Choose needs-decision for an unresolved rule, conflict or required fact.
+The helper checks the supplied decision's shape and scope and dispatches that
+branch. It does not discover documents, inspect policy sources, capture Git state,
+bind evidence or automatically rescan or establish freshness.
 
-## Observation and discovery
+Before rendering, validating or interpreting message results, read the
+[message contract](messages.md). repository-policy bypasses all default inputs
+and checks and returns an unverified handoff (exit 10); the integrator separately
+checks the actual repository rule and exact message. needs-decision returns 20
+without a preview or output file. Only skill-default accesses participation,
+registry and optional assessment inputs. Standalone summarize processes declared evidence and does not select policy.
 
-Capture binds physical worktree/per-worktree/shared Git identity, object format,
-HEAD/ref resolution, full index and split-index bytes, selected/intended raw path
-bytes/types and relevant known operation metadata. Target commit contents bind
-parents; replay/merge/squash coverage includes target paths. Message-only amend
-includes the replaced commit's affected paths even with a clean index. Merge
-includes the source history not already in HEAD and actual staged resolution
-paths, rather than only the source tip's last change. Directories expand
-within limits, including unstaged/untracked/deleted/absent intended paths. A valid
-symbolic unborn branch with absent ref/index is supported for a commit with empty
-targets. Detached/corrupt/missing required objects require a decision without fetch.
-edit-message merge/cherry-pick/rebase requires consistent active operation state.
+Old policy scan commands, ScopeContext, binding, candidate assessments and
+schema-1 policy decisions are unsupported inputs (exit 2). Recreate the decision
+with the schema above and invoke render or validate with --decision, without
+--context. Do not translate an old scan into a claim of current semantic review.
+Operation, ledger, registry and summary schemas remain 1.
 
-Discovery reads exact ancestor/local AGENTS.md and CLAUDE.md for the actual
-worktree and selected/intended paths, root README/CONTRIBUTING entry files, bounded
-contribution/commit/policy documents under docs and workflow definitions, adopted
-local prose links, effective message hooks and explicit commit template, and
-exact additional candidates. Dependency/vendor/generated directories and unrelated
-sibling instruction files are excluded. Missing expected locations are recorded;
-missing adopted references and unsafe/unreadable known evidence are issues.
-A cached expected absence becomes a missing-reference issue when later adopted
-or explicitly supplied. Multiple applicable scope/reference uses remain bound.
-Previously observed files are reused for navigation back edges, including self
-links, with one raw read/candidate and all scope uses and reference IDs retained.
-Every visit still consumes the shared enumeration budget. Reuse never clears
-an absence, failed observation or issue. A known back edge does not recurse or
-exhaust the hop limit; a distinct unseen target beyond eight hops remains blocked.
-Adopted repository directory navigation is discovered within the same limits;
-active navigation reentry reuses coverage, while narrow discovery widens once
-when explicitly adopted. Completed adopted coverage is never downgraded. Directory
-reference IDs are reconciled after discovery so later children remain associated;
-directory uses, including empty targets, and inventories remain bound.
-external directory links require a decision and never authorize a descendant crawl.
-Network links are reported unfetched and never retrieved. The Agent must resolve
-known relevant external policy before selecting a branch; locator presence alone
-does not establish policy applicability or complete evidence.
+## Review after waiting or changes
 
-Recursive prose navigation has a finite format profile: .md, .markdown, .txt and
-extensionless evidence files, including exact external policy files, root entry
-files. Explicitly configured text commit templates may use other suffixes.
-When an earlier raw candidate later becomes an eligible configured text template,
-its already observed text is traversed once without rereading or duplicating the
-candidate. Hook/configuration definitions and failed observations cannot widen
-into prose through this reuse.
-Message-hook and Git-configuration
-definitions are excluded by source kind. Structured/source formats such as JSON,
-YAML, JS/TS and known script/config extensions are excluded even when explicitly
-supplied or configured as a template; extensionless shebang scripts are excluded.
-The excluded template suffixes are .json/.jsonc/.jsonl, .yaml/.yml, JS/TS variants
-(.js/.jsx/.ts/.tsx with optional c/m prefixes), .sh/.bash/.zsh/.fish,
-.ps1/.psm1/.psd1/.bat/.cmd, .py/.rb/.pl/.php/.go/.rs/.java, .c/.h with optional
-pp/xx suffixes, .cs/.swift/.kt/.lua/.sql, .toml/.ini/.cfg/.conf/.config,
-.xml/.htm/.html/.css/.scss/.less/.svg.
-All these nonprose candidates still receive the same bounded physical identity,
-encoding/control checks and raw hashes, and require semantic assessment.
+The Agent rechecks scope, relevant rules, participation evidence and existing
+authority immediately before consuming the decision, after a genuine answer or
+wait and after material changes. A changed operation needs a fresh operation id
+and consistent explicit inputs. Changed rules or facts need a new semantic
+review and decision. Matching JSON cannot establish live state or freshness.
 
-The supported navigation syntax is an inline Markdown link with an immediately
-parenthesized non-whitespace destination and optional double-quoted title.
-Code-formatted labels and existing image-link matching remain supported.
-Anchor-only links are skipped; fragments are removed and file destinations are
-percent-decoded before the existing path/scheme checks. Reference-style links,
-reference definitions, HTML href/src and autolinks are outside this finite
-discovery profile. Their absence from recursive extraction cannot excuse a known
-relevant policy; supply its exact candidate and resolve its applicability.
-
-The bounded lexical pass excludes backtick/tilde fences, four-space/tab indented
-code, equal-length backtick spans (including multiline spans within a prose
-paragraph) and HTML comments. Blank lines and code blocks interrupt span matching.
-Fences allow zero to three spaces, matching marker and a closing run at least
-as long; an unclosed fence masks to EOF. Blockquote prose remains navigable,
-while fences/indented code inside quotes remain literal. Normal list marker
-content and its continuation indentation are prose, including after a blank line.
-Literal comment, fence and span contents cannot change that list context.
-Unindented nonblank prose resets that simple list context. Unmatched backticks
-remain punctuation. Newline
-boundaries survive masking, preventing fabricated links between separate lines.
-This is a small lexical profile, not complete CommonMark parsing; it does not
-interpret arbitrary HTML blocks or every nested list/container grammar. Literal
-regions remain in the candidate's raw bound evidence for semantic review.
-
-Git configuration bytes are hashed in full, while output exposes only policy
-locator keys. Includes are inspected as exact bounded data; inline include
-precedence, conditional includes and unsupported path expansion require a decision.
-No home directory is enumerated. Symbolic links/reparse points and unsafe intermediate
-links are rejected; hard-linked input may be read with descriptor/path identity
-checks. Hook, template, workflow, configuration values and policy scripts are data.
-Ordinary absence requires an initially missing target with all existing ancestor
-components inspected by lstat without following links. A dangling component or
-disappearance after observed presence is an unsafe observation, not absence.
-
-Limits are versioned policy-scan-v1: 2 MiB JSON input, 10,000 operation paths,
-128 opened files, 256 KiB per evidence file, 4 MiB total evidence bytes,
-256 candidates, 64 ancestor steps, 16 directory levels, 8 reference hops and
-4,096 shared scope/evidence enumeration entries and visits, including empty
-directories and skipped entries. Traversal checks types without preliminary leaf
-hashing; selected raw leaf reads run once under a cumulative 4 MiB path-byte
-budget. Git calls have 10 seconds each and 30 seconds total,
-with bounded output. No scan is completed by truncating. File/type/read/encoding/
-control/race/budget issues require a decision. Document newlines are retained;
-single-line fields reject raw controls before normalization.
-
-The safe runner resolves Git from reviewed host installation roots independently
-of repository cwd/PATH: ProgramFiles Git/cmd on Windows, system /usr/bin,
-/usr/local/bin or /opt/homebrew/bin on Unix. The host bootstrap environment is
-the trust boundary for those installation roots. Repository-controlled candidates
-and relative/drive-relative PATH entries are never used. An unavailable installation
-or unsupported --no-lazy-fetch guard requires a decision without fallback. The
-guard runs before repository observation. Every call uses absolute Git, structured
-argv, controlled stdin/environment, no shell, no optional locks, disabled fsmonitor,
-untracked cache/external diff and no lazy fetch/transport. It never executes hooks,
-filters, textconv, trailer commands, credentials or repository policy scripts.
-Exported runner calls accept only the exact reviewed read-only argv forms;
-symbolic-ref writing/deletion modes are rejected before launching Git.
-
-## Artifacts, semantic decision and freshness
-
-PolicyScan contains schemaVersion 1, artifact policy-scan, canonical operation and
-context, binding, scanStatus complete/incomplete, candidates, checkedLocations,
-issues, limits/counters, limitations and exitCode. Each candidate has id, locator,
-sourceKind, scopeBasis, full raw-byte sha256/byteLength, safely decoded relevant
-text and referenceIds. Locations record present/absent/failed. Issues retain
-stable id, code, optional locator and non-secret detail.
-
-Binding has canonicalizationVersion 1, physical gitDirectory/commonGitDir and
-lowercase SHA-256 scopeDigest, gitStateDigest, pathStateDigest, invocationDigest,
-evidenceDigest and scanDigest. One ordinal key-sorted JSON serialization owns
-digests; canonical set ordering preserves exact filenames and opaque operation IDs.
-Evidence includes raw byte hashes, descriptor/path identity, inventory presence/
-absence, issues and limit profile. Timestamps are not the freshness source.
-
-PolicyDecision has exactly schemaVersion 1, artifact policy-decision, operation,
-binding, branch (repository-policy, skill-default or needs-decision), assessments,
-selectedCandidateIds, issueIds, rationale and decisionSource. decisionSource is
-{kind: agent-semantic, reference: nonempty string}. Copy operation/binding from
-the scan. Assess every candidate once, with candidateId, classification
-(ai-disclosure-policy, ordinary-format-only, unrelated or uncertain) and rationale.
-Select at least one applicable candidate for repository-policy. skill-default
-requires a complete reasonable scan and no applicable/uncertain AI-policy assessment.
-Cite concrete evidence and its actual precedence/applicability. Unknown IDs,
-unknown members/versions, malformed fields and incompatible scopes are input errors.
-Incomplete scans, unresolved applicability/conflicts and explicit needs-decision
-stop downstream work. JSON cannot authenticate semantic judgment or user consent.
-
-PolicyRouteCheck reports schemaVersion 1, artifact policy-route-check, operation,
-new binding, freshness current/stale/unresolved, effective branch, defaultValidation
-not-run/eligible, repositoryPolicyValidation not-run, selectedCandidateIds, issues,
-limitations and exitCode. Any changed binding makes an old decision stale and
-needs-decision. Obtain a new semantic assessment; do not silently keep its branch.
-
-repository-policy bypasses default registry, required identity, summary, tuple
-rules and Assisted-by/AI Co-authored-by vetoes entirely. It does not mean repository
-policy was validated. Before rendering or validating a message, read the
-[message contract](messages.md); those commands repeat actual fresh routing
-before accessing any default evidence or applying default trailer rules.
-needs-decision stops the operation. A request, timeout, failed/cancelled question
-or saved decision is not consent. Independent operation authorization still applies.
-
-Exit 0 completes scanning without choosing policy, or confirms a current default
-decision eligible for later checks. Exit 10 hands off current repository policy,
-unverified and with default checks skipped. Exit 20 needs a decision. Exit 2 is
-invalid input/explicit scope. Other nonzero exits are execution failure. Helpers
-never commit/push/write refs/index/history/configuration/identity or grant permission.
-These observations are not atomic and cannot eliminate later races; recheck before
-consumption. A finite search proves only what was checked. The Agent remains
-responsible for actual provenance, known relevant unresolved sources and authorization.
+Before a separately authorized real Git operation, confirm the applicable rule
+and intended message. Afterward read the final committed message and current
+operation evidence and check that rule again. Report host/hook rewriting and
+stop later actions on mismatch; do not automatically amend, roll back, push or
+rewrite history. Helpers prepare/check messages and never commit, push, change
+refs/index/history/identity/configuration or grant permission. File searches and
+mechanical checks assist the Agent's review without proving completeness.

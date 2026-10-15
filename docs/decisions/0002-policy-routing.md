@@ -2,6 +2,13 @@
 
 Accepted 2026-10-14 for policy routing, against the merged schema-1 summary contract.
 
+Status: superseded by [0004](0004-agent-policy-discovery.md) on 2026-10-15.
+The operation-bound scanner, candidate inventory, retained-scan handoff,
+binding and automatic freshness gates below are historical design, not current
+runtime requirements. The shared Operation remains schema 1; current policy
+decisions use schema 2 and are supplied after the Agent's semantic review.
+Preserve this record to explain the rejected boundary and earlier evidence.
+
 Reuse parseOperation as the supplied-scope owner and add the single compatible
 kind merge. Explicit merge message editing needs its own active MERGE_HEAD,
 parent/target/path binding rather than an overloaded commit label. Existing five

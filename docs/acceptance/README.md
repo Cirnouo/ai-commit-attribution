@@ -20,7 +20,7 @@ The following commands run isolated synthetic repositories, not user projects:
 ```text
 node --test tests/skill-integration.test.ts
 node --test tests/identity-records.test.ts tests/identity-records-review.test.ts
-node --test tests/policy-routing.test.ts tests/policy-safety.test.ts tests/policy-operations.test.ts tests/policy-review-fixes.test.ts
+node --test tests/policy-decision.test.ts tests/policy-safety.test.ts
 node --test tests/message-attribution.test.ts tests/message-review-fixes.test.ts tests/message-output.test.ts
 pnpm --ignore-pnpmfile --config.configDependencies={} test:distribution
 ```
@@ -30,8 +30,8 @@ fixture materializer and copied-bundle command recipe. It consumes scenarios.jso
 derives physical paths under os.tmpdir(), creates synthetic Git identities only
 inside those repositories and runs the copied scripts/attribution.mjs from a
 different directory with module/configuration injection removed. It supplies
-explicit operation/context/decision/ledger files; decisions are test-specific
-semantic fixtures, not a keyword classifier. It snapshots HEAD/refs/index,
+explicit operation/decision/ledger files; schema-2 decisions are supplied
+test declarations, not AI discovery or a keyword classifier. It snapshots HEAD/refs/index,
 configuration, selected worktree bytes and status around helper calls.
 
 scenarios.json has seven task requests and fifteen independent fixtures. Its
@@ -46,18 +46,18 @@ evidence; neither the corpus nor a test runner supplies a current model default.
 | --- | --- |
 | body-only, required-ai-coauthor, no-disclosure, marker-only | Write the literal policy/message; provide the policy-specific semantic decision. no-disclosure deliberately lacks Model. |
 | ordinary-format / alias | Use base event profile's exact Pi alias and supplied CRLF human/body/trailer bytes. |
-| uncertain-policy | Keep the policy's adopted docs/review-decision.md absent; retain the resulting scan issue. |
+| uncertain-policy | Keep the referenced requirement unavailable and supply a needs-decision declaration; the helper does not discover the missing source. |
 | missing-participant | Add additionalFacts.missingParticipant to the known inventory without inventing its absent event. |
 | unresolved-router / mapped-router | Use the corresponding event profile, including exact route/mapping facts and colon-bearing formal ID. |
 | retained-participants | Use all six participant events; keep unusedProducts as separate inventory, never ledger events. |
 | separate-effort-events | Use all five effort events, retaining effective/requested/display distinctions and event IDs. |
-| changed-policy | Save the initial decision, replace only CONTRIBUTING with changedPolicy, attempt the old decision, then reassess the current rule. |
-| known-host-signing | Adopt knownHostSigning as an exact additional candidate; the test supplies an exact current signature assessment. Do not execute it. |
+| changed-policy | Replace CONTRIBUTING with changedPolicy, then simulate integrator reassessment with a new operation ID and repository-policy declaration. No automatic freshness detection is claimed. |
+| known-host-signing | Supply an automatic-signing source reference in a schema-2 assessment. The helper neither discovers nor reads the referenced source. |
 | raw-field-control | Preserve the injection profile's raw newline; do not sanitize it into a different input before testing rejection. |
 | final-hook-rewrite | A trusted disposable integrator installs the static fixture hook and commits the candidate first. Inspect its persisted final body and halt follow-up on mismatch; the helper never makes or repairs the commit. |
 
 The materializer renders/validates/rerenders successful defaults, exercises
-exclusive repository handoffs and checks fresh reassessment after staleness.
+exclusive repository handoffs and explicitly supplied reassessment after a change.
 It provides positive and negative assertions rather than matching instruction
 headings. The ordinary-format case includes a body divider to test byte preservation.
 
@@ -87,6 +87,116 @@ Inspect every exposed mode-permitted synchronous/asynchronous facility before
 claiming availability; an unused Plan-only synchronous tool cannot establish
 that Default lacks a usable asynchronous one. Available-answer, unavailable,
 failed, cancelled, pending and timeout paths remain separate observations.
+
+## Agent semantic discovery: finite observed reading
+
+[0004](../decisions/0004-agent-policy-discovery.md) moves policy discovery and
+precedence judgment to the Agent. Deterministic helper tests supply explicit
+schema-2 decisions; those tests cannot establish that an Agent found or read the
+rules. The separate semanticDiscovery array in [scenarios.json](scenarios.json)
+provides four raw reading fixtures and expected branches for that distinction.
+
+On 2026-10-15, an independent Codex App evaluator dispatched as
+gpt-6.1-sol/ultra read four synthetic scratch directories on Windows. It
+enumerated all nine files and read their complete contents. The source baseline
+was 77064c0bb95891135a3fc12e05e5884674ba8758 (the earlier 0.1.0 Skill). It received
+the directories and task, without expected branches or scoring material, and
+correctly selected all four branches below. It performed no Git operation or
+helper invocation. The earlier Skill text was available as reference material;
+the evaluator did not execute its superseded scanner workflow. This is a finite
+semantic-reading observation during the schema-2 migration. The public corpus
+retains the same nine file texts and task meaning (prepare the src/example.ts
+commit), replacing private absolute directories with runtime-derived temporary
+locations; it is not a claim of byte-identical historical prompts. This was not
+an execution of the new helper or proof of current installed Skill loading.
+
+| Scenario | Relevant raw source | Observed semantic result |
+| --- | --- | --- |
+| S01 | archives/entry-47, with no extension, permits only AI-assisted: yes for disclosure. | repository-policy; the repository marker owns disclosure. |
+| S02 | records/brief.bin contains readable text forbidding AI disclosure. | repository-policy; the extension does not exclude a relevant rule. |
+| S03 | misc/7.note requires English imperative messages under 72 characters. | skill-default; ordinary format rules alone do not replace default disclosure. |
+| S04 | private-context/item says a relevant AI requirement exists outside the checkout and requires maintainer clarification. | needs-decision; the missing known relevant requirement prevents a default. |
+
+To reproduce the semantic exercise from source, materialize each semanticDiscovery
+entry's files object beneath a separate fresh temporary directory using the
+executing runtime's temporary-root facility. Preserve its relative keys and
+literal text, including unusual extensions and extensionless files. Give an
+independent evaluator only that directory, the entry's request and read authority;
+keep expectedBranch and this scoring table outside its context. Ask it to explain
+the applicable rules and select a branch without running Git or a helper. Record
+actual enumeration/read actions and compare the returned branch to expectedBranch
+only after completion. Use trusted dispatch evidence for actual model/effort;
+fixture identities do not establish them. The copied-bundle command tests above
+remain a separate check of declared decision consumption.
+
+Run the following PowerShell 7 recipe from the repository root.
+It writes only each entry's files into fresh directories
+under the executing environment's temporary root. Its output supplies each
+scenario's id, directory and request, without expectedBranch or scoring data.
+Give each evaluator access only to its selected scenario directory; keep the
+source corpus and this document outside its workspace/context.
+
+```powershell
+$fixtureCorpusPath = (Resolve-Path -LiteralPath 'docs/acceptance/scenarios.json').Path
+$fixtureCorpus = Get-Content -LiteralPath $fixtureCorpusPath -Raw -Encoding utf8 | ConvertFrom-Json
+$fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('attribution-reading-' + [guid]::NewGuid().ToString('N'))
+[void][System.IO.Directory]::CreateDirectory($fixtureRoot)
+$fixtureEncoding = [System.Text.UTF8Encoding]::new($false)
+$fixtureFileCount = 0
+$fixtureHandoffs = foreach ($fixtureScenario in $fixtureCorpus.semanticDiscovery) {
+    $fixtureDirectory = Join-Path $fixtureRoot $fixtureScenario.id
+    [void][System.IO.Directory]::CreateDirectory($fixtureDirectory)
+    foreach ($fixtureFile in $fixtureScenario.files.PSObject.Properties) {
+        $fixtureFilePath = Join-Path $fixtureDirectory $fixtureFile.Name
+        [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($fixtureFilePath))
+        [System.IO.File]::WriteAllText($fixtureFilePath, [string]$fixtureFile.Value, $fixtureEncoding)
+        $fixtureExpectedBytes = $fixtureEncoding.GetBytes([string]$fixtureFile.Value)
+        $fixtureActualBytes = [System.IO.File]::ReadAllBytes($fixtureFilePath)
+        if ([Convert]::ToBase64String($fixtureExpectedBytes) -cne [Convert]::ToBase64String($fixtureActualBytes)) {
+            throw "Fixture bytes differ: $($fixtureScenario.id)/$($fixtureFile.Name)"
+        }
+        $fixtureFileCount++
+    }
+    $fixtureInventory = @(Get-ChildItem -LiteralPath $fixtureDirectory -Recurse -File)
+    if ($fixtureInventory.Count -ne @($fixtureScenario.files.PSObject.Properties).Count) {
+        throw "Unexpected fixture inventory: $($fixtureScenario.id)"
+    }
+    [pscustomobject]@{
+        id = $fixtureScenario.id
+        directory = $fixtureDirectory
+        request = $fixtureScenario.request
+    }
+}
+$fixtureHandoffs | ConvertTo-Json -Depth 3
+Write-Output "Materialized and byte-checked $fixtureFileCount files."
+```
+
+On 2026-10-15, this materialization recipe was executed on Windows with
+PowerShell 7.6.7 against the public corpus during the documentation update after source commit
+cf3f7fea96b6ac2847816969833129365b475da3. All four directories contained exactly
+their declared file inventory (nine files total); all nine UTF-8 file byte strings
+matched their corpus values. This verifies portable fixture preparation only.
+It is neither an AI rerun nor schema-2 helper acceptance.
+
+The raw fixture corpus permits repetition, but another evaluator or execution
+may differ. Four correct cases do not establish exhaustive discovery, source
+freshness, live Operation correctness, maintained Git state, native question
+outcomes or real commit behavior. No question was asked or answered in S04.
+Neither enumeration nor full reads of these nine files proves completeness for
+an arbitrary repository. Report a new source commit and actual host configuration
+when repeating the public corpus; do not present the historical run as execution
+of an untested schema-2 helper.
+
+## Historical schema-1 acceptance scope
+
+The helper-assisted control, full-Skill retest and original eighteen-requirement
+map below preserve observations from 2026-10-14. Their scanner/binding/freshness
+behavior and then-current payload concern the schema-1 design superseded by
+0004. They are not current schema-2 decision, assessment or semantic-discovery
+acceptance. The original historical outcomes and limitations remain intact;
+current deterministic commands and the separate Agent reading observation above
+provide their own narrower evidence. The fixed-source installation gate remains
+a separately authorized procedure, not an observed completed installation.
 
 ## Observed helper-assisted control
 
@@ -172,7 +282,7 @@ discovery, native questions or immutable-source installation evidence.
 | 11 | All relevant roles/children: retained-participants; identity records | Planning/research/review/test/implementation/integration retained; unused inventory excluded. No omniscient coverage claim. |
 | 12 | Distinct models/efforts and tuple dedup/order: participant/effort profiles | Four participant tuples and three effort tuples retained in the historical control; public synthetic profiles exercise the same invariants. |
 | 13 | No cross-event effort borrowing: separate-effort-events; identity review tests | Unknown/requested/display events stayed unspecified. |
-| 14 | Session/model/repository scope isolation: changed-policy, policy-operations, identity records | Old policy binding rejected, fresh rule used, pre-existing unstaged policy bytes preserved. Other host extraction unverified. |
+| 14 | Declared session/model/repository scope isolation: changed-policy, policy-decision, identity records | Historical control rejected old policy binding and preserved unstaged policy bytes. Current helpers check supplied operation joins; the Agent reassesses changed rules. Other host extraction unverified. |
 | 15 | Native available/unavailable/failed/cancelled outcomes | Only required-gap non-continuation observed. No real question call/answer/cancel/failure/timeout; inspect actual async and sync availability. |
 | 16 | Idempotence and byte preservation: ordinary-format, message byte tests, corpus rerender | Nine persisted messages byte-identical to candidates; Agent second-render unexercised. Copied-bundle repeated render is separate. |
 | 17 | Injection/signing conflict: raw-field-control/known-host-signing/final-hook-rewrite | Raw newline rejected, effective synthetic signing stopped, persisted hook mismatch rejected without repair. No real vendor-signing claim. |

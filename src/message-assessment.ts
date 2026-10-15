@@ -1,8 +1,8 @@
+import { object, strings } from './input-contract.ts';
 import type { MessageAssessment, MessageRecord, Summary } from './message-contract.ts';
-import type { FreshRoutingResult } from './policy-contract.ts';
-import { object, parseBinding, strings } from './policy-contract.ts';
-import { digest } from './policy-scope.ts';
+import type { PolicyRoute } from './policy-contract.ts';
 import { checkRaw, InputError, parseOperation, text, unique } from './records.ts';
+import { digest } from './runtime-support.ts';
 
 const exact = (value: unknown): string => {
     text(value);
@@ -15,51 +15,69 @@ function rows(value: unknown): unknown[] {
 /** Only exact current joins are mechanically checked. This does not authenticate semantic claims or user consent. */
 export async function parseAssessment(
     value: unknown,
-    route: FreshRoutingResult,
+    route: PolicyRoute,
     messageSha256: string,
     records: readonly MessageRecord[],
     summary: Summary,
 ): Promise<MessageAssessment> {
     if (value === undefined) return { signatures: [], migrations: [], exceptionApplications: [] };
     checkRaw(value);
-    const data = object(value, [
-        'schemaVersion',
-        'artifact',
-        'operation',
-        'binding',
-        'messageSha256',
-        'signatures',
-        'migrations',
-        'exceptionApplications',
-    ]);
+    let data: Record<string, unknown>;
+    try {
+        data = object(value, [
+            'schemaVersion',
+            'artifact',
+            'operation',
+            'messageSha256',
+            'signatures',
+            'migrations',
+            'exceptionApplications',
+        ]);
+    } catch {
+        throw new InputError(
+            'Invalid message assessment shape; migrate to schemaVersion 2 AI decision/assessment inputs without scanner fields.',
+        );
+    }
     if (
-        data.schemaVersion !== 1 ||
+        data.schemaVersion !== 2 ||
         data.artifact !== 'message-assessment' ||
         data.messageSha256 !== messageSha256 ||
-        digest(await parseOperation(data.operation)) !== digest(route.operation) ||
-        digest(parseBinding(data.binding)) !== digest(route.binding)
+        digest(await parseOperation(data.operation)) !== digest(route.operation)
     )
-        throw new InputError('Message assessment is malformed or bound to another message/scope/evidence.');
+        throw new InputError(
+            'Message assessment requires schemaVersion 2 and exact declared operation/message association; migrate old AI decision/assessment inputs.',
+        );
     const eventIds = new Set(summary.events.map((event) => event.id));
     const signatures = rows(data.signatures).map((item) => {
         const row = object(item, ['id', 'source', 'classification', 'eventIds', 'evidenceReferences', 'rationale']);
-        const source = object(row.source, ['messageRecordId', 'policyCandidateId']);
+        let source: Record<string, unknown>;
+        try {
+            source = object(row.source, ['kind', 'messageRecordId', 'reference']);
+        } catch {
+            throw new InputError(
+                'Invalid signature source; migrate to schemaVersion 2 message-record or automatic-signing sources.',
+            );
+        }
         const classification = text(row.classification);
         if (
             !['ai-signature', 'human-signature', 'unrelated', 'uncertain'].includes(classification) ||
-            Object.keys(source).length !== 1
+            Object.keys(source).length !== 2
         )
-            throw new InputError('Invalid signature assessment source/classification.');
-        const location: { messageRecordId?: string; policyCandidateId?: string } = {};
-        if (source.messageRecordId !== undefined) {
-            location.messageRecordId = exact(source.messageRecordId);
-            if (!records.some((record) => record.id === location.messageRecordId))
+            throw new InputError(
+                'Invalid signature assessment source/classification; schemaVersion 2 requires an explicit source kind.',
+            );
+        let location: MessageAssessment['signatures'][number]['source'];
+        if (source.kind === 'message-record' && source.reference === undefined) {
+            location = { kind: 'message-record', messageRecordId: exact(source.messageRecordId) };
+            const messageRecordId = location.messageRecordId;
+            if (!records.some((record) => record.id === messageRecordId))
                 throw new InputError('Unknown message record assessment.');
-        } else {
-            location.policyCandidateId = exact(source.policyCandidateId);
-            if (!route.freshScan.candidates.some((candidate) => candidate.id === location.policyCandidateId))
-                throw new InputError('Unknown fresh policy candidate assessment.');
-        }
+        } else if (source.kind === 'automatic-signing' && source.messageRecordId === undefined)
+            location = { kind: 'automatic-signing', reference: exact(source.reference) };
+        else
+            throw new InputError(
+                'Invalid signature source; schemaVersion 2 requires message-record or automatic-signing.',
+            );
         const events = strings(row.eventIds);
         if (events.some((id) => !eventIds.has(id))) throw new InputError('Unknown signature event association.');
         const evidenceReferences = strings(row.evidenceReferences);
@@ -99,7 +117,7 @@ export async function parseAssessment(
             const signature = signatures.find((signature) => signature.id === id);
             if (
                 signature?.classification !== 'ai-signature' ||
-                !signature.source.messageRecordId ||
+                signature.source.kind !== 'message-record' ||
                 migrated.has(id) ||
                 !signature.eventIds.length ||
                 signature.eventIds.some((eventId) => !events.includes(eventId))

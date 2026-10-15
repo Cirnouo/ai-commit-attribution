@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { PolicyScan } from '../src/policy-contract.ts';
 import { resolveTrustedGit } from '../src/safe-git.ts';
 
-test('installed render/validate execute actual default, policy, invalid, gap and stale paths with new-file safety', async () => {
+test('installed render/validate execute actual default, policy, invalid, gap and decision paths with new-file safety', async () => {
     const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'message-installed-')));
     try {
         const business = path.join(directory, 'business'),
@@ -42,21 +42,14 @@ test('installed render/validate execute actual default, policy, invalid, gap and
             paths: ['new.txt'],
             targets: [],
         };
-        const context = {
-            schemaVersion: 1,
-            phase: 'prepare',
-            selection: 'planned-paths',
-            invocation: { kind: 'agent-context', reference: 'fixture:installed', effectiveDirectory: business },
-        };
         const files = Object.fromEntries(
-            ['message', 'operation', 'context', 'decision', 'input', 'assessment'].map((name) => [
+            ['message', 'operation', 'decision', 'input', 'assessment'].map((name) => [
                 name,
                 path.join(directory, name),
             ]),
         );
         const save = async (key: string, value: unknown) => writeFile(files[key] ?? '', JSON.stringify(value));
         await save('operation', operation);
-        await save('context', context);
         const ledger = {
             schemaVersion: 1,
             operation,
@@ -89,33 +82,13 @@ test('installed render/validate execute actual default, policy, invalid, gap and
         const entry = path.join(payload, 'scripts/attribution.mjs');
         const run = (args: string[]) =>
             spawnSync(process.execPath, [entry, ...args], { cwd: directory, env, encoding: 'utf8', windowsHide: true });
-        const scanArgs = ['policy', 'scan', '--operation', files.operation ?? '', '--context', files.context ?? ''];
         const decide = async (branch = 'skill-default') => {
-            const response = run(scanArgs);
-            assert.equal(response.status, 0, response.stderr);
-            const scan = JSON.parse(response.stdout) as PolicyScan;
             await save('decision', {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 artifact: 'policy-decision',
-                operation: scan.operation,
-                binding: scan.binding,
+                operation,
                 branch,
-                assessments: scan.candidates.map((candidate) => ({
-                    candidateId: candidate.id,
-                    classification:
-                        branch === 'repository-policy' && candidate.sourceKind === 'applicable-instruction'
-                            ? 'ai-disclosure-policy'
-                            : 'unrelated',
-                    rationale: 'Synthetic inspected fixture meaning.',
-                })),
-                selectedCandidateIds:
-                    branch === 'repository-policy'
-                        ? scan.candidates
-                              .filter((candidate) => candidate.sourceKind === 'applicable-instruction')
-                              .map((candidate) => candidate.id)
-                        : [],
-                issueIds: [],
-                rationale: 'Fixture routing.',
+                rationale: 'Fixture Agent routing.',
                 decisionSource: { kind: 'agent-semantic', reference: 'fixture:decision' },
             });
         };
@@ -125,8 +98,6 @@ test('installed render/validate execute actual default, policy, invalid, gap and
             files.message ?? '',
             '--operation',
             files.operation ?? '',
-            '--context',
-            files.context ?? '',
             '--decision',
             files.decision ?? '',
             '--input',
@@ -267,6 +238,8 @@ registerHooks({resolve(s,c,n){
         assert.deepEqual(await snapshot(), before);
         assert.equal(existsSync(path.join(business, '.git/index')), false);
         await writeFile(path.join(business, 'new.txt'), 'changed while waiting\n');
+        assert.equal(run(['render', ...args]).status, 0);
+        await decide('needs-decision');
         assert.equal(run(['render', ...args, '--output', blocked]).status, 20);
         assert.equal(existsSync(blocked), false);
         await writeFile(path.join(business, 'AGENTS.md'), 'AI Co-authored-by is required; no model field required.\n');
@@ -301,6 +274,102 @@ registerHooks({resolve(s,c,n){
         assert.equal(source.status, 10, source.stderr);
         assert.deepEqual(await snapshot(), policyBefore);
         assert.equal(existsSync(path.join(directory, 'node_modules')), false);
+    } finally {
+        assert.equal(path.dirname(directory), await realpath(os.tmpdir()));
+        await rm(directory, { recursive: true, force: true });
+    }
+});
+
+test('source and installed repository-policy output ignores unused default aliases while consumed default files stay protected', async (t) => {
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'message-unused-defaults-')));
+    try {
+        const repository = path.join(directory, 'business');
+        const payload = path.join(directory, 'home/skill');
+        await mkdir(repository);
+        await cp(new URL('../skills/ai-commit-attribution/', import.meta.url), payload, { recursive: true });
+        const env = Object.fromEntries(
+            Object.entries(process.env).filter(([key]) => !/^(?:GIT_|NODE_OPTIONS$|NODE_PATH$)/i.test(key)),
+        );
+        const executable = await resolveTrustedGit([directory]);
+        execFileSync(executable, ['init', '--quiet'], { cwd: repository, env, windowsHide: true });
+        const operation = {
+            schemaVersion: 1,
+            id: 'opaque-defaults',
+            repository,
+            worktree: repository,
+            commonGitDir: await realpath(path.join(repository, '.git')),
+            kind: 'commit',
+            paths: [],
+            targets: [],
+        };
+        const decision = {
+            schemaVersion: 2,
+            artifact: 'policy-decision',
+            operation,
+            branch: 'repository-policy',
+            rationale: 'An Agent chose the repository policy.',
+            decisionSource: { kind: 'agent-semantic', reference: 'fixture:policy' },
+        };
+        const content = Buffer.from('subject\r\n\r\nAssisted-by: invalid\r\n');
+        const files = {
+            message: path.join(directory, 'message'),
+            operation: path.join(directory, 'operation'),
+            decision: path.join(directory, 'decision'),
+            input: path.join(directory, 'ledger'),
+            assessment: path.join(directory, 'assessment'),
+        };
+        await writeFile(files.message, content);
+        await writeFile(files.operation, JSON.stringify(operation));
+        await writeFile(files.decision, JSON.stringify(decision));
+        const base = ['--message', files.message, '--operation', files.operation, '--decision', files.decision];
+        const entries = {
+            source: fileURLToPath(new URL('../src/attribution.ts', import.meta.url)),
+            installed: path.join(payload, 'scripts/attribution.mjs'),
+        };
+        const run = (entry: string, args: string[]) =>
+            spawnSync(process.execPath, [entry, 'render', ...args], {
+                cwd: directory,
+                env,
+                encoding: 'utf8',
+                windowsHide: true,
+            });
+        for (const [kind, entry] of Object.entries(entries))
+            await t.test(`${kind} ignores unused paths equal to new output`, async () => {
+                const output = path.join(directory, `${kind}-candidate`);
+                const result = run(entry, [...base, '--input', output, '--assessment', output, '--output', output]);
+                assert.equal(result.status, 10, result.stderr + result.stdout);
+                assert.deepEqual(await readFile(output), content);
+                assert.equal(JSON.parse(result.stdout).participationEvidence.status, 'not-run');
+            });
+        const cleanMessage = Buffer.from('subject\n');
+        await writeFile(files.message, cleanMessage);
+        await writeFile(files.decision, JSON.stringify({ ...decision, branch: 'skill-default' }));
+        await writeFile(
+            files.input,
+            JSON.stringify({ schemaVersion: 1, operation, knownParticipants: [], events: [], userExceptions: [] }),
+        );
+        await writeFile(
+            files.assessment,
+            JSON.stringify({
+                schemaVersion: 2,
+                artifact: 'message-assessment',
+                operation,
+                messageSha256: createHash('sha256').update(cleanMessage).digest('hex'),
+                signatures: [],
+                migrations: [],
+                exceptionApplications: [],
+            }),
+        );
+        const registryFile = path.join(payload, 'references/agent-registry.json');
+        const defaultArgs = [...base, '--input', files.input, '--assessment', files.assessment];
+        for (const output of [...Object.values(files), registryFile])
+            await t.test(`installed protects actually consumed ${path.basename(output)}`, async () => {
+                const before = await readFile(output);
+                const result = run(entries.installed, [...defaultArgs, '--output', output]);
+                assert.equal(result.status, 2, result.stderr + result.stdout);
+                assert.match(JSON.parse(result.stderr).error, /consumed input/i);
+                assert.deepEqual(await readFile(output), before);
+            });
     } finally {
         assert.equal(path.dirname(directory), await realpath(os.tmpdir()));
         await rm(directory, { recursive: true, force: true });

@@ -2,6 +2,12 @@
 
 Accepted 2026-10-14 for the identity-records feature.
 
+Historical feature-stage record: the schema-1 Operation, ledger, registry and
+summary boundary remains current. The command inventory and separate live
+policy-routing work described below reflect that stage, not today's command
+contract. [0004](0004-agent-policy-discovery.md) replaces live policy capture
+with Agent semantic discovery and an explicit schema-2 decision.
+
 Use one explicit versioned ledger and an independently supplied current operation
 to summarize participation. Required physical absolute repository/worktree and
 commonGitDir identify the supplied scope, including linked worktrees and separate

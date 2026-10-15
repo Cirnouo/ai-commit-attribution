@@ -14,23 +14,19 @@ effective mapping conflicts, explicit missing-model markers and unique issue joi
 agent-registry.test.ts checks production host distinctions. skill-build.test.ts audits nested physical
 payloads and unchanged peers on failure; distribution.test.ts executes installed
 summary business paths from outside dependencies with Git-state preservation.
-policy-routing.test.ts, policy-safety.test.ts and policy-operations.test.ts cover
-live scope/freshness, semantic routing, bounded evidence/config redaction and
-real operation/worktree/promisor/executable sentinels.
+policy-decision.test.ts covers strict schema 2 decision shapes, normalized
+declared scope consistency, exclusive lazy routing and rejected legacy inputs.
+Its non-Git directory fixtures prove preview and validation use declarations.
+policy-safety.test.ts covers output-only actual Git-directory protection,
+forged scope rejection, linked worktree administration, trusted executable and
+environment isolation, and the restricted location-query argv allowlist.
 safe-git-environment.test.ts covers Windows copied bootstrap root-key casing,
 ambiguous duplicate rejection and actual Git Bash source/installed message paths
 using dynamically derived host and fixture paths.
-policy-distribution.test.ts executes installed scan and route paths outside
-dependencies, corrupts the registry to prove bypass and uses a real import
-sentinel for default summary.
-policy-review-fixes.test.ts covers amended/merged affected scope, adopted/cached
-references, bounded empty-directory and byte traversal, absence/races, exact
-Windows extended-path locators and rejected Git write modes, including installed
-business regressions and real read-boundary observation.
-policy-navigation.test.ts covers source and copied CLI navigation graphs, prose
-literal boundaries, text/template compatibility, directory widening and late
-reference edges, raw structured-byte freshness and retained hop/visit blockers.
-message-attribution.test.ts exercises fresh exclusive route entry, real isolated
+policy-distribution.test.ts executes installed schema 2 routes outside
+dependencies and actual Git repositories, corrupts the registry to prove bypass,
+rejects removed scanner inputs and uses a real import sentinel for default summary.
+message-attribution.test.ts exercises exclusive declared route entry, real isolated
 Git trailer semantics, byte preservation, strict signatures/scoped exceptions,
 new-file refusal and external installed command behavior. Native questions and
 actual host acceptance remain integrator/host checks, distinct from simulation.
@@ -41,7 +37,7 @@ uses real filesystem fault observation for short writes, cancellation, exclusive
 creation races and replaced-path peer preservation.
 message-temporary-directory.test.ts exercises real child creation at filesystem
 observation boundaries, isolated Git trailer preservation, directory replacement,
-linked paths and retained strict default/private-directory freshness.
+linked paths and retained strict default/private-directory metadata checks.
 message-review-fixes.test.ts covers summary-owned exception boundaries, unique
 exception joins and optional reasoning placeholders through source and copied
 installed render/validate commands. Output fault regressions retain same-inode
@@ -49,7 +45,7 @@ peer prefix, empty and equal content as well as uncertain partial writes.
 skill-integration.test.ts materializes the finite public acceptance corpus and
 executes all fifteen copied-bundle cases in isolated real Git repositories,
 including positive idempotence, exclusive policy handoff, participant/effort
-accounting, stale decisions, raw controls and a synthetic final-hook rewrite.
+accounting, operation mismatches, raw controls and a synthetic final-hook rewrite.
 The [acceptance guide](../docs/acceptance/README.md) maps all eighteen requirements
 to these mechanical checks and separate optional native exercises.
 

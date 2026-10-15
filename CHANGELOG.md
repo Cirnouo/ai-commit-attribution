@@ -16,13 +16,13 @@ Version 0.1.0 is in development. No runtime Skill has been released.
   first-use guide for explicit policy, participation and message inputs. Portable
   acceptance cases distinguish copied-bundle/real-Git checks from native-host,
   question and fixed-source installation evidence.
-- Message preview/render and read-only validation with fresh exclusive policy
+- Message preview/render and read-only validation with explicit exclusive policy
   routing, canonical default trailers, exact signature migration mappings and
   explicitly scoped incomplete-disclosure exception applications.
-- Read-only policy scanning with bounded candidate evidence, explicit semantic
-  decisions and freshness checks for actual worktree/operation/path state,
-  including merge message operations, valid unborn commit preparation, bounded
-  navigation graph reuse and prose-only link adoption with raw evidence binding.
+- Semantic policy review by the Agent for the actual worktree, operation and
+  selected paths, with explicit repository-policy, skill-default and needs-decision
+  decisions. Lightweight helpers check supplied scopes without discovering
+  documents or treating declarations as verified policy or live state.
 - A self-contained development Skill distribution with a researched host
   registry and read-only participation summary command. Summaries preserve
   event evidence, all declared/observed participant accounting, stable identity
@@ -35,9 +35,10 @@ Version 0.1.0 is in development. No runtime Skill has been released.
 - Trailer processing isolates Git configuration and preserves unrelated message
   bytes. Explicit output creates only a separate absent safe file; blockers and
   failures never overwrite inputs or change Git state/identity.
-- Repository policy routing bypasses default identity/registry/summary logic.
-  Trusted absolute Git observation disables lazy fetch and execution surfaces;
-  unsafe reads, unsupported scope and stale decisions stop downstream work.
+- Repository policy routing bypasses all default input reads and checks.
+  Trusted isolated Git trailer processing protects message handling; only explicit
+  output creation locates actual Git directories. Preview and validation check
+  declared scope without querying repository Git state or policy sources.
 - Summary inputs reject raw control injection and incompatible supplied operation
   scopes. Exact generated payload inventories, license bytes and isolated
   business execution are checked without repairing drift; evidence declarations

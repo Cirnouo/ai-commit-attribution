@@ -1,18 +1,18 @@
+import { INPUT_BYTES } from './input-contract.ts';
 import { parseAssessment } from './message-assessment.ts';
 import type { MessageRecord, MessageResult } from './message-contract.ts';
 import { writeNewMessage } from './message-output.ts';
 import { decodeMessage, messageLayout, preflightAssisted, reconcileSpans, runTrailers } from './message-trailers.ts';
-import { checkFreshRouting } from './policy.ts';
+import { resolveOutputScope } from './output-scope.ts';
+import { checkRouting } from './policy.ts';
 import type { Issue } from './policy-contract.ts';
-import { LIMITS } from './policy-contract.ts';
-import { byteDigest, digest } from './policy-scope.ts';
 import { checkRaw, InputError, identity, parseRegistry, unique } from './records.ts';
+import { byteDigest, digest } from './runtime-support.ts';
 
 type MessageInput = {
     mode: 'render' | 'validate';
     message: Buffer;
     operation: unknown;
-    context: unknown;
     decision: unknown;
     output?: string;
     consumedPaths?: readonly string[];
@@ -47,15 +47,14 @@ export async function processMessage(
     if (!['render', 'validate'].includes(input.mode) || (input.mode === 'validate' && input.output !== undefined))
         throw new InputError('Invalid message command or validate output option.');
     checkRaw(input.output);
-    if (input.message.length > LIMITS.inputBytes) throw new InputError('Message byte budget exceeded.');
+    if (input.message.length > INPUT_BYTES) throw new InputError('Message byte budget exceeded.');
     const message = decodeMessage(input.message);
-    const route = await checkFreshRouting(input);
+    const route = await checkRouting(input);
     const result: MessageResult = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         artifact: input.mode === 'render' ? 'message-render' : 'message-validation',
         operation: route.operation,
-        binding: route.binding,
-        routing: { branch: route.branch, freshness: route.freshness },
+        routing: { branch: route.branch },
         message: { inputSha256: byteDigest(input.message) },
         format: {
             status: 'not-run',
@@ -72,21 +71,14 @@ export async function processMessage(
         exitCode: route.exitCode,
     };
     if (route.branch === 'needs-decision') return result;
-    const recheck = async () => {
+    const cancelled = () => {
         if (input.signal?.aborted) throw new Error('Message processing cancelled before completion.');
-        const fresh = await checkFreshRouting(input);
-        if (fresh.exitCode !== route.exitCode || digest(fresh.binding) !== digest(route.binding)) {
-            result.binding = fresh.binding;
-            result.routing = { branch: fresh.branch, freshness: fresh.freshness };
-            result.exitCode = 20;
-            result.issues.push(...fresh.issues);
-            return false;
-        }
-        return true;
     };
+    cancelled();
     let candidate = message;
     if (route.branch === 'skill-default') {
         const defaults = await loadDefault();
+        cancelled();
         const { summarize } = await import('./summarize.ts');
         const summary = await summarize(defaults.ledger, route.operation, defaults.registry);
         const registry = parseRegistry(defaults.registry);
@@ -111,12 +103,7 @@ export async function processMessage(
             ),
         );
         result.issues.push(...summaryIssues);
-        const excluded = [
-            route.operation.repository,
-            route.operation.worktree,
-            route.binding.gitDirectory,
-            route.binding.commonGitDir,
-        ];
+        const excluded = [route.operation.repository, route.operation.worktree, route.operation.commonGitDir];
         let layout: ReturnType<typeof messageLayout>;
         try {
             preflightAssisted(message);
@@ -192,7 +179,8 @@ export async function processMessage(
                 }
             } else if (/^AI-(?:Agent|Model|Reasoning-Effort)$/i.test(record.key)) {
                 const signature = assessment.signatures.find(
-                    (signature) => signature.source.messageRecordId === record.id,
+                    (signature) =>
+                        signature.source.kind === 'message-record' && signature.source.messageRecordId === record.id,
                 );
                 const migration =
                     signature &&
@@ -218,16 +206,17 @@ export async function processMessage(
                     ),
                 );
             if (signature.classification !== 'ai-signature') continue;
-            if (signature.source.policyCandidateId) {
+            if (signature.source.kind === 'automatic-signing') {
                 result.issues.push(
                     issue(
                         signature.id,
                         'automatic-ai-signature',
-                        'Observed automatic AI signing conflicts with the default route; resolve it without changing identity or global configuration.',
+                        'Declared automatic AI signing conflicts with the default route; resolve it without changing identity or global configuration.',
                     ),
                 );
             } else {
-                const record = layout.records.find((record) => record.id === signature.source.messageRecordId);
+                const messageRecordId = signature.source.messageRecordId;
+                const record = layout.records.find((record) => record.id === messageRecordId);
                 if (record && !/^assisted\s*-\s*by$/i.test(record.key) && !removed.has(record.id)) {
                     if (
                         input.mode === 'render' &&
@@ -285,7 +274,7 @@ export async function processMessage(
                     ),
                 );
             } else result.exitCode = 0;
-            if (result.exitCode === 0) await recheck();
+            cancelled();
             return result;
         }
         const retained = reconcileSpans(message, layout, removed, []);
@@ -318,8 +307,7 @@ export async function processMessage(
         result.exitCode = 0;
     }
     if (input.mode === 'render') {
-        // Re-observe after input loading/processing and before publication; never retain an old semantic branch.
-        if (!(await recheck())) return result;
+        cancelled();
         result.message.outputSha256 = byteDigest(Buffer.from(candidate));
         result.message.preview = candidate;
         result.message.changed = candidate !== message;
@@ -327,7 +315,7 @@ export async function processMessage(
             result.message.outputPath = await writeNewMessage(
                 input.output,
                 Buffer.from(candidate),
-                route.binding,
+                await resolveOutputScope(route.operation),
                 input.consumedPaths ?? [],
                 input.signal,
             );
