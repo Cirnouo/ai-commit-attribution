@@ -15,6 +15,26 @@ test('business build has a separate exact inventory, native version, original li
         '../tooling/build-skill.ts'
     );
     const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'skill-build-')));
+    const external = `${directory}-external`;
+    const removeFixtureDirectory = async (target: string, phase: string, force = false) => {
+        const absolute = path.resolve(target);
+        const relative = path.relative(directory, absolute);
+        assert.ok(
+            absolute === external ||
+                (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)),
+            'Recursive removal must stay within the fixture or its exact external sibling.',
+        );
+        try {
+            await rm(absolute, {
+                recursive: true,
+                force,
+                maxRetries: process.platform === 'win32' ? 3 : 0,
+                retryDelay: 100,
+            });
+        } catch (error) {
+            throw new Error(`Fixture directory removal failed during ${phase}: ${absolute}`, { cause: error });
+        }
+    };
     try {
         const files = await generateSkillFiles();
         assert.deepEqual([...files.keys()].sort(), [
@@ -56,15 +76,15 @@ test('business build has a separate exact inventory, native version, original li
         await mkdir(path.join(directory, 'empty'));
         await assert.rejects(verifySkillFiles(directory, files), /inventory/);
         await assert.rejects(writeSkillFiles(directory, files), /inventory/);
-        await rm(path.join(directory, 'empty'), { recursive: true });
+        await removeFixtureDirectory(path.join(directory, 'empty'), 'remove empty inventory fixture');
         await writeFile(path.join(directory, 'extra'), 'peer\n');
         await assert.rejects(writeSkillFiles(directory, files), /inventory/);
         assert.equal(await readFile(path.join(directory, 'extra'), 'utf8'), 'peer\n');
         await rm(path.join(directory, 'extra'));
-        await rm(path.join(directory, 'references'), { recursive: true });
+        await removeFixtureDirectory(path.join(directory, 'references'), 'prepare empty references fixture');
         await mkdir(path.join(directory, 'references'));
         await assert.rejects(writeSkillFiles(directory, files), /empty.*inventory/);
-        await rm(path.join(directory, 'references'), { recursive: true });
+        await removeFixtureDirectory(path.join(directory, 'references'), 'remove empty references fixture');
         await writeSkillFiles(directory, files);
         await rm(path.join(directory, 'SKILL.md'));
         await assert.rejects(verifySkillFiles(directory, files), /inventory/);
@@ -81,8 +101,7 @@ test('business build has a separate exact inventory, native version, original li
             await assert.rejects(verifySkillFiles(directory, files), /physical|link/);
             await rm(path.join(directory, 'references/records.md'));
             await writeSkillFiles(directory, files);
-            await rm(path.join(directory, 'references'), { recursive: true });
-            const external = `${directory}-external`;
+            await removeFixtureDirectory(path.join(directory, 'references'), 'prepare linked references fixture');
             await mkdir(external);
             await writeFile(path.join(external, 'sentinel'), 'external\n');
             try {
@@ -93,15 +112,15 @@ test('business build has a separate exact inventory, native version, original li
                 );
                 await assert.rejects(writeSkillFiles(directory, files), /physical|link/);
                 assert.equal(await readFile(path.join(external, 'sentinel'), 'utf8'), 'external\n');
-                await rm(path.join(directory, 'references'), { recursive: true });
+                await removeFixtureDirectory(path.join(directory, 'references'), 'remove linked references fixture');
             } finally {
-                await rm(external, { recursive: true, force: true });
+                await removeFixtureDirectory(external, 'clean up external fixture', true);
             }
         } finally {
             await rm(peer, { force: true });
         }
     } finally {
-        await rm(directory, { recursive: true, force: true });
+        await removeFixtureDirectory(directory, 'clean up business fixture', true);
     }
 });
 
