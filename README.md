@@ -28,13 +28,13 @@ Runtime use needs no pnpm or development dependencies.
 
 ## Quick start
 
-Install with the [skills.sh CLI](https://skills.sh/docs/cli) for Codex. Before updating or replacing a customized existing target, follow the [installation gate](docs/acceptance/README.md#fixed-source-installation-gate).
+Install with the [skills.sh CLI](https://skills.sh/docs/cli). Before updating or replacing a customized existing target, follow the [installation gate](docs/acceptance/README.md#fixed-source-installation-gate).
 
 ```text
-npx skills@1.7.2 add Cirnouo/ai-commit-attribution --skill ai-commit-attribution --agent codex --global --copy
+npx skills add https://github.com/cirnouo/ai-commit-attribution --skill ai-commit-attribution
 ```
 
-This follows development `main`. `--agent codex` selects the installation target; the copy goes in the executing home's `.agents/skills/ai-commit-attribution`. See the [installation and host guidance](docs/user-guide/README.md#install-for-codex) for scope and loading checks.
+This follows development `main`. See the [installation and host guidance](docs/user-guide/README.md#install-for-codex) for scope, target selection and loading checks.
 
 ### Start a task
 
