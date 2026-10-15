@@ -45,7 +45,7 @@ async function fixture() {
         output: path.join(directory, 'bundle.json'),
         dispose: async () => {
             assert.equal(path.dirname(directory), await realpath(os.tmpdir()));
-            await rm(directory, { recursive: true, force: true });
+            await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
         },
     };
 }
