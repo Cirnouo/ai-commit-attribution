@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,7 +9,7 @@ import { processMessage } from '../src/message.ts';
 import { resolveTrustedGit } from '../src/safe-git.ts';
 import { summarize } from '../src/summarize.ts';
 
-const issueId = '["event","e","model"]';
+const issueId = 'required:model';
 const message = Buffer.from('subject\n');
 async function fixture() {
     const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'message-review-')));
@@ -50,53 +49,24 @@ async function fixture() {
         rationale: 'Synthetic semantic fixture.',
         decisionSource: { kind: 'agent-semantic', reference: 'fixture:review' },
     };
-    const event = {
-        id: 'e',
-        participantId: 'actor',
-        task: 'fixture',
-        agent: 'Codex App',
-        model: 'formal.model-1',
-        reasoning: { state: 'unknown' },
-        evidence: [
-            {
-                fields: ['agent', 'model', 'reasoning'],
-                kind: 'synthetic fixture',
-                observation: 'effective',
-                reference: 'fixture:dispatch',
-                nativeReasoning: 'enabled',
-            },
-        ],
-    };
+    const identity = { agent: 'Codex App', model: 'formal.model-1' };
     const ledger = {
-        schemaVersion: 1,
+        schemaVersion: 2,
+        ledgerId: '00000000-0000-4000-8000-000000000001',
         operation,
-        knownParticipants: [{ id: 'actor', eventIds: ['e'] }],
-        events: [event],
-        userExceptions: [],
+        identities: [identity],
+        blockers: [],
     };
     const registry: unknown = JSON.parse(
         await readFile(new URL('../packaging/agent-registry.json', import.meta.url), 'utf8'),
     );
-    const exception = {
-        operationId: operation.id,
-        reference: 'fixture:actual-current-user-decision',
-        issueIds: [issueId],
-        decision: 'Explicit synthetic current-operation continuation.',
-    };
-    const application = {
-        operationId: operation.id,
-        reference: exception.reference,
-        issueIds: [issueId],
-        action: 'continue-with-incomplete-disclosure',
-    };
     const assessment = (extra: Record<string, unknown> = {}) => ({
-        schemaVersion: 2,
+        schemaVersion: 3,
         artifact: 'message-assessment',
         operation,
         messageSha256: createHash('sha256').update(message).digest('hex'),
         signatures: [],
         migrations: [],
-        exceptionApplications: [],
         ...extra,
     });
     const scope = { operation, decision };
@@ -147,11 +117,9 @@ async function fixture() {
         directory,
         operation,
         scope,
-        event,
+        identity,
         ledger,
         registry,
-        exception,
-        application,
         assessment,
         snapshot,
         installed,
@@ -163,60 +131,14 @@ async function fixture() {
     };
 }
 
-test('review I1 source waivers never suppress colliding automatic or uncertain signature issues', async (t) => {
-    const f = await fixture();
-    try {
-        const ledger = { ...f.ledger, events: [{ ...f.event, model: undefined }], userExceptions: [f.exception] };
-        const base = f.assessment({ exceptionApplications: [f.application] });
-        const positive = await processMessage({ mode: 'render', message, ...f.scope }, async () => ({
-            ledger,
-            registry: f.registry,
-            assessment: base,
-        }));
-        assert.equal(positive.exitCode, 0);
-        assert.equal(positive.participationEvidence.summary?.exitCode, 20);
-        const before = await f.snapshot();
-        for (const classification of ['ai-signature', 'uncertain'])
-            for (const mode of ['render', 'validate'] as const) {
-                await t.test(`${classification} ${mode}`, async () => {
-                    const output = path.join(f.directory, `${classification}-${mode}`);
-                    const assessment = {
-                        ...base,
-                        signatures: [
-                            {
-                                id: issueId,
-                                source: { kind: 'automatic-signing', reference: 'fixture:automatic-signing' },
-                                classification,
-                                eventIds: ['e'],
-                                evidenceReferences: ['fixture:current-signature'],
-                                rationale: 'A concrete independent signature issue uses a colliding opaque ID.',
-                            },
-                        ],
-                    };
-                    const result = await processMessage(
-                        { mode, message, ...f.scope, ...(mode === 'render' ? { output } : {}) },
-                        async () => ({ ledger, registry: f.registry, assessment }),
-                    );
-                    assert.equal(result.exitCode, 20);
-                    assert.equal(result.issues.filter((issue) => issue.id === issueId).length, 2);
-                    assert.equal(result.message.preview, undefined);
-                    assert.equal(existsSync(output), false);
-                });
-            }
-        assert.deepEqual(await f.snapshot(), before);
-    } finally {
-        await f.dispose();
-    }
-});
-
-test('assessment schema 2 rejects legacy scanner sources with migration guidance and keeps exact source joins', async () => {
+test('assessment schema 3 rejects legacy scanner sources with migration guidance and keeps exact source joins', async () => {
     const f = await fixture();
     try {
         const signature = {
             id: 'automatic',
             source: { kind: 'automatic-signing', reference: 'fixture:source' },
             classification: 'ai-signature',
-            eventIds: ['e'],
+            identityKeys: ['["Codex App","formal.model-1",null]'],
             evidenceReferences: ['fixture:evidence'],
             rationale: 'An Agent supplied a semantic signature declaration.',
         };
@@ -226,17 +148,17 @@ test('assessment schema 2 rejects legacy scanner sources with migration guidance
         for (const source of [{ policyCandidateId: 'obsolete' }, { messageRecordId: 'obsolete' }])
             await assert.rejects(
                 evaluate(f.assessment({ signatures: [{ ...signature, source }] })),
-                /schemaVersion 2|migrate/i,
+                /schemaVersion 3|migrate/i,
             );
         for (const change of [{ schemaVersion: 1 }, { binding: {} }, { operation: { ...f.operation, id: 'other' } }])
-            await assert.rejects(evaluate(f.assessment(change)), /schemaVersion 2|migrate/i);
+            await assert.rejects(evaluate(f.assessment(change)), /schemaVersion 3|migrate/i);
         for (const change of [
             { source: { kind: 'automatic-signing', reference: '' } },
             { source: { kind: 'automatic-signing', reference: 'fixture', messageRecordId: 'mixed' } },
             { source: { kind: 'message-record', messageRecordId: 'unknown' } },
             { source: { kind: 'unknown', reference: 'fixture' } },
             { classification: 'unknown' },
-            { eventIds: ['unknown'] },
+            { identityKeys: ['unknown'] },
             { evidenceReferences: [] },
         ])
             await assert.rejects(evaluate(f.assessment({ signatures: [{ ...signature, ...change }] })));
@@ -260,7 +182,7 @@ test('assessment schema 2 rejects legacy scanner sources with migration guidance
     }
 });
 
-test('copied bundle explains schema 2 migration for obsolete assessment versions and scanner sources', async () => {
+test('copied bundle explains schema 3 migration for obsolete assessment versions and scanner sources', async () => {
     const f = await fixture();
     try {
         await f.installed();
@@ -268,7 +190,7 @@ test('copied bundle explains schema 2 migration for obsolete assessment versions
             id: 'legacy-source',
             source: { policyCandidateId: 'obsolete' },
             classification: 'ai-signature',
-            eventIds: ['e'],
+            identityKeys: ['["Codex App","formal.model-1",null]'],
             evidenceReferences: ['fixture:evidence'],
             rationale: 'An obsolete scanner association.',
         };
@@ -280,221 +202,113 @@ test('copied bundle explains schema 2 migration for obsolete assessment versions
         ]) {
             const response = await f.run('render', f.ledger, f.assessment(change));
             assert.equal(response.status, 2, response.stderr + response.stdout);
-            assert.match(JSON.parse(response.stderr).error, /schemaVersion 2|migrate/i);
+            assert.match(JSON.parse(response.stderr).error, /schemaVersion 3|migrate/i);
         }
     } finally {
         await f.dispose();
     }
 });
 
-test('review I1 copied bundle retains signature blockers beside a legitimate incomplete-disclosure exception', async (t) => {
+test('known blockers and independent signature blockers retain colliding opaque IDs', async () => {
     const f = await fixture();
     try {
-        await f.installed();
-        const ledger = { ...f.ledger, events: [{ ...f.event, model: undefined }], userExceptions: [f.exception] };
-        const base = f.assessment({ exceptionApplications: [f.application] });
-        const positive = await f.run('render', ledger, base);
-        assert.equal(positive.status, 0, positive.stderr);
-        for (const classification of ['ai-signature', 'uncertain'])
-            for (const mode of ['render', 'validate']) {
-                await t.test(`${classification} ${mode}`, async () => {
-                    const output = path.join(f.directory, `installed-${classification}-${mode}`);
-                    const assessment = {
-                        ...base,
-                        signatures: [
-                            {
-                                id: issueId,
-                                source: { kind: 'automatic-signing', reference: 'fixture:automatic-signing' },
-                                classification,
-                                eventIds: ['e'],
-                                evidenceReferences: ['fixture:current-signature'],
-                                rationale: 'Synthetic ID collision.',
-                            },
-                        ],
-                    };
-                    const result = await f.run(
-                        mode,
-                        ledger,
-                        assessment,
-                        message,
-                        mode === 'render' ? output : undefined,
-                    );
-                    assert.equal(result.status, 20, result.stderr + result.stdout);
-                    assert.equal(JSON.parse(result.stdout).participationEvidence.summary.exitCode, 20);
-                    assert.equal(existsSync(output), false);
-                });
-            }
+        const result = await processMessage({ mode: 'render', message, ...f.scope }, async () => ({
+            ledger: { ...f.ledger, blockers: [{ id: issueId, reason: 'Required input unresolved.' }] },
+            registry: f.registry,
+            assessment: f.assessment({
+                signatures: [
+                    {
+                        id: issueId,
+                        source: { kind: 'automatic-signing', reference: 'fixture:auto' },
+                        classification: 'ai-signature',
+                        identityKeys: ['["Codex App","formal.model-1",null]'],
+                        evidenceReferences: ['fixture:signing'],
+                        rationale: 'Independent signature declaration.',
+                    },
+                ],
+            }),
+        }));
+        assert.equal(result.exitCode, 20);
+        assert.equal(result.issues.filter((issue) => issue.id === issueId).length, 2);
+        assert.equal(result.message.preview, undefined);
     } finally {
         await f.dispose();
     }
 });
 
-test('review M1 exception applications require one exact decision record while distinct joins remain valid', async (t) => {
+test('assessment v2 and removed exception applications reject with schema 3 migration guidance', async () => {
     const f = await fixture();
     try {
-        const ledger = { ...f.ledger, events: [{ ...f.event, model: undefined }], userExceptions: [f.exception] };
-        const assessment = f.assessment({ exceptionApplications: [f.application] });
-        await t.test('conflicting same-reference coverage is ambiguous', async () => {
+        for (const change of [{ schemaVersion: 2 }, { exceptionApplications: [] }]) {
             await assert.rejects(
                 processMessage({ mode: 'render', message, ...f.scope }, async () => ({
+                    ledger: f.ledger,
                     registry: f.registry,
-                    assessment,
-                    ledger: {
-                        ...ledger,
-                        userExceptions: [f.exception, { ...f.exception, decision: 'A different decision record.' }],
-                    },
+                    assessment: f.assessment(change),
                 })),
-                /exception|Exception/,
+                /schemaVersion 3|migrate/i,
             );
-        });
-        await t.test('distinct references do not create an ambiguous join', async () => {
-            const result = await processMessage({ mode: 'render', message, ...f.scope }, async () => ({
-                registry: f.registry,
-                assessment,
-                ledger: {
-                    ...ledger,
-                    userExceptions: [
-                        f.exception,
-                        {
-                            ...f.exception,
-                            reference: 'fixture:another-decision',
-                            decision: 'Another recorded decision.',
-                        },
-                    ],
-                },
-            }));
-            assert.equal(result.exitCode, 0);
-            assert.equal(result.participationEvidence.summary?.issues.length, 1);
-        });
-        await t.test('same reference with disjoint issue coverage has unique application joins', async () => {
-            const agentId = '["event","e","agent"]';
-            const result = await processMessage({ mode: 'render', message, ...f.scope }, async () => ({
-                registry: f.registry,
-                ledger: {
-                    ...ledger,
-                    events: [{ ...f.event, agent: undefined, model: undefined }],
-                    userExceptions: [
-                        f.exception,
-                        { ...f.exception, issueIds: [agentId], decision: 'Separate specific coverage.' },
-                    ],
-                },
-                assessment: f.assessment({
-                    exceptionApplications: [f.application, { ...f.application, issueIds: [agentId] }],
-                }),
-            }));
-            assert.equal(result.exitCode, 0);
-            assert.equal(result.participationEvidence.summary?.issues.length, 2);
-            assert.equal(result.participationEvidence.appliedExceptionIssueIds.length, 2);
-        });
+        }
     } finally {
         await f.dispose();
     }
 });
 
-const placeholders = ['n/a', 'N/A', 'UNKNOWN', 'unknown', 'NULL', 'Null', 'NONE', 'OFF'];
-test('review I3 shared summary omits case variants of optional placeholders without normalizing native values', async (t) => {
+test('confirmed native spelling, none and absent reasoning render and validate exactly', async () => {
     const f = await fixture();
     try {
-        for (const value of placeholders)
-            await t.test(value, async () => {
-                const summary = await summarize(
-                    { ...f.ledger, events: [{ ...f.event, reasoning: { state: 'confirmed', value } }] },
-                    f.operation,
-                    f.registry,
-                );
-                assert.equal(summary.exitCode, 0);
-                assert.equal(summary.tuples[0]?.reasoning, undefined);
-                assert.equal(summary.issues.length, 0);
-                assert.equal(summary.diagnostics[0]?.code, 'unknown-reasoning');
-            });
+        for (const reasoning of [undefined, 'none', 'Native.MiXeD-7']) {
+            const ledger = { ...f.ledger, identities: [{ ...f.identity, ...(reasoning ? { reasoning } : {}) }] };
+            const expected = `subject\n\nAssisted-by: Codex App:formal.model-1${reasoning ? ` (${reasoning})` : ''}\n`;
+            const load = async () => ({ ledger, registry: f.registry });
+            assert.equal(
+                (await processMessage({ mode: 'render', message, ...f.scope }, load)).message.preview,
+                expected,
+            );
+            assert.equal(
+                (await processMessage({ mode: 'validate', message: Buffer.from(expected), ...f.scope }, load)).exitCode,
+                0,
+            );
+        }
+        for (const reasoning of ['n/a', 'UNKNOWN', 'NULL', 'off']) {
+            await assert.rejects(
+                summarize({ ...f.ledger, identities: [{ ...f.identity, reasoning }] }, f.operation, f.registry),
+                /reasoning/,
+            );
+        }
     } finally {
         await f.dispose();
     }
 });
 
-test('review I3 source render and validate reject fabricated optional placeholders and retain native neighbors', async (t) => {
-    const f = await fixture();
-    try {
-        for (const value of ['n/a', 'UNKNOWN', 'NULL', 'Native.MiXeD-7', 'disabled', 'unknown-state'])
-            await t.test(value, async () => {
-                const event = {
-                    ...f.event,
-                    reasoning:
-                        value === 'unknown-state'
-                            ? { state: 'unknown' }
-                            : { state: 'confirmed', value: value === 'disabled' ? 'off' : value },
-                    evidence: [
-                        { ...f.event.evidence[0], nativeReasoning: value === 'disabled' ? 'disabled' : 'enabled' },
-                    ],
-                };
-                const ledger = { ...f.ledger, events: [event] };
-                const suffix = value === 'Native.MiXeD-7' ? ' (Native.MiXeD-7)' : value === 'disabled' ? ' (none)' : '';
-                const expected = `subject\n\nAssisted-by: Codex App:formal.model-1${suffix}\n`;
-                const load = async () => ({ ledger, registry: f.registry });
-                const result = await processMessage({ mode: 'render', message, ...f.scope }, load);
-                assert.equal(result.exitCode, 0);
-                assert.equal(result.message.preview, expected);
-                assert.equal(
-                    (await processMessage({ mode: 'validate', message: Buffer.from(expected), ...f.scope }, load))
-                        .exitCode,
-                    0,
-                );
-                if (['n/a', 'UNKNOWN', 'NULL'].includes(value)) {
-                    const legacy = await processMessage(
-                        {
-                            mode: 'validate',
-                            message: Buffer.from(`subject\n\nAssisted-by: Codex App:formal.model-1 (${value})\n`),
-                            ...f.scope,
-                        },
-                        load,
-                    );
-                    assert.equal(legacy.exitCode, 2);
-                    assert.equal(legacy.participationEvidence.summary?.issues.length, 0);
-                }
-            });
-    } finally {
-        await f.dispose();
-    }
-});
-
-test('review I3 copied bundle omits placeholders and preserves exact native/disabled/unknown output', async (t) => {
+test('copied bundle uses confirmed native spelling and rejects placeholders', async () => {
     const f = await fixture();
     try {
         await f.installed();
-        for (const value of ['n/a', 'UNKNOWN', 'NULL', 'Native.MiXeD-7', 'disabled', 'unknown-state'])
-            await t.test(value, async () => {
-                const event = {
-                    ...f.event,
-                    reasoning:
-                        value === 'unknown-state'
-                            ? { state: 'unknown' }
-                            : { state: 'confirmed', value: value === 'disabled' ? 'off' : value },
-                    evidence: [
-                        { ...f.event.evidence[0], nativeReasoning: value === 'disabled' ? 'disabled' : 'enabled' },
-                    ],
-                };
-                const ledger = { ...f.ledger, events: [event] };
-                const expected = `subject\n\nAssisted-by: Codex App:formal.model-1${value === 'Native.MiXeD-7' ? ' (Native.MiXeD-7)' : value === 'disabled' ? ' (none)' : ''}\n`;
-                const rendered = await f.run('render', ledger, f.assessment());
-                assert.equal(rendered.status, 0, rendered.stderr);
-                assert.equal(JSON.parse(rendered.stdout).message.preview, expected);
-                const evaluation = {
-                    ...f.assessment(),
-                    messageSha256: createHash('sha256').update(expected).digest('hex'),
-                };
-                const validated = await f.run('validate', ledger, evaluation, Buffer.from(expected));
-                assert.equal(validated.status, 0, validated.stderr);
-                if (['n/a', 'UNKNOWN', 'NULL'].includes(value)) {
-                    const old = `subject\n\nAssisted-by: Codex App:formal.model-1 (${value})\n`;
-                    const wrong = await f.run(
+        for (const reasoning of [undefined, 'none', 'Native.MiXeD-7']) {
+            const ledger = { ...f.ledger, identities: [{ ...f.identity, ...(reasoning ? { reasoning } : {}) }] };
+            const expected = `subject\n\nAssisted-by: Codex App:formal.model-1${reasoning ? ` (${reasoning})` : ''}\n`;
+            const response = await f.run('render', ledger, f.assessment());
+            assert.equal(response.status, 0, response.stderr);
+            assert.equal(JSON.parse(response.stdout).message.preview, expected);
+            assert.equal(
+                (
+                    await f.run(
                         'validate',
                         ledger,
-                        { ...f.assessment(), messageSha256: createHash('sha256').update(old).digest('hex') },
-                        Buffer.from(old),
-                    );
-                    assert.equal(wrong.status, 2, wrong.stderr + wrong.stdout);
-                }
-            });
+                        { ...f.assessment(), messageSha256: createHash('sha256').update(expected).digest('hex') },
+                        Buffer.from(expected),
+                    )
+                ).status,
+                0,
+            );
+        }
+        for (const reasoning of ['n/a', 'UNKNOWN', 'NULL', 'off'])
+            assert.equal(
+                (await f.run('render', { ...f.ledger, identities: [{ ...f.identity, reasoning }] }, f.assessment()))
+                    .status,
+                2,
+            );
     } finally {
         await f.dispose();
     }

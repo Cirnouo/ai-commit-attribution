@@ -36,23 +36,25 @@ configuration, selected worktree bytes and status around helper calls.
 
 scenarios.json has seven task requests and fifteen independent fixtures. Its
 policy/message strings are literal inputs, including the CRLF preservation case.
-eventProfiles are synthetic raw event facts; the materializer adds explicitly
-synthetic evidence records and joins the current fixture operation. They are not
-production ledgers or claims of official model availability. A real Agent
+identityProfiles are explicitly confirmed synthetic sets; the materializer joins
+them to schema-2 ledger IDs, current fixture operations and declared blockers.
+historicalEventProfiles retain superseded event-only fixture data for the dated
+observations below and are never adapted or passed to the current runtime.
+Neither collection claims official model availability. A real Agent
 exercise adds its actual current identity separately from trusted dispatch
 evidence; neither the corpus nor a test runner supplies a current model default.
 
 | Corpus flag / cases | Reproducible fixture preparation |
 | --- | --- |
 | body-only, required-ai-coauthor, no-disclosure, marker-only | Write the literal policy/message; provide the policy-specific semantic decision. no-disclosure deliberately lacks Model. |
-| ordinary-format / alias | Use base event profile's exact Pi alias and supplied CRLF human/body/trailer bytes. |
+| ordinary-format / alias | Use base confirmed profile's exact Pi alias and supplied CRLF human/body/trailer bytes. |
 | uncertain-policy | Keep the referenced requirement unavailable and supply a needs-decision declaration; the helper does not discover the missing source. |
-| missing-participant | Add additionalFacts.missingParticipant to the known inventory without inventing its absent event. |
-| unresolved-router / mapped-router | Use the corresponding event profile, including exact route/mapping facts and colon-bearing formal ID. |
-| retained-participants | Use all six participant events; keep unusedProducts as separate inventory, never ledger events. |
-| separate-effort-events | Use all five effort events, retaining effective/requested/display distinctions and event IDs. |
+| missing-participant | Record a required participant blocker without inventing its identity. |
+| unresolved-router / mapped-router | Keep a required router-model blocker for unresolved-router; mapped-router supplies the explicit confirmed colon-bearing model. |
+| retained-participants | Use the six explicit confirmed declarations, deduplicating four tuples; keep unusedProducts outside the set. |
+| separate-effort-events | Use five explicit confirmed declarations yielding absent/high/none; historical requested/display observations remain separate evidence. |
 | changed-policy | Replace CONTRIBUTING with changedPolicy, then simulate integrator reassessment with a new operation ID and repository-policy declaration. No automatic freshness detection is claimed. |
-| known-host-signing | Supply an automatic-signing source reference in a schema-2 assessment. The helper neither discovers nor reads the referenced source. |
+| known-host-signing | Supply an automatic-signing source reference in a schema-3 assessment. The helper neither discovers nor reads the referenced source. |
 | raw-field-control | Preserve the injection profile's raw newline; do not sanitize it into a different input before testing rejection. |
 | final-hook-rewrite | A trusted disposable integrator installs the static fixture hook and commits the candidate first. Inspect its persisted final body and halt follow-up on mismatch; the helper never makes or repairs the commit. |
 

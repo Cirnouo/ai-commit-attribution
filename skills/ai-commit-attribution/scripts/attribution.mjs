@@ -127,7 +127,7 @@ function identity(value, field) {
 function version(value) {
   if (value !== 1) throw new InputError("Invalid input: schemaVersion must be 1.");
 }
-async function parseOperation(value) {
+function parseOperationShape(value) {
   checkRaw(value);
   const data = record(value, [
     "schemaVersion",
@@ -140,19 +140,6 @@ async function parseOperation(value) {
     "targets"
   ]);
   version(data.schemaVersion);
-  async function physical2(value2) {
-    const directory = opaque(value2);
-    if (!path2.isAbsolute(directory))
-      throw new InputError("Invalid input scope: paths must be physical absolute directories.");
-    try {
-      const actual = await realpath2(directory);
-      if (path2.relative(path2.resolve(directory), actual) !== "" || !(await stat(actual)).isDirectory())
-        throw new Error("physical");
-      return actual;
-    } catch {
-      throw new InputError("Invalid input scope: directory is missing or not physical.");
-    }
-  }
   const paths = unique(
     list(data.paths, (item) => {
       if (typeof item !== "string" || item.length === 0) throw new InputError("Invalid input scope: empty path.");
@@ -177,102 +164,89 @@ async function parseOperation(value) {
   return {
     schemaVersion: 1,
     id: opaque(data.id),
-    repository: await physical2(data.repository),
-    worktree: await physical2(data.worktree),
-    commonGitDir: await physical2(data.commonGitDir),
+    repository: opaque(data.repository),
+    worktree: opaque(data.worktree),
+    commonGitDir: opaque(data.commonGitDir),
     kind,
     paths,
     targets
   };
 }
-function parseEvidence(value) {
-  const data = record(value, ["fields", "kind", "observation", "reference", "detail", "nativeReasoning", "mapping"]);
-  const fields = unique(list(data.fields, text));
-  if (!fields.length || fields.some((field) => !["agent", "host", "model", "reasoning"].includes(field)))
-    throw new InputError("Invalid input: unsupported evidence field.");
-  const observation = text(data.observation);
-  if (!["effective", "requested", "capability", "display"].includes(observation))
-    throw new InputError("Invalid input: unsupported observation.");
-  const evidence = { fields, kind: text(data.kind), observation, reference: text(data.reference) };
-  if (data.detail !== void 0) evidence.detail = text(data.detail);
-  if (data.nativeReasoning !== void 0) {
-    evidence.nativeReasoning = text(data.nativeReasoning);
-    if (!["enabled", "disabled"].includes(evidence.nativeReasoning))
-      throw new InputError("Invalid input: unsupported native reasoning observation.");
+async function parseOperation(value) {
+  const operation = parseOperationShape(value);
+  async function physical2(value2) {
+    const directory = opaque(value2);
+    if (!path2.isAbsolute(directory))
+      throw new InputError("Invalid input scope: paths must be physical absolute directories.");
+    try {
+      const actual = await realpath2(directory);
+      if (path2.relative(path2.resolve(directory), actual) !== "" || !(await stat(actual)).isDirectory())
+        throw new Error("physical");
+      return actual;
+    } catch {
+      throw new InputError("Invalid input scope: directory is missing or not physical.");
+    }
   }
-  if (data.mapping !== void 0) {
-    const mapping = record(data.mapping, ["route", "model"]);
-    evidence.mapping = { route: text(mapping.route), model: identity(mapping.model, "model") };
-  }
-  return evidence;
-}
-function parseEvent(value) {
-  const data = record(value, [
-    "id",
-    "participantId",
-    "task",
-    "agent",
-    "host",
-    "model",
-    "modelRoute",
-    "reasoning",
-    "evidence"
-  ]);
-  const reasoning = record(data.reasoning, ["state", "value"]);
-  if (reasoning.state !== "unknown" && reasoning.state !== "confirmed")
-    throw new InputError("Invalid input: unsupported reasoning state.");
-  if (reasoning.state === "unknown" && reasoning.value !== void 0)
-    throw new InputError("Invalid input: unknown reasoning has no value.");
-  const event = {
-    id: opaque(data.id),
-    participantId: opaque(data.participantId),
-    task: text(data.task),
-    reasoning: reasoning.state === "unknown" ? { state: "unknown" } : { state: "confirmed", value: identity(reasoning.value, "reasoning") },
-    evidence: list(data.evidence, parseEvidence)
+  return {
+    ...operation,
+    repository: await physical2(operation.repository),
+    worktree: await physical2(operation.worktree),
+    commonGitDir: await physical2(operation.commonGitDir)
   };
-  for (const field of ["agent", "host", "model", "modelRoute"])
-    if (data[field] !== void 0)
-      event[field] = field === "model" ? identity(data[field], "model") : text(data[field]);
-  if ([event.agent, event.host].some((field) => field && /[:()<>]/u.test(field)))
+}
+function parseIdentity(value) {
+  checkRaw(value);
+  const data = record(value, ["agent", "model", "reasoning"]);
+  const agent = text(data.agent);
+  if (/[:()<>]/u.test(agent) || ["unknown", "n/a", "null"].includes(agent.toLowerCase()))
     throw new InputError("Invalid input: ambiguous Agent host field.");
-  return event;
+  const model = identity(data.model, "model");
+  if (["auto", "latest", "unknown", "n/a", "null"].includes(model.toLowerCase()))
+    throw new InputError("Invalid input: an actual formal model is required.");
+  const reasoning = data.reasoning === void 0 ? void 0 : identity(data.reasoning, "reasoning");
+  if (reasoning !== void 0 && ["unknown", "off", "n/a", "n-a", "null", "auto", "latest"].includes(reasoning.toLowerCase()))
+    throw new InputError("Invalid input: omit unknown reasoning; confirmed disabled reasoning must use none.");
+  return { agent, model, ...reasoning !== void 0 ? { reasoning } : {} };
+}
+function canonicalizeIdentity(value, registry) {
+  const parsed = parseIdentity(value);
+  const matches = registry.hosts.filter((host2) => host2.name === parsed.agent || host2.aliases.includes(parsed.agent));
+  if (matches.length !== 1 || registry.ambiguousAliases.includes(parsed.agent))
+    throw new InputError("Invalid input: Agent must be an exact registered host or unique explicit alias.");
+  const host = matches[0];
+  if (!host) throw new InputError("Invalid input: unregistered Agent host.");
+  return parseIdentity({ ...parsed, agent: host.name });
+}
+function normalizeIdentities(values, registry) {
+  const identities = /* @__PURE__ */ new Map();
+  for (const value of values) {
+    const normalized = canonicalizeIdentity(value, registry);
+    identities.set(identityKey(normalized), normalized);
+  }
+  return [...identities.values()].sort(
+    (a, b) => ordinal(a.agent, b.agent) || ordinal(a.model, b.model) || (a.reasoning === void 0 ? b.reasoning === void 0 ? 0 : -1 : b.reasoning === void 0 ? 1 : ordinal(a.reasoning, b.reasoning))
+  );
 }
 async function parseLedger(value) {
   checkRaw(value);
-  const data = record(value, ["schemaVersion", "operation", "knownParticipants", "events", "userExceptions"]);
-  version(data.schemaVersion);
+  if (isRecord(value) && value.schemaVersion !== 2)
+    throw new InputError(
+      "Invalid input: migrate old event ledgers to schemaVersion 2 confirmed identities and blockers."
+    );
+  const data = record(value, ["schemaVersion", "ledgerId", "operation", "identities", "blockers"]);
+  if (data.schemaVersion !== 2) throw new InputError("Invalid input: ledger schemaVersion must be 2.");
+  const ledgerId = opaque(data.ledgerId);
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(ledgerId))
+    throw new InputError("Invalid input: ledgerId must be a UUID.");
   const operation = await parseOperation(data.operation);
-  const knownParticipants = list(data.knownParticipants, (item) => {
-    const participant = record(item, ["id", "eventIds"]);
-    return { id: opaque(participant.id), eventIds: unique(list(participant.eventIds, opaque)) };
+  const identities = list(data.identities, parseIdentity);
+  const blockers = list(data.blockers, (item) => {
+    const blocker = record(item, ["id", "reason"]);
+    return { id: opaque(blocker.id), reason: text(blocker.reason) };
   });
-  if (new Set(knownParticipants.map((item) => item.id)).size !== knownParticipants.length)
-    throw new InputError("Invalid input: duplicate participant.");
-  const events = list(data.events, parseEvent);
-  const associations = /* @__PURE__ */ new Map();
-  for (const event of events) {
-    const association = JSON.stringify([event.participantId, event.task]);
-    if (associations.has(event.id) && associations.get(event.id) !== association)
-      throw new InputError("Invalid input: conflicting event association.");
-    associations.set(event.id, association);
-  }
-  for (const participant of knownParticipants)
-    for (const id of participant.eventIds)
-      if (events.some((event) => event.id === id && event.participantId !== participant.id))
-        throw new InputError("Invalid input: participant/event join mismatch.");
-  const userExceptions = list(data.userExceptions, (item) => {
-    const exception = record(item, ["operationId", "issueIds", "decision", "reference"]);
-    const result = {
-      operationId: opaque(exception.operationId),
-      issueIds: unique(list(exception.issueIds, opaque)),
-      decision: text(exception.decision),
-      reference: text(exception.reference)
-    };
-    if (result.operationId !== operation.id) throw new InputError("Invalid input scope: stale user exception.");
-    if (!result.issueIds.length) throw new InputError("Invalid input: exception needs concrete issue IDs.");
-    return result;
-  });
-  return { schemaVersion: 1, operation, events, knownParticipants, userExceptions };
+  if (new Set(blockers.map((blocker) => blocker.id)).size !== blockers.length)
+    throw new InputError("Invalid input: duplicate blocker ID.");
+  return { schemaVersion: 2, ledgerId, operation, identities, blockers };
 }
 function parseRegistry(value) {
   checkRaw(value);
@@ -301,7 +275,7 @@ function parseRegistry(value) {
   }
   return { schemaVersion: 1, hosts, ambiguousAliases, familyAliases };
 }
-var InputError, ordinal, unique;
+var InputError, ordinal, unique, identityKey;
 var init_records = __esm({
   "src/records.ts"() {
     "use strict";
@@ -310,6 +284,7 @@ var init_records = __esm({
     };
     ordinal = (left, right) => left < right ? -1 : left > right ? 1 : 0;
     unique = (values) => [...new Set(values)].sort(ordinal);
+    identityKey = (value) => JSON.stringify([value.agent, value.model, value.reasoning ?? null]);
   }
 });
 
@@ -629,43 +604,35 @@ function rows(value) {
   return value;
 }
 async function parseAssessment(value, route, messageSha256, records, summary) {
-  if (value === void 0) return { signatures: [], migrations: [], exceptionApplications: [] };
+  if (value === void 0) return { signatures: [], migrations: [] };
   checkRaw(value);
   let data;
   try {
-    data = object(value, [
-      "schemaVersion",
-      "artifact",
-      "operation",
-      "messageSha256",
-      "signatures",
-      "migrations",
-      "exceptionApplications"
-    ]);
+    data = object(value, ["schemaVersion", "artifact", "operation", "messageSha256", "signatures", "migrations"]);
   } catch {
     throw new InputError(
-      "Invalid message assessment shape; migrate to schemaVersion 2 AI decision/assessment inputs without scanner fields."
+      "Invalid message assessment shape; migrate to schemaVersion 3 confirmed-identity assessment inputs without event or exception fields."
     );
   }
-  if (data.schemaVersion !== 2 || data.artifact !== "message-assessment" || data.messageSha256 !== messageSha256 || digest(await parseOperation(data.operation)) !== digest(route.operation))
+  if (data.schemaVersion !== 3 || data.artifact !== "message-assessment" || data.messageSha256 !== messageSha256 || digest(await parseOperation(data.operation)) !== digest(route.operation))
     throw new InputError(
-      "Message assessment requires schemaVersion 2 and exact declared operation/message association; migrate old AI decision/assessment inputs."
+      "Message assessment requires schemaVersion 3 and exact declared operation/message association; migrate old AI decision/assessment inputs."
     );
-  const eventIds = new Set(summary.events.map((event) => event.id));
+  const identityKeys = new Set(summary.tuples.map(identityKey));
   const signatures = rows(data.signatures).map((item) => {
-    const row = object(item, ["id", "source", "classification", "eventIds", "evidenceReferences", "rationale"]);
+    const row = object(item, ["id", "source", "classification", "identityKeys", "evidenceReferences", "rationale"]);
     let source;
     try {
       source = object(row.source, ["kind", "messageRecordId", "reference"]);
     } catch {
       throw new InputError(
-        "Invalid signature source; migrate to schemaVersion 2 message-record or automatic-signing sources."
+        "Invalid signature source; migrate to schemaVersion 3 message-record or automatic-signing sources."
       );
     }
     const classification = text(row.classification);
     if (!["ai-signature", "human-signature", "unrelated", "uncertain"].includes(classification) || Object.keys(source).length !== 2)
       throw new InputError(
-        "Invalid signature assessment source/classification; schemaVersion 2 requires an explicit source kind."
+        "Invalid signature assessment source/classification; schemaVersion 3 requires an explicit source kind."
       );
     let location;
     if (source.kind === "message-record" && source.reference === void 0) {
@@ -677,10 +644,10 @@ async function parseAssessment(value, route, messageSha256, records, summary) {
       location = { kind: "automatic-signing", reference: exact(source.reference) };
     else
       throw new InputError(
-        "Invalid signature source; schemaVersion 2 requires message-record or automatic-signing."
+        "Invalid signature source; schemaVersion 3 requires message-record or automatic-signing."
       );
-    const events = strings(row.eventIds);
-    if (events.some((id) => !eventIds.has(id))) throw new InputError("Unknown signature event association.");
+    const keys = strings(row.identityKeys);
+    if (keys.some((id) => !identityKeys.has(id))) throw new InputError("Unknown signature identity association.");
     const evidenceReferences = strings(row.evidenceReferences);
     if (!evidenceReferences.length)
       throw new InputError("Signature assessment needs concrete evidence references.");
@@ -688,7 +655,7 @@ async function parseAssessment(value, route, messageSha256, records, summary) {
       id: exact(row.id),
       source: location,
       classification,
-      eventIds: events,
+      identityKeys: keys,
       evidenceReferences,
       rationale: text(row.rationale)
     };
@@ -697,46 +664,32 @@ async function parseAssessment(value, route, messageSha256, records, summary) {
     throw new InputError("Duplicate signature assessment ID/source.");
   const migrated = /* @__PURE__ */ new Set();
   const migrations = rows(data.migrations).map((item) => {
-    const row = object(item, ["signatureIds", "eventIds", "mappingReferences", "modificationDecision"]);
-    const signatureIds = strings(row.signatureIds), events = strings(row.eventIds), mappingReferences = strings(row.mappingReferences);
+    const row = object(item, ["signatureIds", "identityKeys", "mappingReferences", "modificationDecision"]);
+    const signatureIds = strings(row.signatureIds), keys = strings(row.identityKeys), mappingReferences = strings(row.mappingReferences);
     const decision = object(row.modificationDecision, ["operationId", "reference"]);
-    if (!signatureIds.length || !events.length || !mappingReferences.length || exact(decision.operationId) !== route.operation.id)
+    if (!signatureIds.length || !keys.length || !mappingReferences.length || exact(decision.operationId) !== route.operation.id)
       throw new InputError(
-        "Migration requires exact signatures/events/mapping and a current modification decision."
+        "Migration requires exact signatures/keys/mapping and a current modification decision."
       );
     for (const id of signatureIds) {
       const signature = signatures.find((signature2) => signature2.id === id);
-      if (signature?.classification !== "ai-signature" || signature.source.kind !== "message-record" || migrated.has(id) || !signature.eventIds.length || signature.eventIds.some((eventId) => !events.includes(eventId)))
+      if (signature?.classification !== "ai-signature" || signature.source.kind !== "message-record" || migrated.has(id) || !signature.identityKeys.length || signature.identityKeys.some((key) => !keys.includes(key)))
         throw new InputError("Invalid, duplicate or unsupported migration signature mapping.");
       migrated.add(id);
     }
     const joined = unique(
-      signatures.filter((signature) => signatureIds.includes(signature.id)).flatMap((signature) => signature.eventIds)
+      signatures.filter((signature) => signatureIds.includes(signature.id)).flatMap((signature) => signature.identityKeys)
     );
-    if (JSON.stringify(joined) !== JSON.stringify(events) || events.some((id) => !summary.tuples.some((tuple) => tuple.eventIds.includes(id))))
-      throw new InputError("Migration pairing does not cover exact resolved event evidence.");
+    if (JSON.stringify(joined) !== JSON.stringify(keys) || keys.some((id) => !identityKeys.has(id)))
+      throw new InputError("Migration pairing does not cover exact resolved identity keys.");
     return {
       signatureIds,
-      eventIds: events,
+      identityKeys: keys,
       mappingReferences,
       modificationDecision: { operationId: exact(decision.operationId), reference: text(decision.reference) }
     };
   });
-  const applied = /* @__PURE__ */ new Set();
-  const exceptionApplications = rows(data.exceptionApplications ?? []).map((item) => {
-    const row = object(item, ["operationId", "reference", "issueIds", "action"]);
-    const operationId = exact(row.operationId), reference = exact(row.reference), issueIds = strings(row.issueIds);
-    const matching = summary.userExceptions.filter(
-      (exception) => exception.operationId === operationId && exception.reference === reference && issueIds.every((id) => exception.issueIds.includes(id))
-    );
-    if (row.action !== "continue-with-incomplete-disclosure" || operationId !== route.operation.id || !issueIds.length || issueIds.some((id) => applied.has(id)) || matching.length !== 1 || issueIds.some((id) => !summary.issues.some((issue2) => issue2.id === id)))
-      throw new InputError("Invalid exception application scope/reference or concrete issue coverage.");
-    issueIds.forEach((id) => {
-      applied.add(id);
-    });
-    return { operationId, reference, issueIds, action: "continue-with-incomplete-disclosure" };
-  });
-  return { signatures, migrations, exceptionApplications };
+  return { signatures, migrations };
 }
 var exact;
 var init_message_assessment = __esm({
@@ -1051,177 +1004,28 @@ var summarize_exports = {};
 __export(summarize_exports, {
   summarize: () => summarize
 });
-function effective(event, field) {
-  return event.evidence.some((item) => item.observation === "effective" && item.fields.includes(field));
-}
-function resolveAgent(event, registry, hostNames) {
-  if (!event.agent || !effective(event, "agent")) return;
-  const exact2 = registry.hosts.find((host) => host.name === event.agent || host.aliases.includes(event.agent ?? ""));
-  const contextual = hostNames.length === 1 ? registry.hosts.find((host) => host.name === hostNames[0]) : void 0;
-  if (exact2) return !contextual || exact2.name === contextual.name ? exact2.name : void 0;
-  if (contextual && registry.ambiguousAliases.includes(event.agent) && contextual.family === (Object.hasOwn(registry.familyAliases, event.agent) ? registry.familyAliases[event.agent] : event.agent))
-    return contextual.name;
-  return;
-}
-function formalCandidate(value) {
-  return value !== void 0 && !["auto", "latest", "unknown", "n/a", "null"].includes(value.toLowerCase());
-}
-function resolveModels(records) {
-  const observations = records.filter((event) => effective(event, "model"));
-  const candidates = unique(observations.map((event) => event.model).filter(formalCandidate));
-  const routes = unique(observations.map((event) => event.modelRoute).filter((route) => route !== void 0));
-  const mappings = observations.flatMap(
-    (event) => event.evidence.filter((item) => item.observation === "effective" && item.fields.includes("model")).flatMap((item) => item.mapping ? [{ event, mapping: item.mapping }] : [])
-  );
-  const values = unique([...candidates, ...mappings.map((item) => item.mapping.model).filter(formalCandidate)]);
-  const conflict = values.length > 1 || mappings.some(
-    ({ event, mapping }) => !formalCandidate(mapping.model) || formalCandidate(event.model) && event.model !== mapping.model || (event.modelRoute !== void 0 ? event.modelRoute !== mapping.route : !routes.includes(mapping.route))
-  );
-  const covered = routes.every(
-    (route) => mappings.some(({ mapping }) => mapping.route === route && mapping.model === candidates[0])
-  );
-  return { values: covered ? candidates : [], conflict };
-}
-function resolveReasoning(event) {
-  if (event.reasoning.state !== "confirmed") return { conflict: false };
-  const value = event.reasoning.value;
-  const native = unique(
-    event.evidence.filter(
-      (item) => item.observation === "effective" && item.fields.includes("reasoning") && item.nativeReasoning
-    ).map((item) => item.nativeReasoning ?? "")
-  );
-  if (native.length > 1) return { conflict: true };
-  if (native[0] === "disabled") return { value: "none", conflict: false };
-  if (native[0] === "enabled" && !["none", "unknown", "n/a", "null", "off"].includes(value.toLowerCase()))
-    return { value, conflict: false };
-  return { conflict: false };
-}
 async function summarize(input, currentOperation, registryInput) {
   const ledger = await parseLedger(input);
   const operation = await parseOperation(currentOperation);
   if (JSON.stringify(ledger.operation) !== JSON.stringify(operation))
     throw new InputError("Invalid input scope: ledger and current operation differ.");
   const registry = parseRegistry(registryInput);
-  const issues = [];
-  const diagnostics = [];
-  const tuples = /* @__PURE__ */ new Map();
-  const groups = /* @__PURE__ */ new Map();
-  for (const event of ledger.events) groups.set(event.id, [...groups.get(event.id) ?? [], event]);
-  const participants = unique([
-    ...ledger.knownParticipants.map((item) => item.id),
-    ...ledger.events.map((item) => item.participantId)
-  ]).map((id) => ({
-    id,
-    declared: ledger.knownParticipants.some((item) => item.id === id),
-    eventIds: unique(ledger.events.filter((event) => event.participantId === id).map((event) => event.id))
-  }));
-  for (const participant of ledger.knownParticipants) {
-    for (const eventId of participant.eventIds)
-      if (!groups.has(eventId))
-        issues.push({
-          id: JSON.stringify(["participant", participant.id, "event", eventId]),
-          code: "missing-event",
-          participantId: participant.id,
-          eventId
-        });
-    if (!ledger.events.some((event) => event.participantId === participant.id))
-      issues.push({
-        id: JSON.stringify(["participant", participant.id, "events"]),
-        code: "missing-participant-event",
-        participantId: participant.id
-      });
-  }
-  const events = [...groups].sort(([a], [b]) => ordinal(a, b)).map(([eventId, records]) => {
-    const first = records[0];
-    if (!first) throw new Error("Event grouping failed.");
-    const hostCandidates = records.filter((event) => event.host && effective(event, "host")).map((event) => event.host);
-    const hostNames = unique(
-      hostCandidates.map(
-        (candidate) => registry.hosts.find(
-          (host) => host.name === candidate || host.aliases.includes(candidate ?? "")
-        )?.name
-      ).filter((value) => value !== void 0)
-    );
-    const candidateAgents = records.filter((event) => event.agent && effective(event, "agent")).map((event) => resolveAgent(event, registry, hostNames));
-    const invalidHost = hostNames.length > 1 || hostCandidates.some(
-      (candidate) => !registry.hosts.some(
-        (host) => host.name === candidate || host.aliases.includes(candidate ?? "")
-      )
-    );
-    const agents = invalidHost || candidateAgents.some((agent2) => agent2 === void 0) ? [] : unique(candidateAgents.filter((value) => value !== void 0));
-    const modelResolution = resolveModels(records);
-    const models = modelResolution.values;
-    const reasoningObservations = records.map(resolveReasoning);
-    const efforts = unique(
-      reasoningObservations.map((item) => item.value).filter((value) => value !== void 0)
-    );
-    const reasoningConflict = efforts.length > 1 || reasoningObservations.some((item) => item.conflict);
-    for (const [field, values] of [
-      ["agent", agents],
-      ["model", models]
-    ]) {
-      if (values.length !== 1 || field === "model" && modelResolution.conflict)
-        issues.push({
-          id: JSON.stringify(["event", eventId, field]),
-          code: values.length > 1 || field === "model" && modelResolution.conflict ? `conflicting-${field}` : `unresolved-${field}`,
-          eventId,
-          participantId: first.participantId
-        });
-    }
-    const reasoning = !reasoningConflict && efforts.length === 1 ? efforts[0] : void 0;
-    if (!reasoning)
-      diagnostics.push({
-        id: JSON.stringify(["event", eventId, "reasoning"]),
-        code: reasoningConflict ? "conflicting-reasoning" : "unknown-reasoning",
-        eventId,
-        participantId: first.participantId
-      });
-    const agent = agents.length === 1 ? agents[0] : void 0;
-    const model = !modelResolution.conflict && models.length === 1 ? models[0] : void 0;
-    if (agent && model) {
-      const key = JSON.stringify([agent, model, reasoning ?? null]);
-      const tuple = tuples.get(key) ?? {
-        agent,
-        model,
-        ...reasoning ? { reasoning } : {},
-        participantIds: [],
-        eventIds: []
-      };
-      tuple.participantIds = unique([...tuple.participantIds, first.participantId]);
-      tuple.eventIds = unique([...tuple.eventIds, eventId]);
-      tuples.set(key, tuple);
-    }
-    return {
-      id: eventId,
-      participantId: first.participantId,
-      task: first.task,
-      ...agent ? { agent } : {},
-      ...model ? { model } : {},
-      ...reasoning ? { reasoning } : {},
-      records: records.map((event) => ({ ...event, evidence: event.evidence.map((item) => ({ ...item })) }))
-    };
-  });
-  const issueIds = new Set(issues.map((issue2) => issue2.id));
-  if (ledger.userExceptions.some((exception) => exception.issueIds.some((id) => !issueIds.has(id))))
-    throw new InputError("Invalid input: exception references an absent concrete issue.");
+  const tuples = normalizeIdentities(ledger.identities, registry);
+  const blockers = [...ledger.blockers].sort((a, b) => ordinal(a.id, b.id));
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    ledgerId: ledger.ledgerId,
     operation,
-    exitCode: issues.length ? 20 : 0,
-    tuples: [...tuples.values()].sort(
-      (a, b) => ordinal(a.agent, b.agent) || ordinal(a.model, b.model) || (a.reasoning === void 0 ? b.reasoning === void 0 ? 0 : -1 : b.reasoning === void 0 ? 1 : ordinal(a.reasoning, b.reasoning))
-    ),
-    events,
-    participants,
-    issues: issues.sort((a, b) => ordinal(a.id, b.id)),
-    diagnostics,
-    userExceptions: ledger.userExceptions,
+    tuples,
+    blockers,
+    issues: blockers.map((blocker) => ({ id: blocker.id, code: "known-blocker", detail: blocker.reason })),
     limitations: [
-      "Supplied evidence is a declaration; this summary cannot authenticate runtime dispatch, handoffs, mappings or user consent.",
-      "Declared participant accounting cannot prove that no contributing actors were undisclosed.",
+      "Confirmed identities and blockers are supplied declarations; this summary cannot authenticate facts or user authority.",
+      "The finite declared set cannot prove that no contributing actors were omitted.",
       "Matching supplied physical scope does not prove the live Git operation or its freshness.",
       "Summary completion is not repository-policy validation or authorization to commit or modify Git state."
-    ]
+    ],
+    exitCode: blockers.length ? 20 : 0
   };
 }
 var init_summarize = __esm({
@@ -1246,11 +1050,12 @@ function assisted(record2, registry) {
   const agent = match[1].trim();
   if (!agent || ["unknown", "n/a", "null"].includes(agent.toLowerCase()))
     throw new InputError("Malformed default Assisted-by Agent placeholder.");
+  const parsed = parseIdentity({ agent, model: match[2], ...match[3] ? { reasoning: match[3] } : {} });
   const host = registry.hosts.find((host2) => host2.name === agent || host2.aliases.includes(agent));
   return {
     agent: host?.name ?? agent,
-    model: identity(match[2], "model"),
-    ...match[3] ? { reasoning: identity(match[3], "reasoning") } : {}
+    model: parsed.model,
+    ...parsed.reasoning ? { reasoning: parsed.reasoning } : {}
   };
 }
 async function processMessage(input, loadDefault) {
@@ -1261,7 +1066,7 @@ async function processMessage(input, loadDefault) {
   const message = decodeMessage(input.message);
   const route = await checkRouting(input);
   const result = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     artifact: input.mode === "render" ? "message-render" : "message-validation",
     operation: route.operation,
     routing: { branch: route.branch },
@@ -1270,7 +1075,7 @@ async function processMessage(input, loadDefault) {
       status: "not-run",
       convention: route.branch === "repository-policy" ? "repository-policy" : "undetermined"
     },
-    participationEvidence: { status: "not-run", appliedExceptionIssueIds: [] },
+    participationEvidence: { status: "not-run" },
     repositoryPolicyValidation: { status: "not-run" },
     issues: [...route.issues],
     limitations: [
@@ -1300,16 +1105,11 @@ async function processMessage(input, loadDefault) {
     result.format = { status: "valid", convention: "skill-default" };
     result.participationEvidence = {
       status: summary.issues.length ? "incomplete" : "complete-against-declared-input",
-      summary,
-      appliedExceptionIssueIds: []
+      summary
     };
     const summaryIssues = new Set(
       summary.issues.map(
-        (item) => issue(
-          item.id,
-          item.code,
-          "Declared participation has an unresolved required identity or participant gap."
-        )
+        (item) => issue(item.id, item.code, "A declared required identity or inclusion blocker remains unresolved.")
       )
     );
     result.issues.push(...summaryIssues);
@@ -1346,10 +1146,6 @@ async function processMessage(input, loadDefault) {
       sha256: byteDigest(Buffer.from(record2.raw)),
       byteLength: Buffer.byteLength(record2.raw)
     }));
-    const applied = unique(assessment.exceptionApplications.flatMap((application) => application.issueIds));
-    result.participationEvidence.appliedExceptionIssueIds = applied;
-    if (summary.issues.length && applied.length)
-      result.participationEvidence.status = "incomplete-with-user-exception";
     const removed = /* @__PURE__ */ new Set();
     const canonical2 = summary.tuples.map(
       (tuple) => `Assisted-by: ${tuple.agent}:${tuple.model}${tuple.reasoning ? ` (${tuple.reasoning})` : ""}`
@@ -1368,7 +1164,7 @@ async function processMessage(input, loadDefault) {
               issue(
                 record2.id,
                 "unresolved-existing-identity",
-                "Existing Agent/model has no supported current event association."
+                "Existing Agent/model has no supported current identity association."
               )
             );
           } else {
@@ -1394,7 +1190,7 @@ async function processMessage(input, loadDefault) {
             issue(
               record2.id,
               "legacy-signature",
-              "Legacy signature needs an exact event mapping and current modification decision."
+              "Legacy signature needs an exact identity mapping and current modification decision."
             )
           );
       }
@@ -1435,9 +1231,7 @@ async function processMessage(input, loadDefault) {
       }
     }
     const formatIssues = result.issues.filter((item) => item.code === "invalid-assisted-by");
-    const blockers = result.issues.filter(
-      (item) => !(summaryIssues.has(item) && applied.includes(item.id)) && !formatIssues.includes(item)
-    );
+    const blockers = result.issues.filter((item) => !formatIssues.includes(item));
     if (formatIssues.length || input.mode === "validate" && invalid) {
       result.format.status = "invalid";
       result.exitCode = 2;

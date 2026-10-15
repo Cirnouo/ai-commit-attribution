@@ -110,8 +110,8 @@ Assisted-by: <canonical Agent host>:<actual formal Model> (<confirmed native eff
 
 Unknown optional effort is omitted without a mandatory question. Confirmed
 disabled native reasoning is `none`. The actual host, formal model and effective
-configuration belong to each participation event; the current integrator's
-settings cannot fill another participant's or historical event's record.
+configuration belong to each confirmed identity; the current integrator's
+settings cannot fill another participant's or historical identity's record.
 
 ### A successful helper check has a bounded meaning
 
@@ -128,9 +128,10 @@ obtain a genuine current user decision where the contracts allow one. A pending
 question, timeout, cancellation or unavailable question tool is not an answer;
 preserve the work and index. Before continuing after a response or material change,
 follow the [policy review procedure](../../skills/ai-commit-attribution/references/policy.md#review-after-waiting-or-changes). See
-[questions and scoped exceptions](../../skills/ai-commit-attribution/references/messages.md#questions-scoped-exceptions-and-actual-operations)
-before applying a decision; an exception is not verified identity or new Git
-authorization.
+[questions and required blockers](../../skills/ai-commit-attribution/references/messages.md#questions-required-blockers-and-actual-operations)
+before applying a decision. Known required gaps remain explicit ledger blockers
+until resolved; no exception continuation bypasses them. Decisions do not verify
+identity or grant new Git authorization.
 
 ## Common questions
 
@@ -154,13 +155,13 @@ separate actual policy check.
 
 **What should I do when evidence is missing?** Identify the concrete issue in
 the result. Recover the applicable policy source, actual dispatch/handoff
-record, routed-model mapping or named participant event as relevant. Before
+record, routed-model mapping or actual participant identity as relevant. Before
 identity acquisition, read [host evidence](../../skills/ai-commit-attribution/references/hosts.md);
 before preparing replacement records, read the
 [record contract](../../skills/ai-commit-attribution/references/records.md).
 Do not guess a model from a product name or copy the parent Agent's settings.
 If a required gap remains, follow the
-[decision procedure](../../skills/ai-commit-attribution/references/messages.md#questions-scoped-exceptions-and-actual-operations).
+[decision procedure](../../skills/ai-commit-attribution/references/messages.md#questions-required-blockers-and-actual-operations).
 Unknown optional effort alone needs no mandatory question.
 
 ## Further reading

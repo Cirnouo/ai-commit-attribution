@@ -51,29 +51,11 @@ test('installed render/validate execute actual default, policy, invalid, gap and
         const save = async (key: string, value: unknown) => writeFile(files[key] ?? '', JSON.stringify(value));
         await save('operation', operation);
         const ledger = {
-            schemaVersion: 1,
+            schemaVersion: 2,
+            ledgerId: '00000000-0000-4000-8000-000000000001',
             operation,
-            knownParticipants: [{ id: 'actor', eventIds: ['event'] }],
-            events: [
-                {
-                    id: 'event',
-                    participantId: 'actor',
-                    task: 'test',
-                    agent: 'Codex App',
-                    model: 'gpt-6.1-sol',
-                    reasoning: { state: 'confirmed', value: 'high' },
-                    evidence: [
-                        {
-                            fields: ['agent', 'model', 'reasoning'],
-                            kind: 'synthetic fixture',
-                            observation: 'effective',
-                            reference: 'fixture:dispatch',
-                            nativeReasoning: 'enabled',
-                        },
-                    ],
-                },
-            ],
-            userExceptions: [],
+            identities: [{ agent: 'Codex App', model: 'gpt-6.1-sol', reasoning: 'high' }],
+            blockers: [],
         };
         await save('input', ledger);
         const candidate =
@@ -203,7 +185,7 @@ registerHooks({resolve(s,c,n){
         const nova = 'amazon.nova-micro-v1:0';
         await save('input', {
             ...ledger,
-            events: [{ ...ledger.events[0], model: nova, reasoning: { state: 'unknown' } }],
+            identities: [{ agent: 'Codex App', model: nova }],
         });
         await writeFile(files.message ?? '', 'subject\n');
         const formal = run(['render', ...args]);
@@ -226,7 +208,7 @@ registerHooks({resolve(s,c,n){
         await writeFile(files.message ?? '', Buffer.from([0xff]));
         assert.equal(run(['render', ...args]).status, 2);
         await writeFile(files.message ?? '', candidate);
-        await save('input', { ...ledger, events: [] });
+        await save('input', { ...ledger, blockers: [{ id: 'missing:model', reason: 'Required model unresolved.' }] });
         const blocked = path.join(directory, 'blocked');
         assert.equal(run(['render', ...args, '--output', blocked]).status, 20);
         assert.equal(existsSync(blocked), false);
@@ -346,18 +328,23 @@ test('source and installed repository-policy output ignores unused default alias
         await writeFile(files.decision, JSON.stringify({ ...decision, branch: 'skill-default' }));
         await writeFile(
             files.input,
-            JSON.stringify({ schemaVersion: 1, operation, knownParticipants: [], events: [], userExceptions: [] }),
+            JSON.stringify({
+                schemaVersion: 2,
+                ledgerId: '00000000-0000-4000-8000-000000000001',
+                operation,
+                identities: [],
+                blockers: [],
+            }),
         );
         await writeFile(
             files.assessment,
             JSON.stringify({
-                schemaVersion: 2,
+                schemaVersion: 3,
                 artifact: 'message-assessment',
                 operation,
                 messageSha256: createHash('sha256').update(cleanMessage).digest('hex'),
                 signatures: [],
                 migrations: [],
-                exceptionApplications: [],
             }),
         );
         const registryFile = path.join(payload, 'references/agent-registry.json');

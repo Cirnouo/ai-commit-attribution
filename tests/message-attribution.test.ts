@@ -48,29 +48,17 @@ async function fixture(policy?: string) {
         rationale: 'Fixture policy was inspected by the Agent.',
         decisionSource: { kind: 'agent-semantic', reference: 'fixture:decision' },
     };
-    const event = (id = 'e', model = 'formal.model-1', reasoning: unknown = { state: 'unknown' }) => ({
-        id,
-        participantId: 'actor',
-        task: 'implementation',
+    const event = (_id = 'e', model = 'formal.model-1', reasoning?: string) => ({
         agent: 'Codex App',
         model,
-        reasoning,
-        evidence: [
-            {
-                fields: ['agent', 'model', 'reasoning'],
-                kind: 'fixture',
-                observation: 'effective',
-                reference: 'dispatch:synthetic',
-                nativeReasoning: 'enabled',
-            },
-        ],
+        ...(reasoning ? { reasoning } : {}),
     });
     const ledger = {
-        schemaVersion: 1,
+        schemaVersion: 2,
+        ledgerId: '00000000-0000-4000-8000-000000000001',
         operation,
-        knownParticipants: [{ id: 'actor', eventIds: ['e'] }],
-        events: [event()],
-        userExceptions: [],
+        identities: [event()],
+        blockers: [],
     };
     const snapshot = async () => ({
         head: await readFile(path.join(repository, '.git/HEAD')),
@@ -149,14 +137,11 @@ test('default render uses stable evidence tuples, aliases, none and exact model 
     try {
         const events = [
             f.event(),
-            f.event('two', 'formal.model-1', { state: 'confirmed', value: 'ultra' }),
-            {
-                ...f.event('disabled', 'formal.model-1', { state: 'confirmed', value: 'off' }),
-                evidence: [{ ...f.event().evidence[0], nativeReasoning: 'disabled' }],
-            },
+            f.event('two', 'formal.model-1', 'ultra'),
+            f.event('disabled', 'formal.model-1', 'none'),
             f.event('other', 'formal.model.2'),
         ];
-        const ledger = { ...f.ledger, events: [...events, f.event()] };
+        const ledger = { ...f.ledger, identities: [...events, f.event()] };
         const message = Buffer.from(
             'subject\n\nBody --- stays.\n---\npatch-looking body\n\nSigned-off-by: Human <h@example.invalid>\nAssisted-by: Codex desktop:formal.model-1\nCo-authored-by: Human <h@example.invalid>\nAssisted-by: Codex App:formal.model-1\n',
         );
@@ -170,7 +155,7 @@ test('default render uses stable evidence tuples, aliases, none and exact model 
         assert.equal(second.message.preview, expected);
         assert.equal(second.message.changed, false);
         const reversed = await processMessage({ mode: 'render', message, ...f }, async () => ({
-            ledger: { ...ledger, events: [...events].reverse() },
+            ledger: { ...ledger, identities: [...events].reverse() },
             registry,
         }));
         assert.equal(reversed.message.preview, expected);
@@ -249,7 +234,7 @@ test('raw folded or malformed Assisted-by is rejected; unresolved required recor
         assert.equal(conflict.exitCode, 20);
         assert.equal(conflict.message.preview, undefined);
         const gap = await processMessage({ mode: 'render', message: Buffer.from('subject\n'), ...f }, async () => ({
-            ledger: { ...f.ledger, events: [] },
+            ledger: { ...f.ledger, blockers: [{ id: 'missing:model', reason: 'Required model is unresolved.' }] },
             registry,
         }));
         assert.equal(gap.exitCode, 20);
@@ -262,12 +247,12 @@ test('raw folded or malformed Assisted-by is rejected; unresolved required recor
             },
             load,
         );
-        assert.equal(optional.exitCode, 0);
-        assert.equal(optional.message.preview, 'subject\n\nAssisted-by: Codex App:formal.model-1\n');
+        assert.equal(optional.exitCode, 2);
+        assert.equal(optional.message.preview, undefined);
         for (const control of ['\r', '\n', '\0', '\u0085', '\u2028', '\u2029']) {
             await assert.rejects(
                 processMessage({ mode: 'render', message: Buffer.from('subject\n'), ...f }, async () => ({
-                    ledger: { ...f.ledger, events: [{ ...f.event(), model: ` ${control}bad` }] },
+                    ledger: { ...f.ledger, identities: [{ ...f.event(), model: ` ${control}bad` }] },
                     registry,
                 })),
                 /control/,
@@ -338,42 +323,6 @@ test('explicit output creates only a new file and refuses peers, links, metadata
     }
 });
 
-test('requested or displayed disablement stays omitted and does not require an exception', async () => {
-    const { processMessage } = await runtime();
-    const f = await fixture();
-    try {
-        for (const observation of ['requested', 'display']) {
-            const event = {
-                ...f.event('e', 'formal.model-1', { state: 'confirmed', value: 'off' }),
-                evidence: [
-                    {
-                        fields: ['agent', 'model'],
-                        kind: 'fixture',
-                        observation: 'effective',
-                        reference: 'fixture:identity',
-                    },
-                    {
-                        fields: ['reasoning'],
-                        kind: 'fixture',
-                        observation,
-                        reference: 'fixture:non-effective',
-                        nativeReasoning: 'disabled',
-                    },
-                ],
-            };
-            const result = await processMessage(
-                { mode: 'render', message: Buffer.from('subject\n'), ...f },
-                async () => ({ ledger: { ...f.ledger, events: [event] }, registry }),
-            );
-            assert.equal(result.exitCode, 0);
-            assert.equal(result.message.preview, 'subject\n\nAssisted-by: Codex App:formal.model-1\n');
-            assert.deepEqual(result.participationEvidence.appliedExceptionIssueIds, []);
-        }
-    } finally {
-        await f.dispose();
-    }
-});
-
 test('unresolved existing host is an identity decision and supported surrounding spacing can be rendered', async () => {
     const { processMessage } = await runtime();
     const f = await fixture();
@@ -416,7 +365,7 @@ test('formal colon-bearing model renders and validates without rewriting provide
     const { processMessage } = await runtime();
     const f = await fixture();
     try {
-        const ledger = { ...f.ledger, events: [f.event('e', 'amazon.nova-micro-v1:0')] };
+        const ledger = { ...f.ledger, identities: [f.event('e', 'amazon.nova-micro-v1:0')] };
         const load = async () => ({ ledger, registry });
         const expected = 'subject\n\nAssisted-by: Codex App:amazon.nova-micro-v1:0\n';
         const result = await processMessage({ mode: 'render', message: Buffer.from('subject\n'), ...f }, load);
@@ -469,7 +418,7 @@ test('automatic signing declarations need no loaded source and cannot be migrate
     try {
         const message = Buffer.from('subject\n\nCo-authored-by: Unclassified <person@example.invalid>\n');
         const assessment = {
-            schemaVersion: 2,
+            schemaVersion: 3,
             artifact: 'message-assessment',
             operation: f.operation,
             messageSha256: (await import('node:crypto')).createHash('sha256').update(message).digest('hex'),
@@ -478,7 +427,7 @@ test('automatic signing declarations need no loaded source and cannot be migrate
                     id: 'auto',
                     source: { kind: 'automatic-signing', reference: path.join(f.directory, 'absent-source') },
                     classification: 'ai-signature',
-                    eventIds: ['e'],
+                    identityKeys: ['["Codex App","formal.model-1",null]'],
                     evidenceReferences: ['fixture:observed-host'],
                     rationale: 'An independently supplied host-signing declaration.',
                 },
@@ -502,7 +451,7 @@ test('automatic signing declarations need no loaded source and cannot be migrate
                     migrations: [
                         {
                             signatureIds: ['auto'],
-                            eventIds: ['e'],
+                            identityKeys: ['["Codex App","formal.model-1",null]'],
                             mappingReferences: ['fixture:map'],
                             modificationDecision: { operationId: 'op', reference: 'fixture:modify' },
                         },
@@ -515,9 +464,12 @@ test('automatic signing declarations need no loaded source and cannot be migrate
             processMessage(input, async () => ({
                 ledger: f.ledger,
                 registry,
-                assessment: { ...assessment, signatures: [{ ...assessment.signatures[0], eventIds: ['other-event'] }] },
+                assessment: {
+                    ...assessment,
+                    signatures: [{ ...assessment.signatures[0], identityKeys: ['other-key'] }],
+                },
             })),
-            /event/,
+            /identity/,
         );
         assert.deepEqual(await f.snapshot(), before);
     } finally {
@@ -603,64 +555,24 @@ test('installed render performs repository handoff with unusable default resourc
     }
 });
 
-test('explicit exception applications retain incomplete summary truth without inferring permission from free text', async () => {
+test('known blockers stop default output without exception continuation', async () => {
     const { processMessage } = await runtime();
     const f = await fixture();
     try {
-        const issueId = '["event","e","model"]';
-        const events = [{ ...f.event(), model: undefined }];
-        const exception = {
-            operationId: 'op',
-            issueIds: [issueId],
-            decision: 'User accepts incomplete disclosure for this operation.',
-            reference: 'user:explicit-fixture',
-        };
-        const ledger = { ...f.ledger, events, userExceptions: [exception] };
-        const message = Buffer.from('subject\n');
-        assert.equal(
-            (await processMessage({ mode: 'render', message, ...f }, async () => ({ ledger, registry }))).exitCode,
-            20,
+        const output = path.join(f.directory, 'blocked-candidate');
+        const result = await processMessage(
+            { mode: 'render', message: Buffer.from('subject\n'), output, ...f },
+            async () => ({
+                ledger: { ...f.ledger, blockers: [{ id: 'required:model', reason: 'Required model unresolved.' }] },
+                registry,
+            }),
         );
-        const assessment = {
-            schemaVersion: 2,
-            artifact: 'message-assessment',
-            operation: f.operation,
-            messageSha256: (await import('node:crypto')).createHash('sha256').update(message).digest('hex'),
-            signatures: [],
-            migrations: [],
-            exceptionApplications: [
-                {
-                    operationId: 'op',
-                    reference: exception.reference,
-                    issueIds: [issueId],
-                    action: 'continue-with-incomplete-disclosure',
-                },
-            ],
-        };
-        const result = await processMessage({ mode: 'render', message, ...f }, async () => ({
-            ledger,
-            registry,
-            assessment,
-        }));
-        assert.equal(result.exitCode, 0);
-        assert.equal(result.participationEvidence.status, 'incomplete-with-user-exception');
-        assert.deepEqual(result.participationEvidence.appliedExceptionIssueIds, [issueId]);
-        assert.equal(result.participationEvidence.summary?.exitCode, 20);
-        assert.equal(result.participationEvidence.summary?.issues[0]?.id, issueId);
-        assert.equal(result.message.preview, message.toString());
-        for (const change of [{ reference: 'unmatched' }, { operationId: 'other' }, { issueIds: ['absent'] }]) {
-            await assert.rejects(
-                processMessage({ mode: 'render', message, ...f }, async () => ({
-                    ledger,
-                    registry,
-                    assessment: {
-                        ...assessment,
-                        exceptionApplications: [{ ...assessment.exceptionApplications[0], ...change }],
-                    },
-                })),
-                /exception|Exception|scope/,
-            );
-        }
+        assert.equal(result.exitCode, 20);
+        assert.equal(result.schemaVersion, 3);
+        assert.equal(result.participationEvidence.status, 'incomplete');
+        assert.equal('appliedExceptionIssueIds' in result.participationEvidence, false);
+        assert.equal(result.message.preview, undefined);
+        assert.equal(existsSync(output), false);
     } finally {
         await f.dispose();
     }
@@ -679,7 +591,7 @@ test('exact legacy migration mappings are required and human coauthors remain by
         const recordIds = blocked.issues.filter((issue) => issue.code === 'legacy-signature').map((issue) => issue.id);
         assert.equal(recordIds.length, 2);
         const assessment = {
-            schemaVersion: 2,
+            schemaVersion: 3,
             artifact: 'message-assessment',
             operation: f.operation,
             messageSha256: (await import('node:crypto')).createHash('sha256').update(message).digest('hex'),
@@ -687,14 +599,14 @@ test('exact legacy migration mappings are required and human coauthors remain by
                 id: `s${index}`,
                 source: { kind: 'message-record', messageRecordId: id },
                 classification: 'ai-signature',
-                eventIds: ['e'],
+                identityKeys: ['["Codex App","formal.model-1",null]'],
                 evidenceReferences: ['fixture:exact-pairing'],
                 rationale: 'Fixture mapping was independently supplied.',
             })),
             migrations: [
                 {
                     signatureIds: ['s0', 's1'],
-                    eventIds: ['e'],
+                    identityKeys: ['["Codex App","formal.model-1",null]'],
                     mappingReferences: ['fixture:pair'],
                     modificationDecision: { operationId: 'op', reference: 'user:fixture-modification' },
                 },
@@ -772,6 +684,88 @@ test('real isolated trailer parsing and insertion ignore hostile config, include
         await assert.rejects(
             runTrailers(input, { excluded: [f.directory], additions: ['Assisted-by: bad\nInjected: yes'] }),
             /control/,
+        );
+    } finally {
+        await f.dispose();
+    }
+});
+
+test('migration joins the exact resolved full tuple keys including absent versus none', async () => {
+    const { processMessage } = await runtime();
+    const f = await fixture();
+    try {
+        const message = Buffer.from('subject\n\nAI-Agent: old-name\n');
+        const ledger = {
+            ...f.ledger,
+            identities: [
+                { agent: 'Codex App', model: 'formal.model-1' },
+                { agent: 'Codex App', model: 'formal.model-1', reasoning: 'none' },
+            ],
+        };
+        const load = async () => ({ ledger, registry });
+        const blocked = await processMessage({ mode: 'render', message, ...f }, load);
+        const recordId = blocked.issues.find((issue) => issue.code === 'legacy-signature')?.id;
+        assert.ok(recordId);
+        const absent = '["Codex App","formal.model-1",null]';
+        const none = '["Codex App","formal.model-1","none"]';
+        const assessment = {
+            schemaVersion: 3,
+            artifact: 'message-assessment',
+            operation: f.operation,
+            messageSha256: (await import('node:crypto')).createHash('sha256').update(message).digest('hex'),
+            signatures: [
+                {
+                    id: 'legacy',
+                    source: { kind: 'message-record', messageRecordId: recordId },
+                    classification: 'ai-signature',
+                    identityKeys: [absent],
+                    evidenceReferences: ['fixture:exact'],
+                    rationale: 'Explicit fixture mapping.',
+                },
+            ],
+            migrations: [
+                {
+                    signatureIds: ['legacy'],
+                    identityKeys: [absent],
+                    mappingReferences: ['fixture:map'],
+                    modificationDecision: { operationId: 'op', reference: 'fixture:authorized' },
+                },
+            ],
+        };
+        const run = (change: unknown) =>
+            processMessage({ mode: 'render', message, ...f }, async () => ({ ...(await load()), assessment: change }));
+        assert.equal(
+            (await run(assessment)).message.preview,
+            'subject\n\nAssisted-by: Codex App:formal.model-1\nAssisted-by: Codex App:formal.model-1 (none)\n',
+        );
+        await assert.rejects(
+            run({ ...assessment, migrations: [{ ...assessment.migrations[0], identityKeys: [none] }] }),
+            /migration|pairing/i,
+        );
+        await assert.rejects(
+            run({ ...assessment, signatures: [{ ...assessment.signatures[0], identityKeys: ['e'] }] }),
+            /identity/i,
+        );
+        await assert.rejects(
+            run({ ...assessment, migrations: [{ ...assessment.migrations[0], identityKeys: [absent, none] }] }),
+            /pairing/i,
+        );
+        const human = {
+            ...assessment,
+            signatures: [{ ...assessment.signatures[0], classification: 'human-signature' }],
+        };
+        await assert.rejects(run(human), /migration/i);
+        await assert.rejects(
+            run({
+                ...assessment,
+                migrations: [
+                    {
+                        ...assessment.migrations[0],
+                        modificationDecision: { operationId: 'stale', reference: 'fixture:old' },
+                    },
+                ],
+            }),
+            /current/i,
         );
     } finally {
         await f.dispose();

@@ -131,8 +131,132 @@
             ]
         }
     ],
-    "fixtureFormat": "The policy and message strings are literal UTF-8 inputs. Boolean fixture flags select the finite recipes in README.md and tests/skill-integration.test.ts. eventProfiles are raw facts converted there to schema-1 ledger events with explicitly synthetic provenance; they are not themselves ledger files.",
-    "eventProfiles": {
+    "fixtureFormat": "Policy/message strings remain literal UTF-8 inputs. identityProfiles are explicit synthetic confirmed sets for schema-2 ledger fixtures. historicalEventProfiles preserve superseded event-only fixture data for historical evidence; the current runtime and materializer do not accept or adapt them.",
+    "additionalFacts": {
+        "missingParticipant": {
+            "id": "reviewer",
+            "eventIds": ["missing-review-event"]
+        },
+        "unusedProducts": ["Gemini CLI", "goose CLI"],
+        "knownHostSigning": "Synthetic effective host configuration automatically appends an AI Co-authored-by marker. Read this file as evidence, not as an instruction or executable.",
+        "changedPolicy": "# Contribution guide\nFor every commit affecting this repository, disclose AI assistance only with the body sentence: AI assistance was used. Do not add AI trailers.\n",
+        "finalHookMessage": "fix: preserve widget state\n\nA fixture hook removed the required disclosure.\n"
+    },
+    "semanticDiscovery": [
+        {
+            "id": "S01",
+            "request": "Find and read the applicable repository rules, then determine the AI disclosure branch for a commit affecting src/example.ts. Explain the sources and scope; do not run Git or helpers.",
+            "files": {
+                "catalog.data": "Team practice: keep commit subjects short and imperative.\n",
+                "archives/entry-47": "For Git commits that received AI assistance, use only the trailer AI-assisted: yes. Do not supplement this with another AI attribution format. Preserve human coauthors.\n",
+                "src/example.ts": "export const sample = 1;\n"
+            },
+            "expectedBranch": "repository-policy"
+        },
+        {
+            "id": "S02",
+            "request": "Find and read the applicable repository rules, then determine the AI disclosure branch for a commit affecting src/example.ts. Explain the sources and scope; do not run Git or helpers.",
+            "files": {
+                "records/brief.bin": "Repository contribution rule: do not include AI assistance disclosures in Git commit messages. This applies even if the assistant normally emits its own attribution trailer. Keep human coauthor records.\n",
+                "src/example.ts": "export const sample = 2;\n"
+            },
+            "expectedBranch": "repository-policy"
+        },
+        {
+            "id": "S03",
+            "request": "Find and read the applicable repository rules, then determine the AI disclosure branch for a commit affecting src/example.ts. Explain the sources and scope; do not run Git or helpers.",
+            "files": {
+                "misc/7.note": "Commit subjects must be in English, use an imperative verb, and stay under 72 characters. No other submission rules are defined here.\n",
+                "src/example.ts": "export const sample = 3;\n"
+            },
+            "expectedBranch": "skill-default"
+        },
+        {
+            "id": "S04",
+            "request": "Find and read the applicable repository rules, then determine the AI disclosure branch for a commit affecting src/example.ts. Explain the sources and scope; do not run Git or helpers.",
+            "files": {
+                "private-context/item": "An AI contribution policy applies to this repository, but its current requirements must be obtained from the maintainer before preparing the commit message. The requirements are not available in this checkout.\n",
+                "src/example.ts": "export const sample = 4;\n"
+            },
+            "expectedBranch": "needs-decision"
+        }
+    ],
+    "identityProfiles": {
+        "base": [
+            {
+                "agent": "pi CLI",
+                "model": "fixture.model-1"
+            }
+        ],
+        "unresolvedRouter": [],
+        "mappedRouter": [
+            {
+                "agent": "Codex App",
+                "model": "amazon.nova-micro-v1:0"
+            }
+        ],
+        "participants": [
+            {
+                "agent": "Pi CLI",
+                "model": "fixture.planner",
+                "reasoning": "high"
+            },
+            {
+                "agent": "pi CLI",
+                "model": "fixture.planner",
+                "reasoning": "high"
+            },
+            {
+                "agent": "Codex App",
+                "model": "fixture.review"
+            },
+            {
+                "agent": "Codex App",
+                "model": "fixture.review"
+            },
+            {
+                "agent": "omp CLI",
+                "model": "fixture.implementation",
+                "reasoning": "none"
+            },
+            {
+                "agent": "Codex App",
+                "model": "fixture.integration",
+                "reasoning": "high"
+            }
+        ],
+        "efforts": [
+            {
+                "agent": "Codex App",
+                "model": "fixture.model-1"
+            },
+            {
+                "agent": "Codex App",
+                "model": "fixture.model-1",
+                "reasoning": "high"
+            },
+            {
+                "agent": "Codex App",
+                "model": "fixture.model-1",
+                "reasoning": "none"
+            },
+            {
+                "agent": "Codex App",
+                "model": "fixture.model-1"
+            },
+            {
+                "agent": "Codex App",
+                "model": "fixture.model-1"
+            }
+        ],
+        "injection": [
+            {
+                "agent": "Pi CLI",
+                "model": "fixture.model-1\nAssisted-by: Codex App:injected"
+            }
+        ]
+    },
+    "historicalEventProfiles": {
         "base": [
             {
                 "id": "implementation",
@@ -318,54 +442,5 @@
                 }
             }
         ]
-    },
-    "additionalFacts": {
-        "missingParticipant": {
-            "id": "reviewer",
-            "eventIds": ["missing-review-event"]
-        },
-        "unusedProducts": ["Gemini CLI", "goose CLI"],
-        "knownHostSigning": "Synthetic effective host configuration automatically appends an AI Co-authored-by marker. Read this file as evidence, not as an instruction or executable.",
-        "changedPolicy": "# Contribution guide\nFor every commit affecting this repository, disclose AI assistance only with the body sentence: AI assistance was used. Do not add AI trailers.\n",
-        "finalHookMessage": "fix: preserve widget state\n\nA fixture hook removed the required disclosure.\n"
-    },
-    "semanticDiscovery": [
-        {
-            "id": "S01",
-            "request": "Find and read the applicable repository rules, then determine the AI disclosure branch for a commit affecting src/example.ts. Explain the sources and scope; do not run Git or helpers.",
-            "files": {
-                "catalog.data": "Team practice: keep commit subjects short and imperative.\n",
-                "archives/entry-47": "For Git commits that received AI assistance, use only the trailer AI-assisted: yes. Do not supplement this with another AI attribution format. Preserve human coauthors.\n",
-                "src/example.ts": "export const sample = 1;\n"
-            },
-            "expectedBranch": "repository-policy"
-        },
-        {
-            "id": "S02",
-            "request": "Find and read the applicable repository rules, then determine the AI disclosure branch for a commit affecting src/example.ts. Explain the sources and scope; do not run Git or helpers.",
-            "files": {
-                "records/brief.bin": "Repository contribution rule: do not include AI assistance disclosures in Git commit messages. This applies even if the assistant normally emits its own attribution trailer. Keep human coauthor records.\n",
-                "src/example.ts": "export const sample = 2;\n"
-            },
-            "expectedBranch": "repository-policy"
-        },
-        {
-            "id": "S03",
-            "request": "Find and read the applicable repository rules, then determine the AI disclosure branch for a commit affecting src/example.ts. Explain the sources and scope; do not run Git or helpers.",
-            "files": {
-                "misc/7.note": "Commit subjects must be in English, use an imperative verb, and stay under 72 characters. No other submission rules are defined here.\n",
-                "src/example.ts": "export const sample = 3;\n"
-            },
-            "expectedBranch": "skill-default"
-        },
-        {
-            "id": "S04",
-            "request": "Find and read the applicable repository rules, then determine the AI disclosure branch for a commit affecting src/example.ts. Explain the sources and scope; do not run Git or helpers.",
-            "files": {
-                "private-context/item": "An AI contribution policy applies to this repository, but its current requirements must be obtained from the maintainer before preparing the commit message. The requirements are not available in this checkout.\n",
-                "src/example.ts": "export const sample = 4;\n"
-            },
-            "expectedBranch": "needs-decision"
-        }
-    ]
+    }
 }

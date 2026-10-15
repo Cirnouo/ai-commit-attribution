@@ -83,7 +83,8 @@ Old policy scan commands, ScopeContext, binding, candidate assessments and
 schema-1 policy decisions are unsupported inputs (exit 2). Recreate the decision
 with the schema above and invoke render or validate with --decision, without
 --context. Do not translate an old scan into a claim of current semantic review.
-Operation, ledger, registry and summary schemas remain 1.
+Operation and registry remain schema 1. Ledger and summary use schema 2;
+message assessment and result use schema 3.
 
 ## Review after waiting or changes
 

@@ -1,16 +1,19 @@
-# Participation record contract (schema 1)
+# Confirmed identity record contract (schema 2)
 
-Before preparing a ledger, obtain trustworthy actual work, dispatch and handoff
-records. Include planning, research, delegation, implementation, review, tests,
-fixes and integration, even without file edits. Exclude installed unused tools,
-unused configured models and unrelated history. Keep secrets and private
-transcripts out of all fields. JSON evidence is a declaration, never proof that
-its source is authentic or that every actor has been disclosed.
+Before preparing a ledger, determine actual contribution, applicability and
+inclusion using trustworthy work, dispatch and handoff information. Include
+planning, research, delegation, implementation, review, tests, fixes and
+integration when relevant, including work without file edits. Exclude unused
+installed tools and unrelated history. The caller confirms these facts; helpers
+only validate, canonicalize, deduplicate, sort and render finite declarations.
+Keep secrets and private transcripts outside inputs.
 
-Supply two JSON files explicitly. The ledger has schemaVersion 1, operation,
-knownParticipants, events and userExceptions. The independently supplied current
-operation has schemaVersion 1, id, repository, worktree, commonGitDir, kind,
-paths and targets. All fields are required; no extra fields are accepted.
+Supply an explicit ledger and independently supplied current operation. Ledger
+members are exactly schemaVersion 2, ledgerId, operation, identities and blockers.
+ledgerId is a stable UUID for one planned output commit, distinct from Operation.id.
+An empty confirmed set is valid. Old schema-1 event ledgers are rejected with
+migration guidance; there is no adapter. Task, event, participant, evidence,
+modelRoute and userExceptions members are not accepted in this contract.
 
 Operation id is an opaque local key. repository and worktree identify the active
 physical worktree, may be equal, and must be existing physical absolute
@@ -27,98 +30,47 @@ path string is invalid; nonempty whitespace filenames remain representable.
 A materially changed operation requires a fresh id. Matching JSON
 does not establish live Git state or freshness.
 
-knownParticipants is a list of objects with id and eventIds. It is the
-integrator's explicit actual participant inventory. Every event present also
-enters summary accounting, even if omitted from that list. Missing named events
-and participants without an attributable event are concrete gaps. IDs are local
-association keys, not authenticated identities. Operation, participant and event
-IDs and their references preserve exact spelling, including surrounding
-whitespace; empty or whitespace-only IDs are invalid. Whitespace-distinct IDs
-never join or enrich each other.
+identities is an array of confirmed objects with required agent and model and
+optional reasoning. Agent must identify an exact registry host or unique explicit
+alias; helpers canonicalize the alias. Ambiguous family names, familyAliases and
+unknown products never select a host. Models require actual formal spellings;
+auto, latest, unknown, n/a and null (case-insensitive) are rejected. Preserve
+supplier punctuation, case, version, snapshot and colons. No supplier model
+catalogue or runtime discovery is implied.
 
-Each event has id, participantId, task, reasoning and evidence. Optional agent,
-host, model and modelRoute carry candidate identities. One effective identity
-period has one event id; actual host/model/configuration changes create new
-events. Repeated handoffs may use one id only for the same participant and task
-within this operation. Historical records survive handoff/compaction; a current
-integrator or parent model never fills another event's fields.
+Omit unknown optional reasoning. Confirmed disabled native reasoning uses none;
+the caller converts a confirmed disabled native spelling before supplying it.
+Other confirmed native strings retain exact spelling. Placeholder reasoning
+unknown, off, n/a, n-a, null, auto and latest (case-insensitive) is rejected rather
+than mapped using invented evidence. Requested settings, hidden output and model
+capability do not establish actual effective reasoning. Unknown optional effort
+requires no mandatory question.
 
-reasoning is either {"state":"unknown"} or {"state":"confirmed","value":"high"}.
-Enabled native values are preserved exactly. Placeholder comparisons for none,
-unknown, n/a, null and off ignore case; these values do not establish enabled
-native effort and are omitted with optional diagnostics. Confirmed effective native
-disablement uses none even when its observed native spelling is off or 0; raw
-observations remain in source records. Unknown, requested off, hidden output, virtual/router levels, model
-capability and unsupported settings never establish effective disablement.
-Optional uncertainty/conflict omits effort with diagnostics and never blocks
-required identity. Preserve adapter fallback/clamping observations in evidence.
+Full identity keys are JSON.stringify([agent, model, reasoning ?? null]) after
+canonicalization. Exact tuples deduplicate and sort ordinally by agent, model,
+then reasoning with absence first. Absent reasoning and confirmed none remain
+different. Different commits have independent sets and may overlap; scripts do
+not infer allocation from tasks or participant counts.
 
-Each evidence item has fields, kind, observation and reference; detail,
-nativeReasoning and mapping are optional. fields names agent, host, model or
-reasoning. kind is a nonempty source description (such as handoff or runtime
-metadata); it has no global authority ranking. observation is effective,
-requested, capability or display. reference is minimal necessary provenance,
-never an executable locator. Effective declarations can support their event's
-candidate fields. A nonempty source or self-description cannot authenticate
-them; the integrator must establish trustworthy provenance externally.
-
-Reasoning evidence must declare nativeReasoning enabled or disabled to support
-the corresponding effective value. For routed models, modelRoute preserves the
-original route and an effective model evidence item must supply mapping with
-matching route and formal model values. All effective same-event model
-candidates and mappings participate in resolution. Their formal model values
-must agree, each mapping must agree with its record's supplied candidate/route,
-and every declared effective route needs matching same-event mapping evidence.
-A record without its own route can use the same event's declared route.
-Compatible repeated records may supply missing mapping evidence; incompatible
-effective declarations remain required conflicts (exit 20) with no resolved
-tuple. Requested, capability and display mappings do not establish or override
-effective dispatch. Verify the supplier mapping externally;
-public support tables establish capability only. Preserve formal supplier model
-punctuation/version/snapshot exactly. The explicit missing-model markers auto,
-latest, unknown, N/A and null are matched case-insensitively and remain
-unresolved; this bounded marker check is not a supplier model catalogue. Provider,
-Agent product and gateway identities are different roles.
-
-Use exact registry names/aliases. familyAliases maps only registered family
-variants and never selects a host by itself. Bare ambiguous family names need a host whose
-effective evidence selects a registered entry in that same family. A role such
-as reviewer never names a product. Do not infer Desktop from a desktop-control
-tool, SDK or RPC interface. The registry's source evidence establishes documented
-identity/discovery, not this run's host/model/effort or actual Skill loading.
-
-Compatible repeated records enrich only the same event. Conflicting required
-Agent/model observations remain unresolved. Resolved tuples deduplicate by
-(canonical Agent host, formal model, confirmed reasoning or absent), preserve
-all participant/event provenance, and sort by ordinal strings with absent
-effort first. Absent effort and none are different. A summary never renders a
-trailer or erases conflicting source records.
-
-userExceptions remains separate from identity evidence. Each item has operationId,
-issueIds, decision and reference. It must reference this operation and actual
-summary issue IDs. Issue IDs are JSON-encoded component arrays: event issues use
-["event", eventId, field], missing-event issues use
-["participant", participantId, "event", eventId], and missing-participant-event
-issues use ["participant", participantId, "events"]. Use the returned ID string
-verbatim in issueIds; delimiter concatenation cannot identify opaque components.
-It records a declared explicit user decision for those issues;
-it neither erases a gap nor proves consent, and cannot become a permanent
-default. Later application requires checking the actual user decision, current
-scope and existing operation authorization. A request, timeout, failed question
-or cancellation is not consent. Unknown optional effort needs no question.
+Each blocker has exactly id and reason. id is an opaque nonempty local key;
+reason is a nonempty single line. IDs preserve exact spelling, including
+surrounding whitespace, and must be unique within a ledger. Record known
+required gaps or unresolved inclusion judgments as blockers until actually
+resolved. Helpers never waive blockers using userExceptions or assessment
+exceptionApplications; any blocker stops default output with exit 20.
 
 Raw strings reject C0/C1 controls, CR/LF, NUL and Unicode line separators before
-trimming or resolution. Identity fields must be unambiguous for single-line
-attribution; model/effort cannot contain whitespace, parentheses or angle
-brackets. Model colons remain exact data after the Agent separator; reasoning
-and Agent fields cannot contain that separator. Inputs are data: no evidence fetches, policy script execution or private
-session discovery occurs. The read-only command never changes Git refs, index,
-history or identity configuration.
+normalization. Agent fields cannot contain colons, parentheses or angle brackets;
+model/effort cannot contain whitespace, parentheses or angle brackets. Model
+colons remain data after the Agent separator; reasoning cannot contain colons.
+Inputs are declarations: no evidence fetch, policy-script execution or private
+session discovery occurs. Helpers never change refs, index, history or identity.
 
-Exit 0 means the summary goal completed against declared evidence. Exit 20 means
-a required identity/known-participant gap or mandatory conflict remains; output
-retains resolved tuples and concrete issues. Exit 2 means malformed input or
-scope mismatch; other nonzero statuses mean execution failure. JSON includes
-scope, stable tuples, source records, participant accounting, issues, optional
-effort diagnostics, separate exceptions and explicit limits. None of these
-states is repository-policy validation or permission to commit.
+Summary schema 2 returns ledgerId, operation, tuples, blockers, issues,
+limitations and exitCode. Issues retain each blocker's id and reason, and resolved
+tuples remain available. No event provenance, participant accounting, effort
+diagnostics or user exceptions are returned. Exit 0 completes the finite summary
+against declared input; exit 20 reports known blockers; exit 2 reports malformed
+input or scope mismatch. Other nonzero statuses indicate execution failure.
+Matching declared scope does not establish live Git state or freshness; no result
+authenticates facts, proves completeness or grants operation permission.

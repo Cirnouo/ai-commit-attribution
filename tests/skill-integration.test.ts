@@ -7,14 +7,9 @@ import path from 'node:path';
 import test from 'node:test';
 import type { MessageResult, Summary } from '../src/message-contract.ts';
 import type { Decision } from '../src/policy-contract.ts';
-import type { Event, Evidence } from '../src/records.ts';
+import { type ConfirmedIdentity, identityKey, normalizeIdentities, parseRegistry } from '../src/records.ts';
 import { resolveTrustedGit } from '../src/safe-git.ts';
 
-type Fact = Omit<Event, 'evidence'> & {
-    nativeReasoning?: string;
-    reasoningObservation?: string;
-    mapping?: { route: string; model: string };
-};
 type Case = {
     id: string;
     policy: string;
@@ -31,9 +26,8 @@ type Case = {
 };
 type Corpus = {
     tasks: { id: string; request: string; fixtures: Case[] }[];
-    eventProfiles: Record<string, Fact[]>;
+    identityProfiles: Record<string, ConfirmedIdentity[]>;
     additionalFacts: {
-        missingParticipant: { id: string; eventIds: string[] };
         unusedProducts: string[];
         knownHostSigning: string;
         changedPolicy: string;
@@ -155,52 +149,22 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                               : item.missing === 'router'
                                 ? 'unresolvedRouter'
                                 : 'base';
-                    const events = (corpus.eventProfiles[profile] ?? []).map((fact): Event => {
-                        const { nativeReasoning, reasoningObservation, mapping, ...event } = fact;
-                        const evidence: Evidence[] = [
-                            {
-                                fields: ['agent', 'model'],
-                                kind: 'synthetic-fixture',
-                                observation: 'effective',
-                                reference: 'fixture:provided-handoff',
-                                ...(mapping ? { mapping } : {}),
-                            },
-                        ];
-                        if (event.reasoning.state === 'confirmed')
-                            evidence.push({
-                                fields: ['reasoning'],
-                                kind: 'synthetic-fixture',
-                                observation: reasoningObservation ?? 'effective',
-                                reference: 'fixture:provided-setting',
-                                ...(nativeReasoning ? { nativeReasoning } : {}),
-                            });
-                        return { ...event, evidence };
-                    });
-                    const knownParticipants = events.map((event) => ({
-                        id: event.participantId,
-                        eventIds: [event.id],
-                    }));
-                    if (item.missing === 'participant')
-                        knownParticipants.push(corpus.additionalFacts.missingParticipant);
-                    if (item.missing === 'model') {
-                        for (const event of events) {
-                            delete event.model;
-                            event.evidence = [
-                                {
-                                    fields: ['agent'],
-                                    kind: 'synthetic-fixture',
-                                    observation: 'effective',
-                                    reference: 'fixture:provided-handoff',
-                                },
-                            ];
-                        }
-                    }
+                    // Only explicit confirmed sets enter the current runtime; historical event recipes remain unused evidence.
+                    const identities = item.missing === 'model' ? [] : (corpus.identityProfiles[profile] ?? []);
+                    const blockers = item.missing
+                        ? [
+                              {
+                                  id: `required:${item.missing}`,
+                                  reason: `Declared required ${item.missing} input is unresolved.`,
+                              },
+                          ]
+                        : [];
                     const ledgerFile = await json('ledger', {
-                        schemaVersion: 1,
+                        schemaVersion: 2,
+                        ledgerId: '00000000-0000-4000-8000-000000000001',
                         operation,
-                        knownParticipants,
-                        events,
-                        userExceptions: [],
+                        identities,
+                        blockers,
                     });
                     const messageFile = path.join(directory, 'message.txt');
                     await writeFile(messageFile, item.message);
@@ -217,7 +181,7 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                     if (item.signing) {
                         const { createHash } = await import('node:crypto');
                         const assessment = await json('assessment', {
-                            schemaVersion: 2,
+                            schemaVersion: 3,
                             artifact: 'message-assessment',
                             operation,
                             messageSha256: createHash('sha256').update(item.message).digest('hex'),
@@ -226,7 +190,17 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                                     id: 'automatic',
                                     source: { kind: 'automatic-signing', reference: 'fixture:effective-host-setting' },
                                     classification: 'ai-signature',
-                                    eventIds: events.map((event) => event.id),
+                                    identityKeys: normalizeIdentities(
+                                        identities,
+                                        parseRegistry(
+                                            JSON.parse(
+                                                await readFile(
+                                                    path.join(installed, 'references/agent-registry.json'),
+                                                    'utf8',
+                                                ),
+                                            ),
+                                        ),
+                                    ).map(identityKey),
                                     evidenceReferences: ['fixture:effective-host-setting'],
                                     rationale: 'Synthetic exact effective signing evidence.',
                                 },
@@ -302,7 +276,6 @@ test('portable acceptance corpus exercises fifteen copied-bundle workflows with 
                                 operationFile,
                             ]).result;
                             assert.equal(summary.tuples.length, 4);
-                            assert.equal(summary.events.length, 6);
                             for (const unused of corpus.additionalFacts.unusedProducts)
                                 assert.equal(preview.includes(unused), false);
                         }

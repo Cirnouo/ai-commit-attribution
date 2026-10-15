@@ -1,8 +1,11 @@
 # Attribution runtime
 
 records.ts owns schema validation and shared supplied-scope canonicalization.
-summarize.ts resolves same-event declared evidence, participant accounting and
-stable identity tuples. attribution.ts exposes summarize, render and validate,
+parseOperationShape preserves portable historical declarations without filesystem
+observation; parseOperation additionally enforces physical local directories for
+current scope. Portable shapes never authorize a current Git action.
+summarize.ts normalizes confirmed identities, deduplicates exact tuples and
+reports declared blockers. attribution.ts exposes summarize, render and validate,
 and locates its installed registry from import.meta.url. Source requires no
 runtime packages.
 
@@ -18,7 +21,7 @@ the installed registry, ledger or assessment.
 
 message.ts adds route-first render/validate with a lazy default-input boundary.
 message-contract.ts owns their result types; message-assessment.ts checks exact
-current signature/migration/exception joins. message-trailers.ts runs isolated
+current signature/migration joins using full identity keys. message-trailers.ts runs isolated
 Git interpretation and reconciles owned byte spans. message-output.ts creates
 only safe absent new files. output-scope.ts locates actual Git administrative
 directories only for explicit new-file output protection. safe-git.ts restricts

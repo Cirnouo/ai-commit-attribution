@@ -5,7 +5,7 @@ SKILL.md in the generated payload, so repository-root installers discover the
 complete generated Skill instead of these packaging inputs. policy.md owns its
 before-use semantic policy discovery, decision and review contract; records.md
 owns the record/evidence contract.
-messages.md owns render/validate, signature assessment, scoped exception
+messages.md owns render/validate, signature assessment, exact identity mapping
 application and new-file behavior. hosts.md owns per-consumer discovery,
 metadata, identity-acquisition and native-interaction evidence. integration.md
 provides the human first-use JSON/CLI workflow and links to those contracts.

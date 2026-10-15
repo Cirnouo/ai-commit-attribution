@@ -73,44 +73,27 @@ the policy contract for semantic review and review after waiting or changes.
 
 ## Supply participation on the default branch
 
-Only on skill-default, prepare ledger.json. Supply schemaVersion 1 and copy the
-same complete operation object into its operation member, then include the
-knownParticipants, events and userExceptions members below. This one-event
-fragment illustrates shape rather than a complete inventory or detected identity.
-Replace the angle-bracket values with trustworthy actual information and repeat
-for every relevant participant, including research/review/test-only work:
+Only on skill-default, prepare ledger.json with schemaVersion 2, a stable ledgerId
+UUID and the same complete operation object in its operation member. Add the
+confirmed identities and known blockers below. This fragment illustrates the
+shape; determine actual inclusion and identity separately for this output commit.
 
 ```json
 {
-    "knownParticipants": [{ "id": "actor", "eventIds": ["event-1"] }],
-    "events": [
-        {
-            "id": "event-1",
-            "participantId": "actor",
-            "task": "implementation",
-            "agent": "<actual canonical host>",
-            "model": "<actual formal model>",
-            "reasoning": { "state": "unknown" },
-            "evidence": [
-                {
-                    "fields": ["agent", "model"],
-                    "kind": "actual dispatch or handoff",
-                    "observation": "effective",
-                    "reference": "<minimal trustworthy provenance>"
-                }
-            ]
-        }
+    "ledgerId": "00000000-0000-4000-8000-000000000001",
+    "identities": [
+        { "agent": "<actual canonical host>", "model": "<actual formal model>" }
     ],
-    "userExceptions": []
+    "blockers": []
 }
 ```
 
-The record contract explains routed-model mappings, confirmed native settings,
-same-event enrichment and exact issue references. A real host/model change gets
-a new event. Preserve unknown optional effort instead of copying another event's
-value. JSON provenance declarations are not authentication. For a concrete
-required gap, recover the evidence or obtain the genuine current decision before
-continuing; free-text exception records alone do not clear summary issues.
+The record contract owns canonicalization, exact tuple keys and blocker rules.
+Omit unknown optional reasoning; use none only for confirmed disablement.
+Relevant changes to host, model or confirmed effort produce distinct tuples.
+Never borrow child/historical identity from the current integrator. Keep a known
+required gap in blockers until resolved; no exception field bypasses it. The
+helper cannot authenticate the caller's facts, inclusion judgment or authority.
 
 ```text
 node <installed>/scripts/attribution.mjs summarize --input ledger.json --operation operation.json
@@ -133,7 +116,7 @@ absent new file; it never overwrites message.txt. Inspect the result dimensions
 and process exit. Required decisions/errors stop continuation; a failed write
 can leave an uncertain artifact at the explicit output path. Before supplying
 an optional --assessment, read the message contract for signatures, authorized
-migration, scoped exceptions and output safety.
+migration and output safety.
 
 For repository-policy, prepare the repository-required candidate and omit default
 inputs. The helper preserves that candidate and returns exit 10, leaving actual

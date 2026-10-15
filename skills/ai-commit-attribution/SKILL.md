@@ -28,9 +28,9 @@ the integrator checks the actual repository criteria separately.
 On skill-default, before collecting inputs or interpreting summaries, read the
 [record contract](references/records.md). Include every actual relevant participant
 in planning, research, delegation, implementation, review, tests, fixes and
-integration. Preserve event-specific actual host, formal model and effective
-configuration through handoffs and changes; never fill a child or historical
-event from the integrator's current settings. Use the [registry](references/agent-registry.json)
+integration. Confirm actual host, formal model and effective configuration for
+each included identity; never fill a child or historical identity from the
+integrator's current settings. Use the [registry](references/agent-registry.json)
 for exact canonical hosts and aliases. For host identity acquisition, discovery,
 loading or native-question capabilities, first read [host evidence](references/hosts.md).
 
@@ -44,8 +44,9 @@ Inspect the actually exposed, mode-permitted native question facilities and use
 an available nonterminal one. Wait for the actual human answer. Unavailable,
 failed, cancelled or noninteractive questioning stops automatic continuation;
 report the concrete gap and preserve work/index. A request, timeout, pending or
-automatic selection is not an answer. A genuine user exception is a separate
-current-operation decision, never verified identity or new Git authorization.
+automatic selection is not an answer. A genuine answer can resolve facts or inclusion judgment; it is never verified
+identity or new Git authorization. Known required gaps remain ledger blockers
+until resolved, and default helpers provide no exception continuation.
 
 Before render, validate, signature assessment or migration, read the
 [message contract](references/messages.md). Inspect concrete automatic-signing
