@@ -49,6 +49,13 @@ sets and blockers, operation mismatches, raw controls and a synthetic final-hook
 The [acceptance guide](../docs/acceptance/README.md) maps all eighteen requirements
 to these mechanical checks and separate optional native exercises.
 
+ledger-state.test.ts uses real ordinary and linked Git worktrees to exercise
+exclude initialization, physical state safety, locked CAS and preserved write
+failures. ledger-lifecycle.test.ts covers exact current selection, content
+revisions, independent split/combine sets and immutable terminal records.
+ledger-entry.test.ts exercises lazy selectors and the copied installed CLI,
+including pause, explicit preview, switching and a late child carrying an old ID.
+
 - governance.test.ts, commit-checks.test.ts and pull-request-policy.test.ts cover
   branch/message/PR rules and real Git history/context.
 - initialization.test.ts and toolchain-config.test.ts cover repository/YAML and

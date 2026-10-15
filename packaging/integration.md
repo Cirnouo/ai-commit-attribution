@@ -73,7 +73,23 @@ the policy contract for semantic review and review after waiting or changes.
 
 ## Supply participation on the default branch
 
-Only on skill-default, prepare ledger.json with schemaVersion 2, a stable ledgerId
+Before managing persistent plans, read the [ledger contract](ledgers.md). Start
+with the actual worktree, create and select a plan, then add its confirmed set:
+
+```text
+node <installed>/scripts/attribution.mjs ledger init --worktree <actual-worktree>
+node <installed>/scripts/attribution.mjs ledger create --worktree <actual-worktree> --select --expect-version <returned-state-version>
+node <installed>/scripts/attribution.mjs ledger add --worktree <actual-worktree> --ledger <returned-ledger-UUID> --input identities.json --expect-version <returned-state-version>
+node <installed>/scripts/attribution.mjs summarize --current <actual-worktree> --operation operation.json
+```
+
+identities.json contains an identities array using the confirmed objects below.
+Read each command's returned version and carry the exact ledger UUID through
+handoff. For render or validate, replace --input ledger.json in the examples below
+with --current <actual-worktree> or --ledger <selected-ledger-UUID>. The ledger
+contract owns selector exclusivity, pause/resume, split/combine and failure recovery.
+
+For the low-level explicit-input route on skill-default, prepare ledger.json with schemaVersion 2, a stable ledgerId
 UUID and the same complete operation object in its operation member. Add the
 confirmed identities and known blockers below. This fragment illustrates the
 shape; determine actual inclusion and identity separately for this output commit.

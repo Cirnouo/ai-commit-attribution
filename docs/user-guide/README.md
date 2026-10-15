@@ -72,6 +72,16 @@ and actual body/reference reads rather than relying on a catalog entry alone.
 
 ## Understanding results
 
+### Keep a plan available for the next Agent
+
+Before creating, selecting, pausing or recovering a persistent plan, read the
+[ledger contract](../../skills/ai-commit-attribution/references/ledgers.md).
+The [integration guide](../../skills/ai-commit-attribution/references/integration.md#supply-participation-on-the-default-branch)
+shows the ordinary create/select, record and preview commands. State lives in
+the actual worktree's .ai-commit-attribution directory, locally excluded through
+Git's info/exclude. An ordinary clone already has a usable worktree. Carry the
+exact plan ID through handoff so the next Agent can locate the same selection.
+
 ### Repository policy comes first
 
 Before finding relevant rules, deciding applicability or reviewing a decision
@@ -176,6 +186,8 @@ Unknown optional effort alone needs no mandatory question.
   revisiting a decision.
 - [Record contract](../../skills/ai-commit-attribution/references/records.md):
   participation and evidence; read before collecting inputs or interpreting summaries.
+- [Ledger contract](../../skills/ai-commit-attribution/references/ledgers.md):
+  persisted selection and lifecycle; read before managing or recovering a plan.
 - [Message contract](../../skills/ai-commit-attribution/references/messages.md):
   previews, validation, signatures and decisions; read before those operations.
 - [Acceptance guide](../acceptance/README.md): portable reproduction,

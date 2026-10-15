@@ -4,7 +4,8 @@ skill-entry.md is the maintained policy/summary entry. The builder emits it as
 SKILL.md in the generated payload, so repository-root installers discover the
 complete generated Skill instead of these packaging inputs. policy.md owns its
 before-use semantic policy discovery, decision and review contract; records.md
-owns the record/evidence contract.
+owns the confirmed identity-set contract. ledgers.md owns worktree-local state,
+selection, explicit lifecycle commands and recovery of failed state writes.
 messages.md owns render/validate, signature assessment, exact identity mapping
 application and new-file behavior. hosts.md owns per-consumer discovery,
 metadata, identity-acquisition and native-interaction evidence. integration.md

@@ -361,7 +361,7 @@ function gitEnvironment(environment = process.env) {
   };
 }
 function readOnlyArguments(command, args) {
-  return command === "rev-parse" && ["--show-toplevel", "--absolute-git-dir", "--git-common-dir"].some((option) => sameArgs(args, [option]));
+  return command === "rev-parse" && (["--show-toplevel", "--absolute-git-dir", "--git-common-dir"].some((option) => sameArgs(args, [option])) || sameArgs(args, ["--path-format=absolute", "--git-path", "info/exclude"])) || command === "ls-files" && sameArgs(args, ["--cached", "--full-name", "-z"]) || command === "check-ignore" && sameArgs(args, ["--no-index", "--", ".ai-commit-attribution/", ".ai-commit-attribution/state.json"]);
 }
 var ObservationError, sameArgs, SafeGit;
 var init_safe_git = __esm({
@@ -419,7 +419,8 @@ var init_safe_git = __esm({
           [
             "--no-lazy-fetch",
             "--no-optional-locks",
-            "--literal-pathspecs",
+            // check-ignore accepts fixed pathnames, not Git pathspec magic (including literal).
+            ...command === "check-ignore" ? [] : ["--literal-pathspecs"],
             "-c",
             "core.fsmonitor=false",
             "-c",
@@ -463,7 +464,7 @@ function sameObserved(left, right) {
 async function inspectPath(file) {
   return inspectPathIdentity(file, (locator) => lstat3(locator), sameObserved);
 }
-async function inspectPathIdentity(file, read, same) {
+async function inspectPathIdentity(file, read, same2) {
   const absolute = path4.resolve(file);
   let initial;
   try {
@@ -508,8 +509,8 @@ async function inspectPathIdentity(file, read, same) {
     throw new ObservationError("Initially absent path component appeared during checks.");
   }
   const final = observed.at(-1);
-  const unchanged2 = final && same(initial, final.info);
-  if (!final || final.locator !== absolute || !unchanged2)
+  const unchanged3 = final && same2(initial, final.info);
+  if (!final || final.locator !== absolute || !unchanged3)
     throw new ObservationError("Observed path identity changed during component checks.");
   return initial;
 }
@@ -595,6 +596,885 @@ var init_policy = __esm({
     init_records();
     init_runtime_support();
     DECISION_MIGRATION = "Use a schemaVersion 2 AI policy-decision with operation, branch, rationale and decisionSource; policy scan, --context and scanner fields are no longer supported.";
+  }
+});
+
+// src/ledger-contract.ts
+import path5 from "node:path";
+function object2(value, keys) {
+  if (!isRecord(value) || Object.keys(value).some((key) => !keys.includes(key)))
+    throw new InputError("Invalid ledger state: unexpected object shape.");
+  return value;
+}
+function uuid(value) {
+  if (typeof value !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value))
+    throw new InputError("Invalid ledger state: UUID must have canonical lowercase spelling.");
+  return value;
+}
+function integer(value, minimum = 0) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < minimum)
+    throw new InputError("Invalid ledger state: version/revision must be a bounded safe integer.");
+  return value;
+}
+function array(value, parse) {
+  if (!Array.isArray(value)) throw new InputError("Invalid ledger state: expected array.");
+  return value.map(parse);
+}
+function distinct(values) {
+  if (new Set(values).size !== values.length) throw new InputError("Invalid ledger state: duplicate key/reference.");
+}
+function parseBlocker(value) {
+  checkRaw(value);
+  const data = object2(value, ["id", "reason"]);
+  if (typeof data.id !== "string" || !data.id.trim())
+    throw new InputError("Invalid ledger state: blocker ID is empty.");
+  return { id: data.id, reason: text(data.reason) };
+}
+function parseLocator(value) {
+  const data = object2(value, ["worktree", "gitDirectory", "commonGitDir"]);
+  const directory = (value2) => {
+    if (typeof value2 !== "string" || !path5.isAbsolute(value2) || path5.resolve(value2) !== value2)
+      throw new InputError("Invalid ledger state: locator must be a normalized absolute path.");
+    return value2;
+  };
+  return {
+    worktree: directory(data.worktree),
+    gitDirectory: directory(data.gitDirectory),
+    commonGitDir: directory(data.commonGitDir)
+  };
+}
+function parsePlannedLedger(value) {
+  const data = object2(value, [
+    "ledgerId",
+    "contextId",
+    "revision",
+    "state",
+    "ownership",
+    "identities",
+    "blockers",
+    "currentPreparationId",
+    "predecessorIds",
+    "successorIds",
+    "note",
+    "work"
+  ]);
+  if (!["open", "prepared", "sealed", "abandoned"].includes(String(data.state)))
+    throw new InputError("Invalid ledger state: lifecycle.");
+  const owner = object2(data.ownership, ["kind", "transferId"]);
+  let ownership;
+  if (owner.kind === "local" && owner.transferId === void 0) ownership = { kind: "local" };
+  else if (owner.kind === "exporting" || owner.kind === "exported")
+    ownership = { kind: owner.kind, transferId: uuid(owner.transferId) };
+  else throw new InputError("Invalid ledger state: ownership.");
+  const identities = array(data.identities, parseIdentity);
+  distinct(identities.map(identityKey));
+  const blockers = array(data.blockers, parseBlocker);
+  distinct(blockers.map((item) => item.id));
+  const predecessorIds = array(data.predecessorIds, uuid);
+  const successorIds = array(data.successorIds, uuid);
+  distinct(predecessorIds);
+  distinct(successorIds);
+  return {
+    ledgerId: uuid(data.ledgerId),
+    contextId: uuid(data.contextId),
+    revision: integer(data.revision, 1),
+    state: data.state,
+    ownership,
+    identities,
+    blockers,
+    currentPreparationId: data.currentPreparationId === null ? null : uuid(data.currentPreparationId),
+    predecessorIds,
+    successorIds,
+    ...data.note === void 0 ? {} : { note: text(data.note) },
+    ...data.work === void 0 ? {} : { work: text(data.work) }
+  };
+}
+function parseWorktreeState(value) {
+  checkRaw(value);
+  const data = object2(value, [
+    "schemaVersion",
+    "contextId",
+    "locator",
+    "stateVersion",
+    "current",
+    "ledgers",
+    "preparations",
+    "transfers",
+    "imports"
+  ]);
+  if (data.schemaVersion !== 1) throw new InputError("Invalid ledger state: schemaVersion must be 1.");
+  const contextId = uuid(data.contextId);
+  const ledgers = array(data.ledgers, parsePlannedLedger);
+  distinct(ledgers.map((item) => item.ledgerId));
+  const byId = new Map(ledgers.map((item) => [item.ledgerId, item]));
+  for (const ledger of ledgers) {
+    if (ledger.contextId !== contextId) throw new InputError("Invalid ledger state: ledger/context mismatch.");
+    if (ledger.currentPreparationId !== null || ledger.state === "prepared")
+      throw new InputError("Invalid ledger state: preparation receipts are not yet supported.");
+    if (ledger.ownership.kind !== "local")
+      throw new InputError("Invalid ledger state: transfer receipts are not yet supported.");
+    for (const id of ledger.predecessorIds) {
+      const source = byId.get(id);
+      if (id === ledger.ledgerId || !source?.successorIds.includes(ledger.ledgerId))
+        throw new InputError("Invalid ledger state: predecessor reference.");
+    }
+    for (const id of ledger.successorIds) {
+      const target = byId.get(id);
+      if (id === ledger.ledgerId || !target?.predecessorIds.includes(ledger.ledgerId) || ledger.state !== "abandoned")
+        throw new InputError("Invalid ledger state: successor reference.");
+    }
+  }
+  let current = null;
+  if (data.current !== null) {
+    const selected = object2(data.current, ["ledgerId", "paused"]);
+    const ledgerId = uuid(selected.ledgerId);
+    if (typeof selected.paused !== "boolean" || !byId.has(ledgerId) || !["open", "prepared"].includes(byId.get(ledgerId)?.state ?? ""))
+      throw new InputError("Invalid ledger state: current reference/lifecycle.");
+    current = { ledgerId, paused: selected.paused };
+  }
+  for (const key of ["preparations", "transfers", "imports"]) {
+    if (!Array.isArray(data[key]) || data[key].length !== 0)
+      throw new InputError("Invalid ledger state: reserved receipts must be empty.");
+  }
+  return {
+    schemaVersion: 1,
+    contextId,
+    locator: parseLocator(data.locator),
+    stateVersion: integer(data.stateVersion),
+    current,
+    ledgers,
+    preparations: [],
+    transfers: [],
+    imports: []
+  };
+}
+function encodeState(state) {
+  const bytes = Buffer.from(`${JSON.stringify(parseWorktreeState(state), null, 4)}
+`);
+  if (bytes.length > STATE_BYTES) throw new InputError("Ledger state byte budget exceeded.");
+  return bytes;
+}
+function ledgerContent(ledger) {
+  return {
+    identities: ledger.identities,
+    blockers: ledger.blockers,
+    state: ledger.state,
+    predecessorIds: ledger.predecessorIds,
+    successorIds: ledger.successorIds
+  };
+}
+function validateStateTransition(before, after) {
+  for (const old of before.ledgers) {
+    const next = after.ledgers.find((item) => item.ledgerId === old.ledgerId);
+    if (!next) throw new InputError("Ledger records cannot be silently deleted.");
+    if (old.state === "sealed" && digest(old) !== digest(next))
+      throw new InputError("Sealed ledger content is immutable.");
+    const changed = digest(ledgerContent(old)) !== digest(ledgerContent(next));
+    if (next.revision !== (changed ? integer(old.revision + 1, 1) : old.revision))
+      throw new InputError("Ledger content revision does not match the declared mutation.");
+    if (old.ownership.kind !== "local" && changed) throw new InputError("Nonlocal ledger content is frozen.");
+  }
+  for (const next of after.ledgers) {
+    if (!before.ledgers.some((item) => item.ledgerId === next.ledgerId) && next.revision !== 1)
+      throw new InputError("New ledger revision must be 1.");
+  }
+}
+var STATE_BYTES, sortBlockers;
+var init_ledger_contract = __esm({
+  "src/ledger-contract.ts"() {
+    "use strict";
+    init_errors();
+    init_records();
+    init_runtime_support();
+    STATE_BYTES = 16 * 1024 * 1024;
+    sortBlockers = (values) => [...values].sort((a, b) => ordinal(a.id, b.id));
+  }
+});
+
+// src/state-path.ts
+function isLedgerStatePath(raw, platform = process.platform) {
+  const first = raw.subarray(0, raw.indexOf(47) < 0 ? raw.length : raw.indexOf(47)).toString("latin1");
+  if (platform === "darwin") return first.toLowerCase() === ".ai-commit-attribution";
+  if (platform !== "win32") return first === ".ai-commit-attribution";
+  const normalized = first.split(":")[0]?.replace(/[ .]+$/, "").toLowerCase() ?? "";
+  return normalized === ".ai-commit-attribution" || /^\.?ai-com~[0-9]+$/.test(normalized);
+}
+var init_state_path = __esm({
+  "src/state-path.ts"() {
+    "use strict";
+  }
+});
+
+// src/ledger-store.ts
+var ledger_store_exports = {};
+__export(ledger_store_exports, {
+  initializeState: () => initializeState,
+  readState: () => readState,
+  resolveLedgerContext: () => resolveLedgerContext,
+  transactState: () => transactState
+});
+import { randomUUID } from "node:crypto";
+import { constants as constants2 } from "node:fs";
+import { lstat as lstat4, mkdir, open as open2, readdir, rename, unlink } from "node:fs/promises";
+import path6 from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+async function completeWrite(handle, bytes, io) {
+  let offset = 0;
+  while (offset < bytes.length) {
+    const count = io.write ? await io.write(handle, bytes, offset) : (await handle.write(bytes, offset, bytes.length - offset, offset)).bytesWritten;
+    if (!Number.isSafeInteger(count) || count <= 0 || count > bytes.length - offset)
+      throw new InputError("State write made no valid progress; candidate preserved.");
+    offset += count;
+  }
+}
+async function regular(file, maximumBytes) {
+  await inspectPath(file);
+  const info = await lstat4(file, { bigint: true });
+  const bytes = await readRegularFile(file, { physicalPath: true, singleLink: true, maximumBytes });
+  if (!unchanged2(info, await lstat4(file, { bigint: true })))
+    throw new InputError("State file identity changed during reading.");
+  return { bytes, info };
+}
+async function optionalRegular(file, maximumBytes) {
+  if (!await inspectPath(file)) return void 0;
+  return regular(file, maximumBytes);
+}
+async function withLock(file, operation) {
+  const parent = path6.dirname(file);
+  await physicalDirectory(parent);
+  let handle;
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try {
+      handle = await open2(file, constants2.O_RDWR | constants2.O_CREAT | constants2.O_EXCL | noFollow, 384);
+      break;
+    } catch (error) {
+      if (errorCode(error) !== "EEXIST") throw error;
+      if (attempt === 49)
+        throw new InputError(
+          "Ledger lock is occupied; its owner or residual artifact must be reviewed. No lock was stolen."
+        );
+      await delay(20);
+    }
+  }
+  if (!handle) throw new InputError("Could not acquire ledger lock.");
+  const token = Buffer.from(`${randomUUID()}
+`);
+  let owned;
+  let failure;
+  let result;
+  const guard = async () => {
+    if (!owned) throw new InputError("Lock ownership is uncertain; artifact preserved.");
+    const current = await regular(file, token.length);
+    if (!unchanged2(owned, current.info) || !current.bytes.equals(token) || !unchanged2(owned, await handle.stat({ bigint: true })))
+      throw new InputError("Lock was replaced or changed; replacement preserved.");
+    await physicalDirectory(parent);
+  };
+  try {
+    await completeWrite(handle, token, {});
+    await handle.sync();
+    owned = await handle.stat({ bigint: true });
+    await guard();
+    result = await operation(guard);
+    await guard();
+  } catch (error) {
+    failure = error;
+  }
+  try {
+    await handle.close();
+  } catch (error) {
+    failure ??= error;
+  }
+  if (owned) {
+    try {
+      const current = await regular(file, token.length);
+      if (!unchanged2(owned, current.info) || !current.bytes.equals(token))
+        throw new InputError("Lock changed; replacement preserved.");
+      await unlink(file);
+    } catch (error) {
+      failure ??= error;
+    }
+  }
+  if (failure !== void 0) throw failure;
+  return result;
+}
+async function resolveLedgerContext(directory) {
+  checkRaw(directory);
+  const actual = await physicalDirectory(path6.resolve(directory));
+  const git = new SafeGit(await resolveTrustedGit([actual]), actual);
+  await git.guard();
+  const worktree = await physicalDirectory(path6.resolve(await git.text("rev-parse", ["--show-toplevel"])));
+  const gitDirectory = await physicalDirectory(path6.resolve(await git.text("rev-parse", ["--absolute-git-dir"])));
+  const commonGitDir = await physicalDirectory(
+    path6.resolve(actual, await git.text("rev-parse", ["--git-common-dir"]))
+  );
+  const excludeFile = path6.resolve(
+    await git.text("rev-parse", ["--path-format=absolute", "--git-path", "info/exclude"])
+  );
+  await physicalDirectory(path6.dirname(excludeFile));
+  await inspectPath(excludeFile);
+  const stateDirectory = path6.join(worktree, ".ai-commit-attribution");
+  return {
+    locator: { worktree, gitDirectory, commonGitDir },
+    excludeFile,
+    stateDirectory,
+    stateFile: path6.join(stateDirectory, "state.json")
+  };
+}
+function sameLocator(left, right) {
+  return ["worktree", "gitDirectory", "commonGitDir"].every(
+    (key) => samePhysicalPath(left[key], right[key])
+  );
+}
+async function actualContext(context) {
+  const actual = await resolveLedgerContext(context.locator.worktree);
+  if (!sameLocator(context.locator, actual.locator) || !samePhysicalPath(context.excludeFile, actual.excludeFile) || !samePhysicalPath(context.stateDirectory, actual.stateDirectory) || !samePhysicalPath(context.stateFile, actual.stateFile))
+    throw new InputError("Ledger context locator no longer matches actual Git worktree.");
+  return actual;
+}
+async function checkTracked(context) {
+  const git = new SafeGit(
+    await resolveTrustedGit([context.locator.worktree, context.locator.commonGitDir]),
+    context.locator.worktree
+  );
+  const entries = await git.run("ls-files", ["--cached", "--full-name", "-z"]);
+  let start = 0;
+  for (let index = 0; index < entries.length; index++) {
+    if (entries[index] !== 0) continue;
+    if (isLedgerStatePath(entries.subarray(start, index)))
+      throw new InputError("Ledger state path conflicts with tracked/staged content.");
+    start = index + 1;
+  }
+  if (start !== entries.length)
+    throw new InputError("Tracked Git paths are incomplete; state cannot be safely observed.");
+  return git;
+}
+async function checkIgnore(git) {
+  const ignored = (await git.run(
+    "check-ignore",
+    ["--no-index", "--", ".ai-commit-attribution/", ".ai-commit-attribution/state.json"],
+    true
+  )).toString("utf8").split(/\r?\n/);
+  if (!ignored.includes(".ai-commit-attribution/") || !ignored.includes(".ai-commit-attribution/state.json"))
+    throw new InputError("Ledger directory and state must be effectively ignored by Git.");
+}
+async function checkDirectory(context) {
+  if (!(await inspectPath(context.stateDirectory))?.isDirectory())
+    throw new InputError("Ledger state directory is missing or unsafe.");
+  await physicalDirectory(context.stateDirectory);
+  const entries = await readdir(context.stateDirectory);
+  if (entries.some(
+    (entry) => entry !== "state.json" && entry !== "state.lock" && !/^state\.candidate-[a-f0-9-]{36}$/.test(entry)
+  ))
+    throw new InputError("Ledger state directory contains unknown occupancy; preserve and review it.");
+}
+async function stateEvidence(context) {
+  await checkDirectory(context);
+  const observed = await regular(context.stateFile, STATE_BYTES);
+  let value;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(observed.bytes));
+  } catch {
+    throw new InputError("Ledger state is malformed UTF-8 JSON.");
+  }
+  const state = parseWorktreeState(value);
+  if (!sameLocator(state.locator, context.locator))
+    throw new InputError(
+      "Stored locator/context does not match this physical worktree; explicit rebind is required."
+    );
+  return { ...observed, state };
+}
+async function publish(file, bytes, previous, guard, io = {}) {
+  const parent = path6.dirname(file);
+  const parentInfo = await lstat4(await physicalDirectory(parent), { bigint: true });
+  const candidate = path6.join(
+    parent,
+    `${path6.basename(file) === "state.json" ? "state" : path6.basename(file)}.candidate-${randomUUID()}`
+  );
+  const handle = await open2(candidate, constants2.O_RDWR | constants2.O_CREAT | constants2.O_EXCL | noFollow, 384);
+  let primary;
+  try {
+    const owned = await handle.stat({ bigint: true });
+    await completeWrite(handle, bytes, io);
+    await handle.sync();
+    const completed = await regular(candidate, bytes.length);
+    if (!same(owned, completed.info) || !completed.bytes.equals(bytes) || !unchanged2(completed.info, await handle.stat({ bigint: true })))
+      throw new InputError("Candidate bytes/identity changed during publication.");
+    await guard();
+    const current = await optionalRegular(file, Math.max(STATE_BYTES, bytes.length));
+    if (previous ? !current || !unchanged2(previous.info, current.info) || !previous.bytes.equals(current.bytes) : current !== void 0)
+      throw new InputError("Original file changed before atomic publication.");
+    if (!same(parentInfo, await lstat4(parent, { bigint: true })))
+      throw new InputError("Publication parent was replaced.");
+    await physicalDirectory(parent);
+    await handle.close();
+    await (io.rename ?? rename)(candidate, file);
+    const final = await regular(file, bytes.length);
+    if (!same(completed.info, final.info) || !final.bytes.equals(bytes))
+      throw new InputError("Publication final readback failed; reread authority before retrying.");
+  } catch (error) {
+    primary = error;
+  }
+  try {
+    await handle.close();
+  } catch (error) {
+    primary ??= error;
+  }
+  if (primary !== void 0) throw primary;
+}
+async function appendExclusion(context, guard) {
+  const previous = await optionalRegular(context.excludeFile, STATE_BYTES);
+  const bytes = previous?.bytes ?? Buffer.alloc(0);
+  const fixed = "/.ai-commit-attribution/";
+  if (bytes.toString("utf8").split(/\r?\n/).includes(fixed)) return;
+  const newline = bytes.includes(Buffer.from("\r\n")) ? "\r\n" : "\n";
+  const suffix = `${bytes.length && bytes.at(-1) !== 10 ? newline : ""}${fixed}${newline}`;
+  await publish(context.excludeFile, Buffer.concat([bytes, Buffer.from(suffix)]), previous, guard);
+}
+async function initializeState(contextValue) {
+  const context = await actualContext(contextValue);
+  const git = await checkTracked(context);
+  return withLock(`${context.excludeFile}.ai-commit-attribution.lock`, async (excludeGuard) => {
+    await checkTracked(context);
+    const existing = await inspectPath(context.stateDirectory);
+    if (existing) {
+      await checkDirectory(context);
+      const state = (await stateEvidence(context)).state;
+      await appendExclusion(context, excludeGuard);
+      await checkIgnore(git);
+      return state;
+    }
+    await appendExclusion(context, excludeGuard);
+    await checkIgnore(git);
+    await excludeGuard();
+    await mkdir(context.stateDirectory, { mode: 448 });
+    return withLock(path6.join(context.stateDirectory, "state.lock"), async (stateGuard) => {
+      await checkTracked(context);
+      await checkIgnore(git);
+      const state = {
+        schemaVersion: 1,
+        contextId: randomUUID(),
+        locator: context.locator,
+        stateVersion: 0,
+        current: null,
+        ledgers: [],
+        preparations: [],
+        transfers: [],
+        imports: []
+      };
+      await publish(context.stateFile, encodeState(state), void 0, async () => {
+        await excludeGuard();
+        await stateGuard();
+      });
+      return (await stateEvidence(context)).state;
+    });
+  });
+}
+async function readState(contextValue) {
+  const context = await actualContext(contextValue);
+  const git = await checkTracked(context);
+  await checkIgnore(git);
+  return (await stateEvidence(context)).state;
+}
+async function transactState(contextValue, expectedStateVersion, transform, io = {}) {
+  integer(expectedStateVersion);
+  const context = await actualContext(contextValue);
+  const git = await checkTracked(context);
+  await checkIgnore(git);
+  const before = await stateEvidence(context);
+  if (before.state.stateVersion !== expectedStateVersion) throw new InputError("Ledger state version is stale.");
+  return withLock(path6.join(context.stateDirectory, "state.lock"), async (guard) => {
+    const locked = await stateEvidence(context);
+    if (locked.state.stateVersion !== expectedStateVersion || !unchanged2(before.info, locked.info) || !before.bytes.equals(locked.bytes))
+      throw new InputError("Ledger state changed while obtaining lock.");
+    const draft = structuredClone(locked.state);
+    const returned = transform(draft);
+    if (returned !== void 0) throw new InputError("State transform must be synchronous and return no value.");
+    if (draft.stateVersion !== expectedStateVersion || draft.contextId !== locked.state.contextId || !sameLocator(draft.locator, locked.state.locator))
+      throw new InputError("Transform may not change state version or context locator.");
+    draft.stateVersion = integer(expectedStateVersion + 1);
+    validateStateTransition(locked.state, draft);
+    const bytes = encodeState(draft);
+    await publish(context.stateFile, bytes, locked, guard, io);
+    return (await stateEvidence(context)).state;
+  });
+}
+var same, unchanged2, noFollow;
+var init_ledger_store = __esm({
+  "src/ledger-store.ts"() {
+    "use strict";
+    init_errors();
+    init_file_evidence();
+    init_ledger_contract();
+    init_records();
+    init_runtime_support();
+    init_safe_git();
+    init_state_path();
+    same = (a, b) => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode;
+    unchanged2 = (a, b) => same(a, b) && a.nlink === b.nlink && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+    noFollow = constants2.O_NOFOLLOW ?? 0;
+  }
+});
+
+// src/ledger.ts
+var ledger_exports = {};
+__export(ledger_exports, {
+  abandonLedger: () => abandonLedger,
+  addIdentities: () => addIdentities,
+  blockLedger: () => blockLedger,
+  createLedger: () => createLedger,
+  pauseLedger: () => pauseLedger,
+  removeIdentities: () => removeIdentities,
+  reopenLedger: () => reopenLedger,
+  replaceLedgers: () => replaceLedgers,
+  resumeLedger: () => resumeLedger,
+  reviseLedger: () => reviseLedger,
+  selectLedger: () => selectLedger,
+  selectedLedgerSnapshot: () => selectedLedgerSnapshot,
+  unblockLedger: () => unblockLedger
+});
+import { randomUUID as randomUUID2 } from "node:crypto";
+function find(state, id) {
+  const ledger = state.ledgers.find((item) => item.ledgerId === uuid(id));
+  if (!ledger) throw new InputError("Ledger ID does not exist in this context.");
+  return ledger;
+}
+function local(ledger) {
+  if (ledger.ownership.kind !== "local") throw new InputError("Ledger ownership must be local.");
+}
+function active(state, id) {
+  if (!state.current || state.current.ledgerId !== id || state.current.paused)
+    throw new InputError("Mutation requires the exact active current ledger selection.");
+}
+function open3(state, id) {
+  const ledger = find(state, id);
+  local(ledger);
+  active(state, id);
+  if (ledger.state !== "open") throw new InputError("Recording requires an open ledger.");
+  return ledger;
+}
+function reviseLedger(ledger) {
+  ledger.revision = integer(ledger.revision + 1, 1);
+}
+function createLedger(state, options = {}) {
+  checkRaw(options);
+  const ledgerId = uuid(options.ledgerId ?? randomUUID2());
+  if (state.ledgers.some((item) => item.ledgerId === ledgerId)) throw new InputError("Ledger ID already exists.");
+  const ledger = {
+    ledgerId,
+    contextId: state.contextId,
+    revision: 1,
+    state: "open",
+    ownership: { kind: "local" },
+    identities: [],
+    blockers: [],
+    currentPreparationId: null,
+    predecessorIds: [],
+    successorIds: [],
+    ...options.note === void 0 ? {} : { note: text(options.note) },
+    ...options.work === void 0 ? {} : { work: text(options.work) }
+  };
+  state.ledgers.push(ledger);
+  if (options.select) selectLedger(state, ledgerId);
+  return ledgerId;
+}
+function selectLedger(state, id) {
+  const ledger = find(state, id);
+  local(ledger);
+  if (!["open", "prepared"].includes(ledger.state))
+    throw new InputError("Selection requires open or prepared ledger.");
+  state.current = { ledgerId: ledger.ledgerId, paused: false };
+}
+function addIdentities(state, id, identities, registry) {
+  const ledger = open3(state, id);
+  const next = normalizeIdentities([...ledger.identities, ...identities], registry);
+  if (JSON.stringify(next) !== JSON.stringify(ledger.identities)) {
+    reviseLedger(ledger);
+    ledger.identities = next;
+  }
+}
+function removeIdentities(state, id, identities, registry) {
+  const ledger = open3(state, id);
+  const keys = new Set(normalizeIdentities(identities, registry).map(identityKey));
+  const next = ledger.identities.filter((item) => !keys.has(identityKey(item)));
+  if (next.length !== ledger.identities.length) {
+    reviseLedger(ledger);
+    ledger.identities = next;
+  }
+}
+function blockLedger(state, id, value) {
+  const ledger = open3(state, id);
+  const blocker = parseBlocker(value);
+  if (ledger.blockers.some((item) => item.id === blocker.id))
+    throw new InputError("Blocker ID already exists; explicitly unblock first.");
+  reviseLedger(ledger);
+  ledger.blockers = sortBlockers([...ledger.blockers, blocker]);
+}
+function unblockLedger(state, id, blockerId) {
+  checkRaw(blockerId);
+  const ledger = open3(state, id);
+  if (!ledger.blockers.some((item) => item.id === blockerId)) throw new InputError("Blocker ID does not exist.");
+  reviseLedger(ledger);
+  ledger.blockers = ledger.blockers.filter((item) => item.id !== blockerId);
+}
+function pauseLedger(state, id) {
+  const ledger = find(state, id);
+  local(ledger);
+  active(state, id);
+  state.current = { ledgerId: id, paused: true };
+}
+function resumeLedger(state, id) {
+  if (!state.current || state.current.ledgerId !== id || !state.current.paused)
+    throw new InputError("Resume requires the exact paused current selection.");
+  const ledger = find(state, id);
+  local(ledger);
+  if (!["open", "prepared"].includes(ledger.state)) throw new InputError("Resume requires an unfinished ledger.");
+  state.current = { ledgerId: id, paused: false };
+}
+function reopenLedger(state, id, declaration) {
+  const ledger = find(state, id);
+  local(ledger);
+  if (!["prepared", "abandoned"].includes(ledger.state))
+    throw new InputError("Only prepared or abandoned ledgers can reopen; sealed ledgers are immutable.");
+  if (ledger.successorIds.length) throw new InputError("A replaced ledger cannot reopen while it has successors.");
+  if (ledger.state === "prepared" && declaration.reviewedNoResult !== true)
+    throw new InputError("Prepared reopen requires an explicit reviewed-no-result declaration.");
+  reviseLedger(ledger);
+  ledger.state = "open";
+  ledger.currentPreparationId = null;
+}
+function abandonLedger(state, id) {
+  const ledger = find(state, id);
+  local(ledger);
+  if (ledger.state === "sealed") throw new InputError("Sealed ledgers are immutable.");
+  if (ledger.state !== "abandoned") {
+    reviseLedger(ledger);
+    ledger.state = "abandoned";
+    ledger.currentPreparationId = null;
+  }
+  if (state.current?.ledgerId === id) state.current = null;
+}
+function replaceLedgers(state, sourceIds, outputs, registry) {
+  if (!sourceIds.length || !outputs.length || sourceIds.length !== 1 && outputs.length !== 1)
+    throw new InputError("Split/combine requires one source or one output.");
+  if (new Set(sourceIds).size !== sourceIds.length || new Set(outputs.map((item) => item.ledgerId)).size !== outputs.length)
+    throw new InputError("Duplicate split/combine IDs.");
+  const sources = sourceIds.map((id) => {
+    const ledger = find(state, id);
+    local(ledger);
+    if (ledger.state !== "open") throw new InputError("Split/combine requires local open sources.");
+    integer(ledger.revision + 1, 1);
+    return ledger;
+  });
+  const planned = outputs.map((output2) => {
+    checkRaw(output2);
+    uuid(output2.ledgerId);
+    if (state.ledgers.some((item) => item.ledgerId === output2.ledgerId))
+      throw new InputError("Replacement ID already exists.");
+    const blockers = output2.blockers.map(parseBlocker);
+    if (new Set(blockers.map((item) => item.id)).size !== blockers.length)
+      throw new InputError("Duplicate blocker ID.");
+    return {
+      ...output2,
+      identities: normalizeIdentities(output2.identities, registry),
+      blockers: sortBlockers(blockers),
+      ...output2.note === void 0 ? {} : { note: text(output2.note) },
+      ...output2.work === void 0 ? {} : { work: text(output2.work) }
+    };
+  });
+  for (const source of sources) {
+    abandonLedger(state, source.ledgerId);
+    source.successorIds = planned.map((item) => item.ledgerId);
+  }
+  for (const output2 of planned) {
+    createLedger(state, { ...output2, select: false });
+    const ledger = find(state, output2.ledgerId);
+    ledger.identities = output2.identities;
+    ledger.blockers = output2.blockers;
+    ledger.predecessorIds = [...sourceIds];
+  }
+}
+function selectedLedgerSnapshot(state, operationValue, expectedLedgerId, useCurrent = false) {
+  const operation = parseOperationShape(operationValue);
+  if (!samePhysicalPath(state.locator.worktree, operation.worktree) || !samePhysicalPath(state.locator.worktree, operation.repository) || !samePhysicalPath(state.locator.commonGitDir, operation.commonGitDir))
+    throw new InputError("Operation scope does not match ledger context.");
+  if (useCurrent && (!state.current || state.current.paused))
+    throw new InputError("Snapshot requires an active current selection; current is missing or paused.");
+  const id = expectedLedgerId === void 0 ? useCurrent ? state.current?.ledgerId : void 0 : uuid(expectedLedgerId);
+  if (!id) throw new InputError("Snapshot requires an explicit ledger ID or active current selection.");
+  if (state.current && state.current.ledgerId !== id)
+    throw new InputError("Expected ledger does not match current selection; explicitly select before proceeding.");
+  const ledger = find(state, id);
+  local(ledger);
+  if (!["open", "prepared"].includes(ledger.state))
+    throw new InputError("Snapshot requires an open or prepared ledger.");
+  return {
+    schemaVersion: 2,
+    ledgerId: id,
+    operation,
+    identities: structuredClone(ledger.identities),
+    blockers: structuredClone(ledger.blockers)
+  };
+}
+var init_ledger = __esm({
+  "src/ledger.ts"() {
+    "use strict";
+    init_file_evidence();
+    init_ledger_contract();
+    init_records();
+  }
+});
+
+// src/ledger-cli.ts
+var ledger_cli_exports = {};
+__export(ledger_cli_exports, {
+  parseLedgerArguments: () => parseLedgerArguments,
+  runLedger: () => runLedger
+});
+import { fileURLToPath } from "node:url";
+function parseLedgerArguments(args) {
+  const command = args[0] ?? "";
+  if (!Object.hasOwn(commandFlags, command)) throw new InputError("Unknown ledger command.");
+  const mutation = command !== "init" && command !== "status";
+  const allowed = ["--worktree", ...mutation ? ["--expect-version"] : [], ...commandFlags[command] ?? []];
+  const options = /* @__PURE__ */ new Map();
+  for (let index = 1; index < args.length; index++) {
+    const flag = args[index] ?? "";
+    if (!allowed.includes(flag) || options.has(flag)) throw new InputError("Unknown or duplicate ledger flag.");
+    if (switches.includes(flag)) options.set(flag, true);
+    else {
+      const value = args[++index];
+      if (!value || value.startsWith("--")) throw new InputError("Ledger flag is missing its value.");
+      checkRaw(value);
+      options.set(flag, value);
+    }
+  }
+  if (mutation) {
+    const version2 = options.get("--expect-version");
+    if (typeof version2 !== "string" || !/^(?:0|[1-9][0-9]*)$/.test(version2))
+      throw new InputError("Ledger mutation requires --expect-version <nonnegative integer>.");
+    integer(Number(version2));
+  }
+  return { command, options };
+}
+async function json(file) {
+  const bytes = await readRegularFile(typeof file === "string" ? file : fileURLToPath(file), {
+    physicalPath: true,
+    singleLink: true,
+    maximumBytes: INPUT_BYTES
+  });
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new InputError("Ledger input must be strict UTF-8 JSON.");
+  }
+}
+function output(value) {
+  checkRaw(value);
+  const data = object2(value, ["ledgerId", "identities", "blockers", "note", "work"]);
+  return {
+    ledgerId: uuid(data.ledgerId),
+    identities: array(data.identities, parseIdentity),
+    blockers: array(data.blockers, parseBlocker),
+    ...data.note === void 0 ? {} : { note: text(data.note) },
+    ...data.work === void 0 ? {} : { work: text(data.work) }
+  };
+}
+async function runLedger(args, loadRegistry = async () => parseRegistry(await json(new URL("../references/agent-registry.json", import.meta.url)))) {
+  const { command, options } = parseLedgerArguments(args);
+  const value = (flag) => {
+    const found = options.get(flag);
+    if (typeof found !== "string") throw new InputError(`Ledger command requires ${flag}.`);
+    return found;
+  };
+  const context = await resolveLedgerContext(
+    typeof options.get("--worktree") === "string" ? value("--worktree") : process.cwd()
+  );
+  if (command === "init") return initializeState(context);
+  if (command === "status") return readState(context);
+  const version2 = Number(value("--expect-version"));
+  let transform;
+  if (command === "create") {
+    const ledgerId = options.has("--ledger") ? uuid(value("--ledger")) : void 0;
+    transform = (draft) => {
+      createLedger(draft, {
+        ...ledgerId === void 0 ? {} : { ledgerId },
+        select: options.has("--select"),
+        ...options.has("--note") ? { note: value("--note") } : {},
+        ...options.has("--work") ? { work: value("--work") } : {}
+      });
+    };
+  } else if (command === "split" || command === "combine") {
+    const data = object2(await json(value("--input")), ["sourceIds", "outputs"]);
+    const sourceIds = array(data.sourceIds, uuid);
+    const outputs = array(data.outputs, output);
+    if (command === "split" ? sourceIds.length !== 1 || outputs.length < 2 : sourceIds.length < 2 || outputs.length !== 1)
+      throw new InputError(
+        "Split requires one source and at least two outputs; combine requires at least two sources and one output."
+      );
+    const registry = await loadRegistry();
+    transform = (draft) => {
+      replaceLedgers(draft, sourceIds, outputs, registry);
+    };
+  } else {
+    const ledgerId = uuid(value("--ledger"));
+    if (command === "add" || command === "remove") {
+      const data = object2(await json(value("--input")), ["identities"]);
+      const identities = array(data.identities, parseIdentity);
+      const registry = await loadRegistry();
+      transform = (draft) => {
+        (command === "add" ? addIdentities : removeIdentities)(draft, ledgerId, identities, registry);
+      };
+    } else if (command === "block") {
+      const blocker = parseBlocker(await json(value("--input")));
+      transform = (draft) => {
+        blockLedger(draft, ledgerId, blocker);
+      };
+    } else if (command === "unblock") {
+      const blockerId = value("--blocker");
+      transform = (draft) => {
+        unblockLedger(draft, ledgerId, blockerId);
+      };
+    } else if (command === "reopen") {
+      transform = (draft) => {
+        reopenLedger(draft, ledgerId, { reviewedNoResult: options.has("--reviewed-no-result") });
+      };
+    } else {
+      const action = { select: selectLedger, pause: pauseLedger, resume: resumeLedger, abandon: abandonLedger }[command];
+      if (!action) throw new InputError("Unsupported ledger mutation.");
+      transform = (draft) => {
+        action(draft, ledgerId);
+      };
+    }
+  }
+  return transactState(context, version2, transform);
+}
+var commandFlags, switches;
+var init_ledger_cli = __esm({
+  "src/ledger-cli.ts"() {
+    "use strict";
+    init_file_evidence();
+    init_input_contract();
+    init_ledger();
+    init_ledger_contract();
+    init_ledger_store();
+    init_records();
+    commandFlags = {
+      init: [],
+      status: [],
+      create: ["--ledger", "--select", "--note", "--work"],
+      select: ["--ledger"],
+      add: ["--ledger", "--input"],
+      remove: ["--ledger", "--input"],
+      block: ["--ledger", "--input"],
+      unblock: ["--ledger", "--blocker"],
+      pause: ["--ledger"],
+      resume: ["--ledger"],
+      reopen: ["--ledger", "--reviewed-no-result"],
+      abandon: ["--ledger"],
+      split: ["--input"],
+      combine: ["--input"]
+    };
+    switches = ["--select", "--reviewed-no-result"];
   }
 });
 
@@ -706,9 +1586,9 @@ var init_message_assessment = __esm({
 });
 
 // src/message-output.ts
-import { constants as constants2 } from "node:fs";
-import { lstat as lstat4, open as open2, unlink } from "node:fs/promises";
-import path5 from "node:path";
+import { constants as constants3 } from "node:fs";
+import { lstat as lstat5, open as open4, unlink as unlink2 } from "node:fs/promises";
+import path7 from "node:path";
 async function writeNewMessage(file, bytes, scope, consumed, signal) {
   const cancelled = () => {
     if (signal?.aborted) throw new Error("Output publication cancelled.");
@@ -716,24 +1596,24 @@ async function writeNewMessage(file, bytes, scope, consumed, signal) {
   cancelled();
   checkRaw(file);
   if (!file) throw new InputError("Explicit output path is empty.");
-  const destination = path5.resolve(file);
-  if (consumed.some((input) => samePhysicalPath(path5.resolve(input), destination)) || inside(scope.gitDirectory, destination) || inside(scope.commonGitDir, destination) || destination.split(path5.sep).some((part) => part.toLowerCase() === ".git"))
+  const destination = path7.resolve(file);
+  if (consumed.some((input) => samePhysicalPath(path7.resolve(input), destination)) || inside(scope.gitDirectory, destination) || inside(scope.commonGitDir, destination) || destination.split(path7.sep).some((part) => part.toLowerCase() === ".git"))
     throw new InputError("Output aliases a consumed input or protected Git metadata.");
   let parent;
   try {
     if (await inspectPath(destination)) throw new Error("exists");
-    parent = await physical(path5.dirname(destination));
-    if (!(await lstat4(parent)).isDirectory()) throw new Error("parent");
+    parent = await physical(path7.dirname(destination));
+    if (!(await lstat5(parent)).isDirectory()) throw new Error("parent");
   } catch {
     throw new InputError("Output requires an absent leaf and an existing safe physical parent directory.");
   }
-  const before = await lstat4(parent, { bigint: true });
-  const same = (a, b) => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode;
-  const unchanged2 = (a, b) => same(a, b) && a.nlink === b.nlink && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+  const before = await lstat5(parent, { bigint: true });
+  const same2 = (a, b) => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode;
+  const unchanged3 = (a, b) => same2(a, b) && a.nlink === b.nlink && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
   cancelled();
-  const handle = await open2(
+  const handle = await open4(
     destination,
-    constants2.O_WRONLY | constants2.O_CREAT | constants2.O_EXCL | (constants2.O_NOFOLLOW ?? 0),
+    constants3.O_WRONLY | constants3.O_CREAT | constants3.O_EXCL | (constants3.O_NOFOLLOW ?? 0),
     384
   );
   let owned;
@@ -741,16 +1621,16 @@ async function writeNewMessage(file, bytes, scope, consumed, signal) {
   let complete = false;
   try {
     owned = await handle.stat({ bigint: true });
-    if (!owned.isFile() || owned.nlink !== 1n || !same(owned, await lstat4(destination, { bigint: true })) || !same(before, await lstat4(parent, { bigint: true })) || !await physical(parent))
+    if (!owned.isFile() || owned.nlink !== 1n || !same2(owned, await lstat5(destination, { bigint: true })) || !same2(before, await lstat5(parent, { bigint: true })) || !await physical(parent))
       throw new Error("Output identity changed during exclusive creation.");
     await handle.writeFile(bytes);
     await handle.sync();
     cancelled();
     const after = await handle.stat({ bigint: true });
-    if (!same(owned, after) || after.nlink !== 1n || after.size !== BigInt(bytes.length) || !unchanged2(after, await lstat4(destination, { bigint: true })) || !same(before, await lstat4(parent, { bigint: true })))
+    if (!same2(owned, after) || after.nlink !== 1n || after.size !== BigInt(bytes.length) || !unchanged3(after, await lstat5(destination, { bigint: true })) || !same2(before, await lstat5(parent, { bigint: true })))
       throw new Error("Output identity or length changed during writing.");
     await physical(destination);
-    if (!(await readRegularFile(destination, { physicalPath: true, singleLink: true, maximumBytes: bytes.length })).equals(bytes) || !unchanged2(after, await handle.stat({ bigint: true })) || !unchanged2(after, await lstat4(destination, { bigint: true })))
+    if (!(await readRegularFile(destination, { physicalPath: true, singleLink: true, maximumBytes: bytes.length })).equals(bytes) || !unchanged3(after, await handle.stat({ bigint: true })) || !unchanged3(after, await lstat5(destination, { bigint: true })))
       throw new Error("Output bytes changed during publication.");
     cleanupState = after;
     cancelled();
@@ -764,15 +1644,15 @@ async function writeNewMessage(file, bytes, scope, consumed, signal) {
       });
     if (!complete && cleanupState) {
       try {
-        const current = await lstat4(destination, { bigint: true });
-        if (current.isFile() && current.nlink === 1n && unchanged2(cleanupState, current) && same(before, await lstat4(parent, { bigint: true }))) {
+        const current = await lstat5(destination, { bigint: true });
+        if (current.isFile() && current.nlink === 1n && unchanged3(cleanupState, current) && same2(before, await lstat5(parent, { bigint: true }))) {
           const actual = await readRegularFile(destination, {
             physicalPath: true,
             singleLink: true,
             maximumBytes: bytes.length
           });
-          const final = await lstat4(destination, { bigint: true });
-          if (actual.equals(bytes) && unchanged2(cleanupState, final)) await unlink(destination);
+          const final = await lstat5(destination, { bigint: true });
+          if (actual.equals(bytes) && unchanged3(cleanupState, final)) await unlink2(destination);
         }
       } catch {
       }
@@ -791,9 +1671,9 @@ var init_message_output = __esm({
 
 // src/message-trailers.ts
 import { execFile as execFile2 } from "node:child_process";
-import { mkdir, mkdtemp, realpath as realpath5, rm } from "node:fs/promises";
+import { mkdir as mkdir2, mkdtemp, realpath as realpath5, rm } from "node:fs/promises";
 import os from "node:os";
-import path6 from "node:path";
+import path8 from "node:path";
 async function runTrailers(message, options) {
   if (message.length > INPUT_BYTES) throw new InputError("Message byte budget exceeded.");
   options.additions?.forEach(checkRaw);
@@ -801,11 +1681,11 @@ async function runTrailers(message, options) {
   const parent = await physicalDirectory(await realpath5(os.tmpdir()));
   if (options.excluded.some((root) => inside(root, parent)))
     throw new Error("Trailer temporary directory is inside an excluded scope.");
-  const directory = await mkdtemp(path6.join(parent, "attribution-trailer-"));
+  const directory = await mkdtemp(path8.join(parent, "attribution-trailer-"));
   try {
     await physical(directory);
-    const home = path6.join(directory, "home");
-    await mkdir(home);
+    const home = path8.join(directory, "home");
+    await mkdir2(home);
     const environment = {
       ...gitEnvironment(options.environment),
       HOME: home,
@@ -854,7 +1734,7 @@ async function runTrailers(message, options) {
   }
 }
 async function removeTemporary(directory, parent) {
-  if (path6.dirname(directory) !== parent || !path6.basename(directory).startsWith("attribution-trailer-"))
+  if (path8.dirname(directory) !== parent || !path8.basename(directory).startsWith("attribution-trailer-"))
     throw new Error("Unsafe trailer temporary cleanup.");
   await rm(directory, { recursive: true, force: true });
 }
@@ -974,7 +1854,7 @@ var init_message_trailers = __esm({
 });
 
 // src/output-scope.ts
-import path7 from "node:path";
+import path9 from "node:path";
 async function resolveOutputScope(operation) {
   const worktree = await physicalDirectory(operation.worktree);
   const executable = await resolveTrustedGit([operation.repository, worktree, operation.commonGitDir]);
@@ -983,7 +1863,7 @@ async function resolveOutputScope(operation) {
   const top = await physicalDirectory(await git.text("rev-parse", ["--show-toplevel"]));
   const gitDirectory = await physicalDirectory(await git.text("rev-parse", ["--absolute-git-dir"]));
   const commonGitDir = await physicalDirectory(
-    path7.resolve(worktree, await git.text("rev-parse", ["--git-common-dir"]))
+    path9.resolve(worktree, await git.text("rev-parse", ["--git-common-dir"]))
   );
   if (!samePhysicalPath(top, operation.repository) || !samePhysicalPath(top, worktree) || !samePhysicalPath(commonGitDir, operation.commonGitDir))
     throw new InputError("Explicit output scope differs from the actual Git directories.");
@@ -1330,7 +2210,7 @@ var init_message = __esm({
 });
 
 // src/attribution.ts
-import { fileURLToPath } from "node:url";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // tooling/cli-entry.ts
 function isMainModule(metadata) {
@@ -1344,28 +2224,36 @@ init_file_evidence();
 init_input_contract();
 init_policy();
 init_records();
+function ledgerSource(options, required) {
+  const supplied = ["--input", "--ledger", "--current"].filter((flag2) => options.has(flag2));
+  if (supplied.length > 1 || required && supplied.length !== 1)
+    throw new InputError("Supply exactly one explicit input, ledger ID or current worktree selector.");
+  const flag = supplied[0];
+  return flag ? { [flag.slice(2)]: options.get(flag) } : {};
+}
 function parseArguments(args) {
   const values = [...args];
   if (values.shift() !== "summarize")
-    throw new InputError("Usage: attribution.mjs summarize --input <ledger.json> --operation <operation.json>");
+    throw new InputError(
+      "Usage: attribution.mjs summarize (--input <json> | --ledger <UUID> | --current <worktree>) --operation <json>"
+    );
   const options = /* @__PURE__ */ new Map();
   while (values.length) {
     const flag = values.shift();
     const value = values.shift();
-    if (!flag || !["--input", "--operation"].includes(flag) || options.has(flag) || !value || value.startsWith("--"))
+    if (!flag || !["--input", "--ledger", "--current", "--operation"].includes(flag) || options.has(flag) || !value || value.startsWith("--"))
       throw new InputError("Invalid input: unknown/duplicate flag or missing value.");
+    checkRaw(value);
     options.set(flag, value);
   }
-  const input = options.get("--input");
   const operation = options.get("--operation");
-  if (!input || !operation)
-    throw new InputError("Invalid input: explicit ledger and current operation files are required.");
-  return { input, operation };
+  if (!operation) throw new InputError("Invalid input: a current operation file is required.");
+  return { ...ledgerSource(options, true), operation };
 }
 async function jsonFile(file) {
   let bytes;
   try {
-    bytes = await readRegularFile(typeof file === "string" ? file : fileURLToPath(file), {
+    bytes = await readRegularFile(typeof file === "string" ? file : fileURLToPath2(file), {
       physicalPath: true,
       maximumBytes: INPUT_BYTES
     });
@@ -1378,14 +2266,44 @@ async function jsonFile(file) {
     throw new InputError("Invalid input: malformed UTF-8 JSON resource.");
   }
 }
+async function loadLedger(source, operationValue, consumed) {
+  if (source.input) {
+    consumed.push(source.input);
+    return jsonFile(source.input);
+  }
+  if (!source.ledger && !source.current)
+    throw new InputError(
+      "Current skill-default message requires an explicit input, ledger ID or current worktree."
+    );
+  const operation = await parseOperation(operationValue);
+  const { resolveLedgerContext: resolveLedgerContext2, readState: readState2 } = await Promise.resolve().then(() => (init_ledger_store(), ledger_store_exports));
+  const { selectedLedgerSnapshot: selectedLedgerSnapshot2 } = await Promise.resolve().then(() => (init_ledger(), ledger_exports));
+  const context = await resolveLedgerContext2(source.current ?? operation.worktree);
+  const state = await readState2(context);
+  consumed.push(context.stateFile);
+  return selectedLedgerSnapshot2(state, operation, source.ledger, source.current !== void 0);
+}
 async function run(args) {
   if (args[0] === "policy" || args.includes("--context")) throw new InputError(DECISION_MIGRATION);
+  if (args[0] === "ledger") {
+    const { runLedger: runLedger2 } = await Promise.resolve().then(() => (init_ledger_cli(), ledger_cli_exports));
+    return { ...await runLedger2(args.slice(1)), exitCode: 0 };
+  }
   if (args[0] === "render" || args[0] === "validate") {
     const mode = args[0];
     const options2 = /* @__PURE__ */ new Map();
     for (let index = 1; index < args.length; index += 2) {
       const flag = args[index], value = args[index + 1];
-      if (!flag || !["--message", "--operation", "--decision", "--input", "--assessment", "--output"].includes(flag) || options2.has(flag) || !value || value.startsWith("--") || mode === "validate" && flag === "--output")
+      if (!flag || ![
+        "--message",
+        "--operation",
+        "--decision",
+        "--input",
+        "--ledger",
+        "--current",
+        "--assessment",
+        "--output"
+      ].includes(flag) || options2.has(flag) || !value || value.startsWith("--") || mode === "validate" && flag === "--output")
         throw new InputError("Invalid message flag, duplicate or missing value.");
       checkRaw(value);
       options2.set(flag, value);
@@ -1395,21 +2313,20 @@ async function run(args) {
       throw new InputError(
         "Message commands require explicit message, operation and schemaVersion 2 AI decision files."
       );
+    const source = ledgerSource(options2, false);
     const operation2 = await jsonFile(operationFile), decision = await jsonFile(decisionFile);
     const message = await readRegularFile(messageFile, { physicalPath: true, maximumBytes: INPUT_BYTES });
     const consumedPaths = [messageFile, operationFile, decisionFile];
     const { processMessage: processMessage2 } = await Promise.resolve().then(() => (init_message(), message_exports));
-    const output = options2.get("--output");
+    const output2 = options2.get("--output");
     return processMessage2(
-      { mode, message, operation: operation2, decision, consumedPaths, ...output ? { output } : {} },
+      { mode, message, operation: operation2, decision, consumedPaths, ...output2 ? { output: output2 } : {} },
       async () => {
-        const input = options2.get("--input");
-        if (!input) throw new InputError("Current skill-default message requires an explicit ledger input.");
         const registryFile = new URL("../references/agent-registry.json", import.meta.url);
         const assessment = options2.get("--assessment");
-        consumedPaths.push(input, fileURLToPath(registryFile), ...assessment ? [assessment] : []);
+        consumedPaths.push(fileURLToPath2(registryFile), ...assessment ? [assessment] : []);
         return {
-          ledger: await jsonFile(input),
+          ledger: await loadLedger(source, operation2, consumedPaths),
           registry: await jsonFile(registryFile),
           ...assessment ? { assessment: await jsonFile(assessment) } : {}
         };
@@ -1417,9 +2334,9 @@ async function run(args) {
     );
   }
   const options = parseArguments(args);
-  const [ledger, operation, registry] = await Promise.all([
-    jsonFile(options.input),
-    jsonFile(options.operation),
+  const operation = await jsonFile(options.operation);
+  const [ledger, registry] = await Promise.all([
+    loadLedger(options, operation, []),
     jsonFile(new URL("../references/agent-registry.json", import.meta.url))
   ]);
   const { summarize: summarize2 } = await Promise.resolve().then(() => (init_summarize(), summarize_exports));

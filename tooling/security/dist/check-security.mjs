@@ -8584,6 +8584,7 @@ var SKILL_FILES = [
   "references/messages.md",
   "references/hosts.md",
   "references/integration.md",
+  "references/ledgers.md",
   "scripts/attribution.mjs"
 ];
 var PACKAGING_FILES = [
@@ -8594,7 +8595,8 @@ var PACKAGING_FILES = [
   "policy.md",
   "messages.md",
   "hosts.md",
-  "integration.md"
+  "integration.md",
+  "ledgers.md"
 ];
 var SKILL_ROOT = "skills/ai-commit-attribution";
 

@@ -48,6 +48,12 @@ automatic selection is not an answer. A genuine answer can resolve facts or incl
 identity or new Git authorization. Known required gaps remain ledger blockers
 until resolved, and default helpers provide no exception continuation.
 
+For a local planned-commit lifecycle, before initializing state, selecting or
+recording a ledger, pausing, recovering or replacing a plan, read the
+[ledger contract](references/ledgers.md). It owns persistent worktree selection
+and failure recovery. Carry the exact ledger ID through delegation and handoff;
+missing or inconsistent state requires an explicit recovery decision.
+
 Before render, validate, signature assessment or migration, read the
 [message contract](references/messages.md). Inspect concrete automatic-signing
 evidence as data; preserve human coauthors, body and unrelated trailers. Helpers

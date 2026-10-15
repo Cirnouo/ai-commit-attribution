@@ -158,13 +158,25 @@ test('output metadata protection rejects linked parents and ordinary consumed-in
     }
 });
 
-test('safe Git accepts only directory-location argv and rejects every scanner or write form before launch', async () => {
+test('safe Git accepts only fixed location/exclusion argv and rejects scanner or write forms before launch', async () => {
     const f = await fixture();
     try {
         const runner = new SafeGit(f.executable, f.repository);
         await runner.guard();
         for (const option of ['--show-toplevel', '--absolute-git-dir', '--git-common-dir'])
             assert.ok(await runner.text('rev-parse', [option]));
+        assert.ok(await runner.text('rev-parse', ['--path-format=absolute', '--git-path', 'info/exclude']));
+        assert.equal((await runner.run('ls-files', ['--cached', '--full-name', '-z'])).length, 0);
+        assert.equal(
+            (
+                await runner.run(
+                    'check-ignore',
+                    ['--no-index', '--', '.ai-commit-attribution/', '.ai-commit-attribution/state.json'],
+                    true,
+                )
+            ).length,
+            0,
+        );
         const rejectingExecutable = new SafeGit(process.execPath, f.repository);
         for (const [command, args] of [
             ['fetch', []],
@@ -178,6 +190,9 @@ test('safe Git accepts only directory-location argv and rejects every scanner or
             ['rev-parse', ['--verify', '--quiet', 'HEAD']],
             ['rev-parse', ['--show-toplevel', '--absolute-git-dir']],
             ['ls-files', ['--stage', '-z']],
+            ['ls-files', ['--cached', '-z', '--', 'other']],
+            ['check-ignore', ['--no-index', '--', 'other']],
+            ['rev-parse', ['--path-format=absolute', '--git-path', 'config']],
             ['diff', ['--cached', '--name-only', '-z', '--no-ext-diff', '--no-textconv', '--']],
             ['cat-file', ['-p', 'a'.repeat(40)]],
             ['rev-list', ['--max-count=10001', `${'a'.repeat(40)}..${'b'.repeat(40)}`]],
