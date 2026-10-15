@@ -182,8 +182,10 @@ ordered parents. Operation.kind alone never chooses form or parent order.
 
 Batch replay needs one ledger and preparation per planned output. The caller
 arranges the stop, resolved index and message consumption for every result.
-Fast-forward, skip and drop create no result to seal. No implicit adoption of
-an existing commit is offered.
+Fast-forward, skip and drop create no result to seal. An amend whose result SHA
+equals its replacement target also has no new result, even when Git succeeds.
+Keep its preparation for explicit no-result review; no implicit adoption of an
+existing commit is offered.
 
 ```text
 node <installed-skill>/scripts/attribution.mjs prepare --worktree <actual-worktree> --ledger <UUID> --expect-version <version> --message <message.txt> --operation <operation.json> --decision <decision.json> --result-plan <result-plan.json> --output <new-candidate.txt>

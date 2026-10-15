@@ -273,3 +273,14 @@ They are reproducible source checks rather than a claim that every platform,
 native host, final verification gate or fixed-source installation has passed.
 Generated payload equality and independent installed execution remain separate
 checks. Version 0.1.0 remains Unreleased.
+
+## No-result clarification, 2026-10-16
+
+A no-content amend can reproduce its replacement target's exact object when
+the message, tree, parents and commit metadata, including the committer time,
+remain identical. Git success alone therefore does not establish a new result.
+An actual Git reproduction confirmed this counterexample while checking the
+portable fixtures. The existing refusal to seal an observed old SHA remains;
+the prepared reservation requires explicit no-result review. Fixtures that
+exercise a new amend result must deterministically supply changed commit
+metadata, without weakening that refusal or relying on elapsed wall-clock time.

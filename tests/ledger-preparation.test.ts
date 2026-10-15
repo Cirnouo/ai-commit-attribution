@@ -93,7 +93,11 @@ async function fixture(t: test.TestContext) {
         GIT_EDITOR: 'true',
         GIT_ALLOW_PROTOCOL: 'file',
     };
-    function git(args: string[], input?: string | Buffer, success = true) {
+    let gitInvocation = 0;
+    function git(args: string[], input?: string | Buffer, success = true, dateOverride?: string) {
+        // Fixture actors advance independently of wall-clock seconds, including no-change amends.
+        const date = dateOverride ?? `${946684800 + gitInvocation} +0000`;
+        gitInvocation++;
         const result = spawnSync(
             executable,
             [
@@ -107,7 +111,14 @@ async function fixture(t: test.TestContext) {
                 'sequence.editor=true',
                 ...args,
             ],
-            { cwd: repository, env, input, windowsHide: true, shell: false, maxBuffer: 8 * 1024 * 1024 },
+            {
+                cwd: repository,
+                env: { ...env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+                input,
+                windowsHide: true,
+                shell: false,
+                maxBuffer: 8 * 1024 * 1024,
+            },
         );
         if (success) assert.equal(result.status, 0, result.stderr?.toString());
         return result.stdout.toString().trim();
@@ -364,6 +375,11 @@ test('all plain output forms include empty root, next commit, root amend and mov
     await nextLedger(f);
     const amend = await preparedFor(f, 'amend', [], 'replace', rootSha);
     f.git(['commit', '--quiet', '--amend', '--allow-empty', '-F', required(amend.outputPath)]);
+    assert.notEqual(f.head(), rootSha, 'The fixture must create a new amend result before finishing it.');
+    assert.ok(
+        Number(f.git(['show', '--no-patch', '--format=%ct', f.head()])) >
+            Number(f.git(['show', '--no-patch', '--format=%ct', rootSha])),
+    );
     assert.equal((await finish(f, amend)).status, 'sealed');
     await nextLedger(f);
     await f.stage('next', 'two');
@@ -546,6 +562,7 @@ test('actual two-parent and octopus merges preserve ordered parents through amen
         const target = f.head(),
             amend = await preparedFor(f, 'amend', parents, 'replace', target);
         f.git(['commit', '--quiet', '--amend', '-F', required(amend.outputPath)]);
+        assert.notEqual(f.head(), target);
         assert.equal((await finish(f, amend)).status, 'sealed');
     }
 });
@@ -633,6 +650,7 @@ test('actual rebase conflict create and edit replacement use original source dec
     f.operation.targets = [{ role: 'original-source', objectId: source }];
     const edit = await preparedFor(f, 'rebase', [main], 'replace', replay);
     f.git(['commit', '--quiet', '--amend', '-F', required(edit.outputPath)]);
+    assert.notEqual(f.head(), replay);
     f.git(['rebase', '--continue']);
     assert.equal((await finish(f, edit)).status, 'sealed');
     assert.equal((await readState(f.context)).preparations[1]?.resultPlan.sourceTargets[0]?.objectId, source);
@@ -678,6 +696,7 @@ test('actual merge squash and interactive squash/fixup replace accumulator', asy
         f.git(['reset', '--hard', one]);
         f.git(['rebase', '--continue']);
         f.git(['commit', '--quiet', '--amend', '-F', required(fold.outputPath)]);
+        assert.notEqual(f.head(), one);
         assert.equal((await finish(f, fold)).status, 'sealed');
     }
 });
@@ -1310,4 +1329,34 @@ test('reviewed Windows namespaced state-directory output cannot bypass preparati
     assert.equal(state.stateVersion, 2);
     assert.equal(state.ledgers[0]?.state, 'open');
     assert.equal(state.preparations.length, 0);
+});
+
+test('same timestamp no-op amend retains preparation when the caller creates no new object', async (t) => {
+    const f = await fixture(t),
+        sameSecond = '2000-01-01T00:00:00Z';
+    const root = await preparedFor(f, 'commit', []);
+    f.git(['commit', '--quiet', '--allow-empty', '-F', required(root.outputPath)], undefined, true, sameSecond);
+    const target = f.head(),
+        original = f.git(['cat-file', 'commit', target]);
+    assert.equal(f.git(['show', '--no-patch', '--format=%at %ct', target]), '946684800 946684800');
+    assert.equal((await finish(f, root)).status, 'sealed');
+    await nextLedger(f);
+    const prepared = await preparedFor(f, 'amend', [], 'replace', target);
+    assert.deepEqual(await readFile(required(prepared.outputPath)), await readFile(required(root.outputPath)));
+    f.git(
+        ['commit', '--quiet', '--amend', '--allow-empty', '-F', required(prepared.outputPath)],
+        undefined,
+        true,
+        sameSecond,
+    );
+    assert.equal(f.head(), target, 'Identical metadata, parents, tree and message produce the same Git object.');
+    assert.equal(f.git(['cat-file', 'commit', f.head()]), original);
+    const before = await readState(f.context);
+    await assert.rejects(finish(f, prepared), /preexisting source or observed HEAD/i);
+    assert.deepEqual(await readState(f.context), before);
+    assert.equal(before.ledgers.find((ledger) => ledger.ledgerId === f.ledgerId)?.state, 'prepared');
+    assert.equal(
+        before.ledgers.find((ledger) => ledger.ledgerId === f.ledgerId)?.currentPreparationId,
+        prepared.preparationId,
+    );
 });
