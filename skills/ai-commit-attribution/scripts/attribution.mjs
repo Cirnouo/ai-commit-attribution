@@ -768,13 +768,13 @@ function sameObserved(left, right) {
   return left.dev === right.dev && left.ino === right.ino && left.mode === right.mode && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
 }
 async function inspectPath(file) {
-  return inspectPathIdentity(file, false);
+  return inspectPathIdentity(file, (locator) => lstat3(locator), sameObserved);
 }
-async function inspectPathIdentity(file, directoryIdentity) {
+async function inspectPathIdentity(file, read, same) {
   const absolute2 = path6.resolve(file);
   let initial;
   try {
-    initial = await lstat3(absolute2);
+    initial = await read(absolute2);
   } catch (error) {
     if (errorCode(error) !== "ENOENT") throw error;
   }
@@ -788,7 +788,7 @@ async function inspectPathIdentity(file, directoryIdentity) {
     const locator = index === -1 && current.startsWith("\\\\?\\") && current.length === 7 && current[5] === ":" ? current.slice(4) : current;
     let info;
     try {
-      info = await lstat3(locator);
+      info = await read(locator);
     } catch (error) {
       if (errorCode(error) !== "ENOENT") throw error;
       if (initial) throw new ObservationError("Observed present path disappeared during component checks.");
@@ -800,14 +800,14 @@ async function inspectPathIdentity(file, directoryIdentity) {
     observed.push({ locator, info });
   }
   for (const item of observed) {
-    const after = await lstat3(item.locator);
+    const after = await read(item.locator);
     if (after.isSymbolicLink() || item.info.dev !== after.dev || item.info.ino !== after.ino || item.info.mode !== after.mode)
       throw new ObservationError("Observed path component identity changed.");
   }
   if (!initial) {
     if (!missing) throw new ObservationError("Initially absent path appeared during component checks.");
     try {
-      await lstat3(missing);
+      await read(missing);
     } catch (error) {
       if (errorCode(error) === "ENOENT") return void 0;
       throw error;
@@ -815,7 +815,7 @@ async function inspectPathIdentity(file, directoryIdentity) {
     throw new ObservationError("Initially absent path component appeared during checks.");
   }
   const final = observed.at(-1);
-  const unchanged2 = final && (directoryIdentity ? initial.isDirectory() && final.info.isDirectory() && initial.dev === final.info.dev && initial.ino === final.info.ino && initial.mode === final.info.mode : sameObserved(initial, final.info));
+  const unchanged2 = final && same(initial, final.info);
   if (!final || final.locator !== absolute2 || !unchanged2)
     throw new ObservationError("Observed path identity changed during component checks.");
   return initial;
@@ -828,7 +828,11 @@ async function physical(file) {
   return actual;
 }
 async function physicalDirectory(file) {
-  const info = await inspectPathIdentity(file, true);
+  const info = await inspectPathIdentity(
+    file,
+    (locator) => lstat3(locator, { bigint: true }),
+    (initial, final) => initial.isDirectory() && final.isDirectory() && initial.dev === final.dev && initial.ino === final.ino && initial.mode === final.mode
+  );
   if (!info?.isDirectory()) throw new ObservationError("Observed physical directory is missing or not a directory.");
   const actual = await realpath4(file);
   if (!samePhysicalPath(file, actual))

@@ -29,13 +29,19 @@ export async function lstat(file,...args){
   if(fault==='child'||fault==='private-child'){
    await setTimeout(25);
    await fs.mkdir(path.join(file,'unrelated-child'));
-   const after=await fs.lstat(file);
+   const after=await fs.lstat(file,...args);
    assert.equal(info.dev,after.dev);assert.equal(info.ino,after.ino);assert.equal(info.mode,after.mode);
-   assert.ok(info.size!==after.size||info.mtimeMs!==after.mtimeMs||info.ctimeMs!==after.ctimeMs,'real child creation must change observed metadata');
+   assert.ok(info.size!==after.size||(info.mtimeNs??info.mtimeMs)!==(after.mtimeNs??after.mtimeMs)||(info.ctimeNs??info.ctimeMs)!==(after.ctimeNs??after.ctimeMs),'real child creation must change observed metadata');
   }else if(fault?.startsWith('replace-')){
+   const identity=async locator=>{const value=await fs.lstat(locator,{bigint:true});return {dev:String(value.dev),ino:String(value.ino),mode:String(value.mode)}};
+   const before=await identity(file);
    await fs.rename(file,file+'.original');
    if(fault==='replace-directory')await fs.mkdir(file);
    if(fault==='replace-file')await fs.writeFile(file,'peer bytes');
+   const receipt={injected:true,fault,before,retained:await identity(file+'.original'),replacement:fault==='replace-missing'?null:await identity(file)};
+   await fs.writeFile(process.env.DIRECTORY_RECEIPT,JSON.stringify(receipt));
+   assert.deepEqual(receipt.retained,receipt.before,'rename must retain the original exact identity');
+   if(receipt.replacement)assert.notDeepEqual(receipt.replacement,receipt.before,'replacement must have a distinct exact identity');
   }
  }
  return info;
@@ -120,14 +126,30 @@ console.log('verified');
                         target = path.join(target, 'child');
                     }
                 } else if (fault !== 'missing') await mkdir(target);
+                const receiptFile = path.join(fixture, 'directory-receipt.json');
                 const result = spawnSync(process.execPath, [runner, action, reject ? 'reject' : 'accept'], {
                     cwd: fixture,
-                    env: { ...process.env, OBSERVED_DIRECTORY: target, DIRECTORY_FAULT: fault },
+                    env: {
+                        ...process.env,
+                        OBSERVED_DIRECTORY: target,
+                        DIRECTORY_FAULT: fault,
+                        DIRECTORY_RECEIPT: receiptFile,
+                    },
                     windowsHide: true,
                     encoding: 'utf8',
                     timeout: 30_000,
                 });
-                assert.equal(result.status, 0, result.stderr + result.stdout);
+                let receipt = '';
+                if (fault.startsWith('replace-')) {
+                    receipt = await readFile(receiptFile, 'utf8');
+                    const evidence = JSON.parse(receipt);
+                    assert.equal(evidence.injected, true, receipt);
+                    assert.equal(evidence.fault, fault, receipt);
+                    assert.deepEqual(evidence.retained, evidence.before, receipt);
+                    if (fault !== 'replace-missing')
+                        assert.notDeepEqual(evidence.replacement, evidence.before, receipt);
+                }
+                assert.equal(result.status, 0, result.stderr + result.stdout + receipt);
                 assert.equal(result.stdout.trim(), 'verified');
                 if (fault === 'replace-file') assert.equal(await readFile(target, 'utf8'), 'peer bytes');
                 if (fault.startsWith('replace-')) assert.ok((await lstat(`${target}.original`)).isDirectory());

@@ -159,9 +159,9 @@ export async function lstat(file,...args){
  const before=await fs.lstat(file,...args);
  if(!injected&&file===${JSON.stringify(trailerParent)}){
   injected=true;await setTimeout(25);await fs.mkdtemp(path.join(file,'unrelated-child-'));
-  const after=await fs.lstat(file);
+  const after=await fs.lstat(file,...args);
   assert.equal(before.dev,after.dev);assert.equal(before.ino,after.ino);assert.equal(before.mode,after.mode);
-  assert.ok(before.size!==after.size||before.mtimeMs!==after.mtimeMs||before.ctimeMs!==after.ctimeMs);
+  assert.ok(before.size!==after.size||(before.mtimeNs??before.mtimeMs)!==(after.mtimeNs??after.mtimeMs)||(before.ctimeNs??before.ctimeMs)!==(after.ctimeNs??after.ctimeMs));
   await fs.writeFile(${JSON.stringify(observation)},'real child mutation observed');
  }
  return before;
